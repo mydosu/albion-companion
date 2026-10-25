@@ -2,7 +2,7 @@
 
 阿尔比恩桌宠 —— 桌面壳、语音链路、运行侧脚本与文档，合并到一个仓库。
 
-想自己搭一个类似的 AI 陪伴，先看 [教程](教程/README.md)：只讲方法和踩过的坑。
+想自己搭一个类似的 AI 陪伴，先看 [教程](教程/README.md)：讲一些方法和踩过的坑。
 仓库里没有角色模型、配音、自训权重和人设；本机地址、Key 写在不进 Git 的配置里，外壳的见 `shell/apps/stage-tamagotchi/.env.example`。
 
 维护入口：[项目脉络](docs/PROJECT_MAP.md) · [文件分类](docs/FILE_LAYOUT.md) ·
