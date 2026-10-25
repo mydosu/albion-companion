@@ -40,7 +40,7 @@
 ## 权重
 
 本仓自己训练的产物（多音色 LoRA 适配器 + 说话人嵌入，共 32 个文件、约 1.28 GB）
-不公开，在作者私有仓库的 Releases（`weights-v1`），`tools/restore_weights.py` 按 `config/rebuild/assets.json` 校验恢复。
+不公开，在我私有仓库的 Releases（`weights-v1`），`tools/restore_weights.py` 按 `config/rebuild/assets.json` 校验恢复。
 
 第三方基础模型、角色模型资产**不在本仓**，请从各自来源获取。
 
