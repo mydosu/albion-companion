@@ -1,0 +1,20 @@
+# 模型与语料（大文件，不进库）
+models/
+logs/
+archive/
+
+# 依赖与产物
+__pycache__/
+.venv/
+node_modules/
+*.pyc
+*.zip
+*.log
+
+# 凭据
+token.txt
+*.token
+.env
+
+# 摆件运行期状态（窗口位置）
+widget/albion_status_widget_pos.json

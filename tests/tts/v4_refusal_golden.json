@@ -1,0 +1,606 @@
+{
+ "J1_dame_plain": {
+  "caption": "感情的で、声を張り上げて、早口に",
+  "cfg": 3.2,
+  "diagnostics": {
+   "delivery": null,
+   "delivery_rel": 0.0,
+   "delivery_stage": {
+    "accepted": false,
+    "ambiguous": [
+     "ambiguous_word"
+    ],
+    "candidate_delivery": null,
+    "dropped_correlated": 0,
+    "evidence_groups": [
+     "A"
+    ],
+    "origin_ids": [],
+    "reason": "ambiguous_only"
+   },
+   "gap": null,
+   "policy": "cascade_v2"
+  },
+  "family": "bright",
+  "level": 0.63,
+  "parent_id": 0,
+  "plan_version": 4,
+  "reason": "hint(voiced) level=0.63 tier=strong",
+  "role": "speech",
+  "scene_id": 1,
+  "style": "bright",
+  "sub_index": 0,
+  "tier": "strong",
+  "unit_id": "u0"
+ },
+ "J2_quoted": {
+  "caption": "感情的で、声を張り上げて、早口に",
+  "cfg": 3.2,
+  "diagnostics": {
+   "delivery": null,
+   "delivery_rel": 0.0,
+   "delivery_stage": {
+    "accepted": false,
+    "ambiguous": [
+     "ambiguous_word"
+    ],
+    "candidate_delivery": null,
+    "dropped_correlated": 0,
+    "evidence_groups": [
+     "A"
+    ],
+    "origin_ids": [],
+    "reason": "ambiguous_only"
+   },
+   "gap": null,
+   "policy": "cascade_v2"
+  },
+  "family": "bright",
+  "level": 0.6,
+  "parent_id": 0,
+  "plan_version": 4,
+  "reason": "hint(voiced) level=0.60 tier=strong",
+  "role": "speech",
+  "scene_id": 1,
+  "style": "bright",
+  "sub_index": 0,
+  "tier": "strong",
+  "unit_id": "u0"
+ },
+ "J3_dame_negated": {
+  "caption": "感情的で、声を張り上げて、早口に",
+  "cfg": 3.2,
+  "diagnostics": {
+   "delivery": null,
+   "delivery_rel": 0.0,
+   "delivery_stage": {
+    "accepted": false,
+    "ambiguous": [
+     "ambiguous_word"
+    ],
+    "candidate_delivery": null,
+    "dropped_correlated": 0,
+    "evidence_groups": [
+     "A"
+    ],
+    "origin_ids": [],
+    "reason": "ambiguous_only"
+   },
+   "gap": null,
+   "policy": "cascade_v2"
+  },
+  "family": "bright",
+  "level": 0.6,
+  "parent_id": 0,
+  "plan_version": 4,
+  "reason": "style=soft+hint level=0.60 tier=strong",
+  "role": "speech",
+  "scene_id": 1,
+  "style": "soft",
+  "sub_index": 0,
+  "tier": "strong",
+  "unit_id": "u0"
+ },
+ "J4_soothe_negated": {
+  "caption": "感情的で、声を張り上げて、早口に",
+  "cfg": 3.2,
+  "diagnostics": {
+   "delivery": null,
+   "delivery_rel": 0.0,
+   "delivery_stage": {
+    "accepted": false,
+    "ambiguous": [],
+    "candidate_delivery": null,
+    "dropped_correlated": 0,
+    "evidence_groups": [],
+    "origin_ids": [],
+    "reason": "ambiguous_only"
+   },
+   "gap": null,
+   "policy": "cascade_v2"
+  },
+  "family": "bright",
+  "level": 0.6,
+  "parent_id": 0,
+  "plan_version": 4,
+  "reason": "hint(bright) level=0.60 tier=strong",
+  "role": "speech",
+  "scene_id": 1,
+  "style": "bright",
+  "sub_index": 0,
+  "tier": "strong",
+  "unit_id": "u0"
+ },
+ "J5_intimate_whisper": {
+  "caption": "柔らかく、優しく囁くように",
+  "cfg": 4.5,
+  "diagnostics": {
+   "delivery": "whispered",
+   "delivery_rel": 0.7,
+   "delivery_stage": {
+    "accepted": true,
+    "ambiguous": [
+     "ambiguous_word",
+     "form_cue"
+    ],
+    "candidate_delivery": "whispered",
+    "dropped_correlated": 0,
+    "evidence_groups": [
+     "A",
+     "J",
+     "L"
+    ],
+    "origin_ids": [
+     "ja:whispered",
+     "hint"
+    ],
+    "reason": "independent_l_j"
+   },
+   "gap": null,
+   "policy": "cascade_v2"
+  },
+  "family": "intimate",
+  "level": 0.53,
+  "parent_id": 0,
+  "plan_version": 4,
+  "reason": "hint(whispered) level=0.53 tier=weak delivery=whispered",
+  "role": "speech",
+  "scene_id": 1,
+  "style": "intimate",
+  "sub_index": 0,
+  "tier": "weak",
+  "unit_id": "u0"
+ },
+ "J5b_intimate_breathy": {
+  "caption": "息を荒くして、甘く喘ぐように、近い距離で",
+  "cfg": 4.5,
+  "diagnostics": {
+   "delivery": "breathy",
+   "delivery_rel": 0.75,
+   "delivery_stage": {
+    "accepted": true,
+    "ambiguous": [
+     "ambiguous_word",
+     "form_cue"
+    ],
+    "candidate_delivery": "breathy",
+    "dropped_correlated": 0,
+    "evidence_groups": [
+     "A",
+     "D",
+     "L"
+    ],
+    "origin_ids": [
+     "cue:[0, 2]",
+     "hint"
+    ],
+    "reason": "explicit_directive"
+   },
+   "gap": null,
+   "policy": "cascade_v2"
+  },
+  "family": "intimate",
+  "level": 0.79,
+  "parent_id": 0,
+  "plan_version": 4,
+  "reason": "hint(breathy) level=0.79 tier=strong delivery=breathy",
+  "role": "speech",
+  "scene_id": 1,
+  "style": "intimate",
+  "sub_index": 0,
+  "tier": "strong",
+  "unit_id": "u0"
+ },
+ "P1_happy_rule": {
+  "caption": "感情的で、声を張り上げて、早口に",
+  "cfg": 3.2,
+  "diagnostics": {
+   "delivery": null,
+   "delivery_rel": 0.0,
+   "delivery_stage": {
+    "accepted": false,
+    "ambiguous": [],
+    "candidate_delivery": null,
+    "dropped_correlated": 0,
+    "evidence_groups": [],
+    "origin_ids": [],
+    "reason": "ambiguous_only"
+   },
+   "gap": null,
+   "policy": "cascade_v2"
+  },
+  "family": "bright",
+  "level": 0.714,
+  "parent_id": 0,
+  "plan_version": 4,
+  "reason": "style=happy level=0.71 tier=strong",
+  "role": "speech",
+  "scene_id": 1,
+  "style": "happy",
+  "sub_index": 0,
+  "tier": "strong",
+  "unit_id": "u0"
+ },
+ "P2_happy_hint": {
+  "caption": "感情的で、声を張り上げて、早口に",
+  "cfg": 3.2,
+  "diagnostics": {
+   "delivery": null,
+   "delivery_rel": 0.0,
+   "delivery_stage": {
+    "accepted": false,
+    "ambiguous": [],
+    "candidate_delivery": null,
+    "dropped_correlated": 0,
+    "evidence_groups": [],
+    "origin_ids": [],
+    "reason": "ambiguous_only"
+   },
+   "gap": null,
+   "policy": "cascade_v2"
+  },
+  "family": "bright",
+  "level": 0.66,
+  "parent_id": 0,
+  "plan_version": 4,
+  "reason": "hint(voiced) level=0.66 tier=strong",
+  "role": "speech",
+  "scene_id": 1,
+  "style": "bright",
+  "sub_index": 0,
+  "tier": "strong",
+  "unit_id": "u0"
+ },
+ "R1_calm_refuse": {
+  "caption": "感情的で、声を張り上げて、早口に",
+  "cfg": 3.2,
+  "diagnostics": {
+   "delivery": null,
+   "delivery_rel": 0.0,
+   "delivery_stage": {
+    "accepted": false,
+    "ambiguous": [
+     "ambiguous_word"
+    ],
+    "candidate_delivery": null,
+    "dropped_correlated": 0,
+    "evidence_groups": [
+     "A"
+    ],
+    "origin_ids": [],
+    "reason": "ambiguous_only"
+   },
+   "gap": null,
+   "policy": "cascade_v2"
+  },
+  "family": "bright",
+  "level": 0.54,
+  "parent_id": 0,
+  "plan_version": 4,
+  "reason": "hint(voiced) level=0.54 tier=strong",
+  "role": "speech",
+  "scene_id": 1,
+  "style": "bright",
+  "sub_index": 0,
+  "tier": "strong",
+  "unit_id": "u0"
+ },
+ "R2_firm_stop": {
+  "caption": "感情的で、声を張り上げて、早口に",
+  "cfg": 3.2,
+  "diagnostics": {
+   "delivery": null,
+   "delivery_rel": 0.0,
+   "delivery_stage": {
+    "accepted": false,
+    "ambiguous": [
+     "ambiguous_word"
+    ],
+    "candidate_delivery": null,
+    "dropped_correlated": 0,
+    "evidence_groups": [
+     "A"
+    ],
+    "origin_ids": [],
+    "reason": "ambiguous_only"
+   },
+   "gap": null,
+   "policy": "cascade_v2"
+  },
+  "family": "bright",
+  "level": 0.69,
+  "parent_id": 0,
+  "plan_version": 4,
+  "reason": "hint(voiced) level=0.69 tier=strong",
+  "role": "speech",
+  "scene_id": 1,
+  "style": "bright",
+  "sub_index": 0,
+  "tier": "strong",
+  "unit_id": "u0"
+ },
+ "R2b_stop_repeat": {
+  "caption": "感情的で、声を張り上げて、早口に",
+  "cfg": 3.2,
+  "diagnostics": {
+   "delivery": null,
+   "delivery_rel": 0.0,
+   "delivery_stage": {
+    "accepted": false,
+    "ambiguous": [
+     "ambiguous_word"
+    ],
+    "candidate_delivery": null,
+    "dropped_correlated": 0,
+    "evidence_groups": [
+     "A"
+    ],
+    "origin_ids": [],
+    "reason": "ambiguous_only"
+   },
+   "gap": null,
+   "policy": "cascade_v2"
+  },
+  "family": "bright",
+  "level": 0.66,
+  "parent_id": 0,
+  "plan_version": 4,
+  "reason": "hint(voiced) level=0.66 tier=strong",
+  "role": "speech",
+  "scene_id": 1,
+  "style": "bright",
+  "sub_index": 0,
+  "tier": "strong",
+  "unit_id": "u0"
+ },
+ "R3_soothe": {
+  "caption": "感情的で、声を張り上げて、早口に",
+  "cfg": 3.2,
+  "diagnostics": {
+   "delivery": null,
+   "delivery_rel": 0.0,
+   "delivery_stage": {
+    "accepted": false,
+    "ambiguous": [],
+    "candidate_delivery": null,
+    "dropped_correlated": 0,
+    "evidence_groups": [],
+    "origin_ids": [],
+    "reason": "ambiguous_only"
+   },
+   "gap": null,
+   "policy": "cascade_v2"
+  },
+  "family": "bright",
+  "level": 0.6,
+  "parent_id": 0,
+  "plan_version": 4,
+  "reason": "hint(voiced) level=0.60 tier=strong",
+  "role": "speech",
+  "scene_id": 1,
+  "style": "bright",
+  "sub_index": 0,
+  "tier": "strong",
+  "unit_id": "u0"
+ },
+ "R4_fear_stop": {
+  "caption": "感情的で、声を張り上げて、早口に",
+  "cfg": 3.2,
+  "diagnostics": {
+   "delivery": null,
+   "delivery_rel": 0.0,
+   "delivery_stage": {
+    "accepted": false,
+    "ambiguous": [],
+    "candidate_delivery": null,
+    "dropped_correlated": 0,
+    "evidence_groups": [],
+    "origin_ids": [],
+    "reason": "ambiguous_only"
+   },
+   "gap": null,
+   "policy": "cascade_v2"
+  },
+  "family": "bright",
+  "level": 0.66,
+  "parent_id": 0,
+  "plan_version": 4,
+  "reason": "hint(voiced) level=0.66 tier=strong",
+  "role": "speech",
+  "scene_id": 1,
+  "style": "bright",
+  "sub_index": 0,
+  "tier": "strong",
+  "unit_id": "u0"
+ },
+ "R5_sad_refuse": {
+  "caption": "感情的で、声を張り上げて、早口に",
+  "cfg": 3.2,
+  "diagnostics": {
+   "delivery": null,
+   "delivery_rel": 0.0,
+   "delivery_stage": {
+    "accepted": false,
+    "ambiguous": [
+     "ambiguous_word"
+    ],
+    "candidate_delivery": null,
+    "dropped_correlated": 0,
+    "evidence_groups": [
+     "A"
+    ],
+    "origin_ids": [],
+    "reason": "ambiguous_only"
+   },
+   "gap": null,
+   "policy": "cascade_v2"
+  },
+  "family": "bright",
+  "level": 0.54,
+  "parent_id": 0,
+  "plan_version": 4,
+  "reason": "hint(voiced) level=0.54 tier=strong",
+  "role": "speech",
+  "scene_id": 1,
+  "style": "bright",
+  "sub_index": 0,
+  "tier": "strong",
+  "unit_id": "u0"
+ },
+ "R6_joke_refuse": {
+  "caption": "感情的で、声を張り上げて、早口に",
+  "cfg": 3.2,
+  "diagnostics": {
+   "delivery": null,
+   "delivery_rel": 0.0,
+   "delivery_stage": {
+    "accepted": false,
+    "ambiguous": [
+     "ambiguous_word"
+    ],
+    "candidate_delivery": null,
+    "dropped_correlated": 0,
+    "evidence_groups": [
+     "A"
+    ],
+    "origin_ids": [],
+    "reason": "ambiguous_only"
+   },
+   "gap": null,
+   "policy": "cascade_v2"
+  },
+  "family": "bright",
+  "level": 0.6,
+  "parent_id": 0,
+  "plan_version": 4,
+  "reason": "hint(voiced) level=0.60 tier=strong",
+  "role": "speech",
+  "scene_id": 1,
+  "style": "bright",
+  "sub_index": 0,
+  "tier": "strong",
+  "unit_id": "u0"
+ },
+ "R7_real_refuse": {
+  "caption": "感情的で、声を張り上げて、早口に",
+  "cfg": 3.2,
+  "diagnostics": {
+   "delivery": null,
+   "delivery_rel": 0.0,
+   "delivery_stage": {
+    "accepted": false,
+    "ambiguous": [
+     "ambiguous_word"
+    ],
+    "candidate_delivery": null,
+    "dropped_correlated": 0,
+    "evidence_groups": [
+     "A"
+    ],
+    "origin_ids": [],
+    "reason": "ambiguous_only"
+   },
+   "gap": null,
+   "policy": "cascade_v2"
+  },
+  "family": "bright",
+  "level": 0.6,
+  "parent_id": 0,
+  "plan_version": 4,
+  "reason": "hint(voiced) level=0.60 tier=strong",
+  "role": "speech",
+  "scene_id": 1,
+  "style": "bright",
+  "sub_index": 0,
+  "tier": "strong",
+  "unit_id": "u0"
+ },
+ "R7b_real_no_valence": {
+  "caption": "感情的で、声を張り上げて、早口に",
+  "cfg": 3.2,
+  "diagnostics": {
+   "delivery": null,
+   "delivery_rel": 0.0,
+   "delivery_stage": {
+    "accepted": false,
+    "ambiguous": [
+     "ambiguous_word"
+    ],
+    "candidate_delivery": null,
+    "dropped_correlated": 0,
+    "evidence_groups": [
+     "A"
+    ],
+    "origin_ids": [],
+    "reason": "ambiguous_only"
+   },
+   "gap": null,
+   "policy": "cascade_v2"
+  },
+  "family": "bright",
+  "level": 0.6,
+  "parent_id": 0,
+  "plan_version": 4,
+  "reason": "hint(bright) level=0.60 tier=strong",
+  "role": "speech",
+  "scene_id": 1,
+  "style": "bright",
+  "sub_index": 0,
+  "tier": "strong",
+  "unit_id": "u0"
+ },
+ "R8_joke_marker": {
+  "caption": "感情的で、声を張り上げて、早口に",
+  "cfg": 3.2,
+  "diagnostics": {
+   "delivery": null,
+   "delivery_rel": 0.0,
+   "delivery_stage": {
+    "accepted": false,
+    "ambiguous": [
+     "ambiguous_word"
+    ],
+    "candidate_delivery": null,
+    "dropped_correlated": 0,
+    "evidence_groups": [
+     "A"
+    ],
+    "origin_ids": [],
+    "reason": "ambiguous_only"
+   },
+   "gap": null,
+   "policy": "cascade_v2"
+  },
+  "family": "bright",
+  "level": 0.6,
+  "parent_id": 0,
+  "plan_version": 4,
+  "reason": "style=happy level=0.60 tier=strong",
+  "role": "speech",
+  "scene_id": 1,
+  "style": "happy",
+  "sub_index": 0,
+  "tier": "strong",
+  "unit_id": "u0"
+ }
+}

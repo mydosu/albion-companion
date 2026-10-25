@@ -1,0 +1,30 @@
+{
+  "captured_on": "2026-10-16",
+  "brain": {
+    "kind": "pi",
+    "repo_snapshot": "integrations/pi-brain",
+    "deploy_path": "/root/albion-pi",
+    "host_port": 8650,
+    "model": {
+      "provider": "commandcode",
+      "default": "deepseek/deepseek-v4-flash",
+      "base_url": "https://api.commandcode.ai/provider/v1",
+      "api_mode": "chat_completions",
+      "context_length": 500000
+    }
+  },
+  "windows": {
+    "tts": {
+      "python": "3.10.20",
+      "interpreter": "tts/irodori/.venv/Scripts/python.exe"
+    },
+    "stt": {
+      "python": "3.9.13",
+      "interpreter": "tts/GPT-sovits/runtime/python.exe"
+    }
+  },
+  "release": {
+    "repository": "mydosu/Albion-Companion-Wife",
+    "tag": "weights-v1"
+  }
+}

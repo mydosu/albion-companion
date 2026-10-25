@@ -1,0 +1,68 @@
+# ── 总仓忽略规则（合并自各子仓，防以后 git add -A 误收大块）──
+# 依赖 / 运行环境
+node_modules/
+.venv/
+venv/
+runtime/
+# 壳的 TypeScript 源码目录也叫 runtime（core-agent、model-driver-lipsync），不是运行环境
+!shell/packages/*/src/runtime/
+__pycache__/
+*.py[cod]
+# 二进制 / 归档 / 模型权重（权重走 GitHub Releases 附件，不入库）
+*.7z
+*.zip
+*.pt
+*.pth
+*.safetensors
+*.onnx
+*.db
+*.db-wal
+# 模型与语料（第三方，来源仓库远端已有）
+pet/models/
+pet/archive/
+tts/irodori/checkpoints/
+tts/irodori/outputs/
+tts/GPT-sovits/GPT_SoVITS/
+tts/GPT-sovits/runtime/
+# 构建产物与缓存
+.turbo/
+**/dist/
+**/out/
+**/.cache/
+# 日志 / 临时
+logs/
+_tmp/
+*.log
+
+# 用户自己的档案：回档点与她的抽屉（未决定是否入库，先挡住，别误 git add -A）
+backup/
+her-home/
+
+# 本地配置、私密归档、历史副本：禁止 git add -A 误收
+_archive/
+.local/
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.token
+token.txt
+agent-keys.json
+*.pem
+*.key
+*.db-shm
+*.sqlite*
+*.bak*
+*.obsolete-*
+_backup/
+_rollback*/
+_p8_logs/
+_ab-emotion*/
+tts/irodori/data_lora/
+tests/output/
+tests/pet/spine-official/sr38/
+.pytest_cache/
+*.ckpt
+*.bin
+*.db-journal
+tts/irodori/_tmp_v2_golden.json

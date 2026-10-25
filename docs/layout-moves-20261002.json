@@ -1,0 +1,3005 @@
+[
+  {
+    "old": "pet/tests/_recalib2.py",
+    "new": "archive/legacy/pet/tests/_recalib2.py",
+    "category": "legacy-patches"
+  },
+  {
+    "old": "pet/tests/_recalib.py",
+    "new": "archive/legacy/pet/tests/_recalib.py",
+    "category": "legacy-patches"
+  },
+  {
+    "old": "pet/tests/_apply_annot_fix.py",
+    "new": "archive/legacy/pet/tests/_apply_annot_fix.py",
+    "category": "legacy-patches"
+  },
+  {
+    "old": "pet/tests/_audit_auto.mjs",
+    "new": "tests/pet/_audit_auto.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_audit_controllers.py",
+    "new": "tests/pet/_audit_controllers.py",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_author_engine_check.mjs",
+    "new": "tests/pet/_author_engine_check.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_bbox_subset.mjs",
+    "new": "tests/pet/_bbox_subset.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_canvas_shot.mjs",
+    "new": "tests/pet/_canvas_shot.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_check_loaded_motions.mjs",
+    "new": "tests/pet/_check_loaded_motions.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_ctx_probe.mjs",
+    "new": "tests/pet/_ctx_probe.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_diag.mjs",
+    "new": "tests/pet/_diag.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_diag_clamped.mjs",
+    "new": "tests/pet/_diag_clamped.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_diag_flash.mjs",
+    "new": "tests/pet/_diag_flash.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_diff_annot.py",
+    "new": "tests/pet/_diff_annot.py",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_emo_check.mjs",
+    "new": "tests/pet/_emo_check.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_exe_fix_check.mjs",
+    "new": "tests/pet/_exe_fix_check.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_faces.mjs",
+    "new": "tests/pet/_faces.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_face_chain.mjs",
+    "new": "tests/pet/_face_chain.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_l2d_click_probe.mjs",
+    "new": "tests/pet/_l2d_click_probe.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_look_tag_filter_check.mjs",
+    "new": "tests/pet/_look_tag_filter_check.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_measure_areas.mjs",
+    "new": "tests/pet/_measure_areas.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_menu_walk.mjs",
+    "new": "tests/pet/_menu_walk.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_raw_scan.mjs",
+    "new": "tests/pet/_raw_scan.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_read_annot.py",
+    "new": "tests/pet/_read_annot.py",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_ruler_shot.mjs",
+    "new": "tests/pet/_ruler_shot.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_shot.mjs",
+    "new": "tests/pet/_shot.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_snap.mjs",
+    "new": "tests/pet/_snap.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_alive.mjs",
+    "new": "tests/pet/_spine38_alive.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_anim.mjs",
+    "new": "tests/pet/_spine38_anim.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_atlas.mjs",
+    "new": "tests/pet/_spine38_atlas.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_atlasdump.mjs",
+    "new": "tests/pet/_spine38_atlasdump.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_bbox.mjs",
+    "new": "tests/pet/_spine38_bbox.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_bbox2.mjs",
+    "new": "tests/pet/_spine38_bbox2.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_check.mjs",
+    "new": "tests/pet/_spine38_check.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_checkhide.mjs",
+    "new": "tests/pet/_spine38_checkhide.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_chest.mjs",
+    "new": "tests/pet/_spine38_chest.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_cmp.mjs",
+    "new": "tests/pet/_spine38_cmp.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_controls.mjs",
+    "new": "tests/pet/_spine38_controls.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_dom.mjs",
+    "new": "tests/pet/_spine38_dom.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_fit.mjs",
+    "new": "tests/pet/_spine38_fit.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_full.mjs",
+    "new": "tests/pet/_spine38_full.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_hideslots.mjs",
+    "new": "tests/pet/_spine38_hideslots.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_isolate.mjs",
+    "new": "tests/pet/_spine38_isolate.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_meshupdate.mjs",
+    "new": "tests/pet/_spine38_meshupdate.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_pixels.mjs",
+    "new": "tests/pet/_spine38_pixels.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_plugins.mjs",
+    "new": "tests/pet/_spine38_plugins.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_pma.mjs",
+    "new": "tests/pet/_spine38_pma.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_poses.mjs",
+    "new": "tests/pet/_spine38_poses.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_probe.mjs",
+    "new": "tests/pet/_spine38_probe.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_reapply.mjs",
+    "new": "tests/pet/_spine38_reapply.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_render.mjs",
+    "new": "tests/pet/_spine38_render.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_rotdiff.mjs",
+    "new": "tests/pet/_spine38_rotdiff.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_rotslots.mjs",
+    "new": "tests/pet/_spine38_rotslots.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_static.mjs",
+    "new": "tests/pet/_spine38_static.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_tap.mjs",
+    "new": "tests/pet/_spine38_tap.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_trim.mjs",
+    "new": "tests/pet/_spine38_trim.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_uv2.mjs",
+    "new": "tests/pet/_spine38_uv2.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_uvcheck.mjs",
+    "new": "tests/pet/_spine38_uvcheck.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_spine38_zuotui.mjs",
+    "new": "tests/pet/_spine38_zuotui.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_static.mjs",
+    "new": "tests/pet/_static.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_t.mjs",
+    "new": "tests/pet/_t.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_verify_calib.mjs",
+    "new": "tests/pet/_verify_calib.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_verify_calib_dir.mjs",
+    "new": "tests/pet/_verify_calib_dir.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_verify_click.mjs",
+    "new": "tests/pet/_verify_click.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_verify_drag.mjs",
+    "new": "tests/pet/_verify_drag.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_verify_interactions.mjs",
+    "new": "tests/pet/_verify_interactions.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_verify_priority2.mjs",
+    "new": "tests/pet/_verify_priority2.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/_verify_priority3.mjs",
+    "new": "tests/pet/_verify_priority3.mjs",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_areas_raw.json",
+    "new": "tests/pet/data/_areas_raw.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_aside_payload.json",
+    "new": "tests/pet/data/_aside_payload.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_aside_test.wav",
+    "new": "tests/pet/data/_aside_test.wav",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_chatws.txt",
+    "new": "tests/pet/data/_chatws.txt",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_chunks.ts",
+    "new": "tests/pet/data/_chunks.ts",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_expect_ranges.json",
+    "new": "tests/pet/data/_expect_ranges.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_fake_mic.wav",
+    "new": "tests/pet/data/_fake_mic.wav",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_fake_mic2.wav",
+    "new": "tests/pet/data/_fake_mic2.wav",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_fake_mic3.wav",
+    "new": "tests/pet/data/_fake_mic3.wav",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_flash_region.json",
+    "new": "tests/pet/data/_flash_region.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_fragments.txt",
+    "new": "tests/pet/data/_fragments.txt",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_hitmap.json",
+    "new": "tests/pet/data/_hitmap.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_hitmap2.json",
+    "new": "tests/pet/data/_hitmap2.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_hitmap3.json",
+    "new": "tests/pet/data/_hitmap3.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_hitmap4.json",
+    "new": "tests/pet/data/_hitmap4.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_hitmap5.json",
+    "new": "tests/pet/data/_hitmap5.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_loop_align.json",
+    "new": "tests/pet/data/_loop_align.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_loop_windows.json",
+    "new": "tests/pet/data/_loop_windows.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_model_ranges.json",
+    "new": "tests/pet/data/_model_ranges.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_ollmvt_conf.yaml",
+    "new": "tests/pet/data/_ollmvt_conf.yaml",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_pages.json",
+    "new": "tests/pet/data/_pages.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_paramids.json",
+    "new": "tests/pet/data/_paramids.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_petal_clusters.json",
+    "new": "tests/pet/data/_petal_clusters.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_petal_identified.json",
+    "new": "tests/pet/data/_petal_identified.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_petal_series.json",
+    "new": "tests/pet/data/_petal_series.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_petal_traj.json",
+    "new": "tests/pet/data/_petal_traj.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_raw_scan.json",
+    "new": "tests/pet/data/_raw_scan.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_recovered_full.ts",
+    "new": "tests/pet/data/_recovered_full.ts",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_recovered_last_write.ts",
+    "new": "tests/pet/data/_recovered_last_write.ts",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_tsc_errors.txt",
+    "new": "tests/pet/data/_tsc_errors.txt",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_tts_probe.json",
+    "new": "tests/pet/data/_tts_probe.json",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_ws.txt",
+    "new": "tests/pet/data/_ws.txt",
+    "category": "tests"
+  },
+  {
+    "old": "pet/tests/data/_zh_test.wav",
+    "new": "tests/pet/data/_zh_test.wav",
+    "category": "tests"
+  },
+  {
+    "old": "tts/tests/test_bridge_empty_retry.py",
+    "new": "tests/tts/test_bridge_empty_retry.py",
+    "category": "tests"
+  },
+  {
+    "old": "tts/tests/test_credit_patience.py",
+    "new": "tests/tts/test_credit_patience.py",
+    "category": "tests"
+  },
+  {
+    "old": "tts/tests/test_ctx_scene.py",
+    "new": "tests/tts/test_ctx_scene.py",
+    "category": "tests"
+  },
+  {
+    "old": "tts/tests/test_emotion_conflict.py",
+    "new": "tests/tts/test_emotion_conflict.py",
+    "category": "tests"
+  },
+  {
+    "old": "tts/tests/test_emotion_cue_scope.py",
+    "new": "tests/tts/test_emotion_cue_scope.py",
+    "category": "tests"
+  },
+  {
+    "old": "tts/tests/test_emotion_fusion.py",
+    "new": "tests/tts/test_emotion_fusion.py",
+    "category": "tests"
+  },
+  {
+    "old": "tts/tests/test_emotion_plan_level_init.py",
+    "new": "tests/tts/test_emotion_plan_level_init.py",
+    "category": "tests"
+  },
+  {
+    "old": "tts/tests/test_emotion_refusal.py",
+    "new": "tests/tts/test_emotion_refusal.py",
+    "category": "tests"
+  },
+  {
+    "old": "tts/tests/test_emotion_shared_core.py",
+    "new": "tests/tts/test_emotion_shared_core.py",
+    "category": "tests"
+  },
+  {
+    "old": "tts/tests/test_emotion_v3.py",
+    "new": "tests/tts/test_emotion_v3.py",
+    "category": "tests"
+  },
+  {
+    "old": "tts/tests/test_emotion_v6.py",
+    "new": "tests/tts/test_emotion_v6.py",
+    "category": "tests"
+  },
+  {
+    "old": "tts/tests/v2_golden.json",
+    "new": "tests/tts/v2_golden.json",
+    "category": "tests"
+  },
+  {
+    "old": "tts/tests/v4_cue_golden.json",
+    "new": "tests/tts/v4_cue_golden.json",
+    "category": "tests"
+  },
+  {
+    "old": "tts/tests/v4_refusal_golden.json",
+    "new": "tests/tts/v4_refusal_golden.json",
+    "category": "tests"
+  },
+  {
+    "old": "tts/tests/v5_frozen_golden.json",
+    "new": "tests/tts/v5_frozen_golden.json",
+    "category": "tests"
+  },
+  {
+    "old": "tts/eval/ab_emotion.py",
+    "new": "tests/tts/eval/ab_emotion.py",
+    "category": "eval"
+  },
+  {
+    "old": "tts/eval/ab_stream_v4.py",
+    "new": "tests/tts/eval/ab_stream_v4.py",
+    "category": "eval"
+  },
+  {
+    "old": "pet/tools/spine-official/allanims.js",
+    "new": "tests/pet/spine-official/allanims.js",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/allbones.mjs",
+    "new": "tests/pet/spine-official/allbones.mjs",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/analyze.js",
+    "new": "tests/pet/spine-official/analyze.js",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/attribution.mjs",
+    "new": "tests/pet/spine-official/attribution.mjs",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/bonediff.mjs",
+    "new": "tests/pet/spine-official/bonediff.mjs",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/datacmp.mjs",
+    "new": "tests/pet/spine-official/datacmp.mjs",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/diffall.mjs",
+    "new": "tests/pet/spine-official/diffall.mjs",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/dump.js",
+    "new": "tests/pet/spine-official/dump.js",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/equivalence.mjs",
+    "new": "tests/pet/spine-official/equivalence.mjs",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/exactframe.js",
+    "new": "tests/pet/spine-official/exactframe.js",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/final_check.mjs",
+    "new": "tests/pet/spine-official/final_check.mjs",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/noconstraints.mjs",
+    "new": "tests/pet/spine-official/noconstraints.mjs",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/package-lock.json",
+    "new": "tests/pet/spine-official/package-lock.json",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/package.json",
+    "new": "tests/pet/spine-official/package.json",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/rootcause.mjs",
+    "new": "tests/pet/spine-official/rootcause.mjs",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/rootcause_patched.mjs",
+    "new": "tests/pet/spine-official/rootcause_patched.mjs",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/slotscan.js",
+    "new": "tests/pet/spine-official/slotscan.js",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/ssr38_rev.txt",
+    "new": "tests/pet/spine-official/ssr38_rev.txt",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/sweep.js",
+    "new": "tests/pet/spine-official/sweep.js",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/vspixi.mjs",
+    "new": "tests/pet/spine-official/vspixi.mjs",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/yDownOff.mjs",
+    "new": "tests/pet/spine-official/yDownOff.mjs",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/ydown_test.mjs",
+    "new": "tests/pet/spine-official/ydown_test.mjs",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/model/aerbien_42.png",
+    "new": "tests/pet/spine-official/model/aerbien_42.png",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/model/aerbien_4_2.png",
+    "new": "tests/pet/spine-official/model/aerbien_4_2.png",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/model/albion.atlas",
+    "new": "tests/pet/spine-official/model/albion.atlas",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/model/albion.skel",
+    "new": "tests/pet/spine-official/model/albion.skel",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/modelA/aerbien_4.png",
+    "new": "tests/pet/spine-official/modelA/aerbien_4.png",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/modelA/aerbien_42.png",
+    "new": "tests/pet/spine-official/modelA/aerbien_42.png",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/modelA/albion.atlas",
+    "new": "tests/pet/spine-official/modelA/albion.atlas",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/modelA/albion.skel",
+    "new": "tests/pet/spine-official/modelA/albion.skel",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/modelAiri/aerbien_42.png",
+    "new": "tests/pet/spine-official/modelAiri/aerbien_42.png",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/modelAiri/aerbien_4_2.png",
+    "new": "tests/pet/spine-official/modelAiri/aerbien_4_2.png",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/modelAiri/albion.atlas",
+    "new": "tests/pet/spine-official/modelAiri/albion.atlas",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/spine-official/modelAiri/albion.skel",
+    "new": "tests/pet/spine-official/modelAiri/albion.skel",
+    "category": "diagnostics"
+  },
+  {
+    "old": "pet/tools/check_ear.py",
+    "new": "tests/pet/check_ear.py",
+    "category": "tests"
+  },
+  {
+    "old": "tts/irodori/test_translate_rules.py",
+    "new": "tests/tts/test_translate_rules.py",
+    "category": "tests"
+  },
+  {
+    "old": "tts/irodori/_say_albion_mood.py",
+    "new": "tests/tts/probes/say_albion_mood.py",
+    "category": "probe"
+  },
+  {
+    "old": "tts/_tmp/credit_repro.py",
+    "new": "tests/tts/support/credit_repro.py",
+    "category": "test-support"
+  },
+  {
+    "old": "pet/tools/_add_fork_readme.py",
+    "new": "archive/legacy/pet/tools/_add_fork_readme.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_add_priority.py",
+    "new": "archive/legacy/pet/tools/_add_priority.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_add_switches.py",
+    "new": "archive/legacy/pet/tools/_add_switches.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_api_publish.py",
+    "new": "archive/legacy/pet/tools/_api_publish.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_build_faithful_zip.py",
+    "new": "archive/legacy/pet/tools/_build_faithful_zip.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_clean_lint.py",
+    "new": "archive/legacy/pet/tools/_clean_lint.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_do7.py",
+    "new": "archive/legacy/pet/tools/_do7.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_drop_fade.py",
+    "new": "archive/legacy/pet/tools/_drop_fade.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_finish_push.sh",
+    "new": "archive/legacy/pet/tools/_finish_push.sh",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_fix_decay.py",
+    "new": "archive/legacy/pet/tools/_fix_decay.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_fix_ts2769.py",
+    "new": "archive/legacy/pet/tools/_fix_ts2769.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_l2dex_fields.py",
+    "new": "archive/legacy/pet/tools/_l2dex_fields.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_l2dex_il.py",
+    "new": "archive/legacy/pet/tools/_l2dex_il.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_l2dex_res.py",
+    "new": "archive/legacy/pet/tools/_l2dex_res.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_l2dex_res2.py",
+    "new": "archive/legacy/pet/tools/_l2dex_res2.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_l2dex_str.py",
+    "new": "archive/legacy/pet/tools/_l2dex_str.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_l2dex_types.py",
+    "new": "archive/legacy/pet/tools/_l2dex_types.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_l2dex_us.py",
+    "new": "archive/legacy/pet/tools/_l2dex_us.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_publish_fresh.sh",
+    "new": "archive/legacy/pet/tools/_publish_fresh.sh",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_push_chunked.py",
+    "new": "archive/legacy/pet/tools/_push_chunked.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_push_github.sh",
+    "new": "archive/legacy/pet/tools/_push_github.sh",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_push_patient.sh",
+    "new": "archive/legacy/pet/tools/_push_patient.sh",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_push_ssh.sh",
+    "new": "archive/legacy/pet/tools/_push_ssh.sh",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_remote_tree.py",
+    "new": "archive/legacy/pet/tools/_remote_tree.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_remote_tree2.py",
+    "new": "archive/legacy/pet/tools/_remote_tree2.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_remote_tree3.py",
+    "new": "archive/legacy/pet/tools/_remote_tree3.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_req1_sidecars.py",
+    "new": "archive/legacy/pet/tools/_req1_sidecars.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_req1_sidecars2.py",
+    "new": "archive/legacy/pet/tools/_req1_sidecars2.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_restructure.py",
+    "new": "archive/legacy/pet/tools/_restructure.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/tools/_tray_lint_fix.py",
+    "new": "archive/legacy/pet/tools/_tray_lint_fix.py",
+    "category": "legacy-tools"
+  },
+  {
+    "old": "pet/widget/albion_status_widget.pyw.bak-20260927-occlusion",
+    "new": "backup/code/20261002/pet/widget/albion_status_widget.pyw.bak-20260927-occlusion",
+    "category": "local-backup"
+  },
+  {
+    "old": "pet/widget/albion_status_widget.pyw.bak-ccband-20260930-015022",
+    "new": "backup/code/20261002/pet/widget/albion_status_widget.pyw.bak-ccband-20260930-015022",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/bridge.py.bak-20260913",
+    "new": "backup/code/20261002/tts/irodori/bridge.py.bak-20260913",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/bridge.py.bak-20260914",
+    "new": "backup/code/20261002/tts/irodori/bridge.py.bak-20260914",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/bridge.py.bak-20260915",
+    "new": "backup/code/20261002/tts/irodori/bridge.py.bak-20260915",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/bridge.py.bak-20260920-nothink",
+    "new": "backup/code/20261002/tts/irodori/bridge.py.bak-20260920-nothink",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/bridge.py.bak-20260924-enablethinking",
+    "new": "backup/code/20261002/tts/irodori/bridge.py.bak-20260924-enablethinking",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/bridge.py.bak-20260924-goat",
+    "new": "backup/code/20261002/tts/irodori/bridge.py.bak-20260924-goat",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/bridge.py.bak-20260924-responses",
+    "new": "backup/code/20261002/tts/irodori/bridge.py.bak-20260924-responses",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/bridge.py.bak-p8",
+    "new": "backup/code/20261002/tts/irodori/bridge.py.bak-p8",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/bridge.py.bak2-20260915",
+    "new": "backup/code/20261002/tts/irodori/bridge.py.bak2-20260915",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/bridge.py.bak3-20260915",
+    "new": "backup/code/20261002/tts/irodori/bridge.py.bak3-20260915",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/bridge.py.bak4-20260915",
+    "new": "backup/code/20261002/tts/irodori/bridge.py.bak4-20260915",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/bridge_v2.py.bak-20260930-emptytr",
+    "new": "backup/code/20261002/tts/irodori/bridge_v2.py.bak-20260930-emptytr",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/irodori_serve.py.bak-20260913",
+    "new": "backup/code/20261002/tts/irodori/irodori_serve.py.bak-20260913",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/irodori_serve.py.bak-20260920-steps",
+    "new": "backup/code/20261002/tts/irodori/irodori_serve.py.bak-20260920-steps",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/irodori_serve.py.bak-p8",
+    "new": "backup/code/20261002/tts/irodori/irodori_serve.py.bak-p8",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/irodori_serve.py.bak-p9",
+    "new": "backup/code/20261002/tts/irodori/irodori_serve.py.bak-p9",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/irodori_serve.py.bak10-20260913",
+    "new": "backup/code/20261002/tts/irodori/irodori_serve.py.bak10-20260913",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/irodori_serve.py.bak11-20260913",
+    "new": "backup/code/20261002/tts/irodori/irodori_serve.py.bak11-20260913",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/irodori_serve.py.bak12-20260913",
+    "new": "backup/code/20261002/tts/irodori/irodori_serve.py.bak12-20260913",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/irodori_serve.py.bak13-20260913",
+    "new": "backup/code/20261002/tts/irodori/irodori_serve.py.bak13-20260913",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/irodori_serve.py.bak14-20260914",
+    "new": "backup/code/20261002/tts/irodori/irodori_serve.py.bak14-20260914",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/irodori_serve.py.bak15-20260914",
+    "new": "backup/code/20261002/tts/irodori/irodori_serve.py.bak15-20260914",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/irodori_serve.py.bak16-20260914",
+    "new": "backup/code/20261002/tts/irodori/irodori_serve.py.bak16-20260914",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/irodori_serve.py.bak2-20260913",
+    "new": "backup/code/20261002/tts/irodori/irodori_serve.py.bak2-20260913",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/irodori_serve.py.bak3-20260913",
+    "new": "backup/code/20261002/tts/irodori/irodori_serve.py.bak3-20260913",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/irodori_serve.py.bak4-20260913",
+    "new": "backup/code/20261002/tts/irodori/irodori_serve.py.bak4-20260913",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/irodori_serve.py.bak5-20260913",
+    "new": "backup/code/20261002/tts/irodori/irodori_serve.py.bak5-20260913",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/irodori_serve.py.bak6-20260913",
+    "new": "backup/code/20261002/tts/irodori/irodori_serve.py.bak6-20260913",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/irodori_serve.py.bak7-20260913",
+    "new": "backup/code/20261002/tts/irodori/irodori_serve.py.bak7-20260913",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/irodori_serve.py.bak8-20260913",
+    "new": "backup/code/20261002/tts/irodori/irodori_serve.py.bak8-20260913",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/irodori_serve.py.bak9-20260913",
+    "new": "backup/code/20261002/tts/irodori/irodori_serve.py.bak9-20260913",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/render_queue.py.bak-20260929-round11-start",
+    "new": "backup/code/20261002/tts/irodori/render_queue.py.bak-20260929-round11-start",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/render_queue.py.bak-p9",
+    "new": "backup/code/20261002/tts/irodori/render_queue.py.bak-p9",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/scene_plan.py.bak-20260929-round11-start",
+    "new": "backup/code/20261002/tts/irodori/scene_plan.py.bak-20260929-round11-start",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/irodori/scene_plan.py.bak-20260930-planfix",
+    "new": "backup/code/20261002/tts/irodori/scene_plan.py.bak-20260930-planfix",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/stream/stream_server.py.bak-20260929-round11-start",
+    "new": "backup/code/20261002/tts/stream/stream_server.py.bak-20260929-round11-start",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/stream/stream_server.py.bak-20260930-creditfix",
+    "new": "backup/code/20261002/tts/stream/stream_server.py.bak-20260930-creditfix",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/stream/stream_server.py.bak-20260930-planfix",
+    "new": "backup/code/20261002/tts/stream/stream_server.py.bak-20260930-planfix",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/stream/stream_server.py.bak-p8",
+    "new": "backup/code/20261002/tts/stream/stream_server.py.bak-p8",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/GPT-sovits/启动Denia后端.bat.bak-20260914",
+    "new": "backup/code/20261002/tts/GPT-sovits/启动Denia后端.bat.bak-20260914",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/GPT-sovits/启动TTS桥.bat.obsolete-20260913",
+    "new": "backup/code/20261002/tts/GPT-sovits/启动TTS桥.bat.obsolete-20260913",
+    "category": "local-backup"
+  },
+  {
+    "old": "shell/_backup/20260920/caption-index.ts.bak-20260920-ontop",
+    "new": "backup/code/20261002/shell/_backup/20260920/caption-index.ts.bak-20260920-ontop",
+    "category": "local-backup"
+  },
+  {
+    "old": "shell/_backup/20260920/index.ts.bak-20260920-ontop",
+    "new": "backup/code/20261002/shell/_backup/20260920/index.ts.bak-20260920-ontop",
+    "category": "local-backup"
+  },
+  {
+    "old": "shell/_backup/20260920/index.ts.bak-20260920-ontop-main",
+    "new": "backup/code/20261002/shell/_backup/20260920/index.ts.bak-20260920-ontop-main",
+    "category": "local-backup"
+  },
+  {
+    "old": "shell/_backup/20260920/main.css.bak-20260920-zcool",
+    "new": "backup/code/20261002/shell/_backup/20260920/main.css.bak-20260920-zcool",
+    "category": "local-backup"
+  },
+  {
+    "old": "shell/_backup/20260920/uno.config.ts.bak-20260920-zcool",
+    "new": "backup/code/20261002/shell/_backup/20260920/uno.config.ts.bak-20260920-zcool",
+    "category": "local-backup"
+  },
+  {
+    "old": "pet/tools/eyes/_bak-20260920/启动采集端.bat",
+    "new": "backup/code/20261002/pet/tools/eyes/_bak-20260920/启动采集端.bat",
+    "category": "local-backup"
+  },
+  {
+    "old": "pet/tools/eyes/_bak-20260920/安装开机自启.bat",
+    "new": "backup/code/20261002/pet/tools/eyes/_bak-20260920/安装开机自启.bat",
+    "category": "local-backup"
+  },
+  {
+    "old": "tts/_rollback-20260927-v2/bridge.py",
+    "new": "backup/code/20261002/tts/_rollback-20260927-v2/bridge.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260927-v2/irodori_serve.py",
+    "new": "backup/code/20261002/tts/_rollback-20260927-v2/irodori_serve.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260927-v2/MD5SUMS.txt",
+    "new": "backup/code/20261002/tts/_rollback-20260927-v2/MD5SUMS.txt",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260927-v2/README.md",
+    "new": "backup/code/20261002/tts/_rollback-20260927-v2/README.md",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260927-v2/start_backend.bat",
+    "new": "backup/code/20261002/tts/_rollback-20260927-v2/start_backend.bat",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260927-v2/start_bridge.bat",
+    "new": "backup/code/20261002/tts/_rollback-20260927-v2/start_bridge.bat",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260927-v2/start_stream.bat",
+    "new": "backup/code/20261002/tts/_rollback-20260927-v2/start_stream.bat",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260927-v2/stream_server.py",
+    "new": "backup/code/20261002/tts/_rollback-20260927-v2/stream_server.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260928-emotion-v3/ab_emotion.py",
+    "new": "backup/code/20261002/tts/_rollback-20260928-emotion-v3/ab_emotion.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260928-emotion-v3/ab_stream_v4.py",
+    "new": "backup/code/20261002/tts/_rollback-20260928-emotion-v3/ab_stream_v4.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260928-emotion-v3/bridge.py",
+    "new": "backup/code/20261002/tts/_rollback-20260928-emotion-v3/bridge.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260928-emotion-v3/bridge_v2.py",
+    "new": "backup/code/20261002/tts/_rollback-20260928-emotion-v3/bridge_v2.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260928-emotion-v3/cue_scope.py",
+    "new": "backup/code/20261002/tts/_rollback-20260928-emotion-v3/cue_scope.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260928-emotion-v3/delivery_stage.py",
+    "new": "backup/code/20261002/tts/_rollback-20260928-emotion-v3/delivery_stage.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260928-emotion-v3/emotion_codebook.py",
+    "new": "backup/code/20261002/tts/_rollback-20260928-emotion-v3/emotion_codebook.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260928-emotion-v3/emotion_fusion.py",
+    "new": "backup/code/20261002/tts/_rollback-20260928-emotion-v3/emotion_fusion.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260928-emotion-v3/irodori_serve.py",
+    "new": "backup/code/20261002/tts/_rollback-20260928-emotion-v3/irodori_serve.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260928-emotion-v3/MD5SUMS.txt",
+    "new": "backup/code/20261002/tts/_rollback-20260928-emotion-v3/MD5SUMS.txt",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260928-emotion-v3/README.md",
+    "new": "backup/code/20261002/tts/_rollback-20260928-emotion-v3/README.md",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260928-emotion-v3/render_queue.py",
+    "new": "backup/code/20261002/tts/_rollback-20260928-emotion-v3/render_queue.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260928-emotion-v3/scene_plan.py",
+    "new": "backup/code/20261002/tts/_rollback-20260928-emotion-v3/scene_plan.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260928-emotion-v3/stream_server.py",
+    "new": "backup/code/20261002/tts/_rollback-20260928-emotion-v3/stream_server.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260928-emotion-v3/test_emotion_cue_scope.py",
+    "new": "backup/code/20261002/tts/_rollback-20260928-emotion-v3/test_emotion_cue_scope.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260928-emotion-v3/test_emotion_fusion.py",
+    "new": "backup/code/20261002/tts/_rollback-20260928-emotion-v3/test_emotion_fusion.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260928-emotion-v3/test_emotion_shared_core.py",
+    "new": "backup/code/20261002/tts/_rollback-20260928-emotion-v3/test_emotion_shared_core.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260928-emotion-v3/test_emotion_v3.py",
+    "new": "backup/code/20261002/tts/_rollback-20260928-emotion-v3/test_emotion_v3.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260928-emotion-v3/v4_cue_golden.json",
+    "new": "backup/code/20261002/tts/_rollback-20260928-emotion-v3/v4_cue_golden.json",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260929-emotion-v5/bridge.py",
+    "new": "backup/code/20261002/tts/_rollback-20260929-emotion-v5/bridge.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260929-emotion-v5/bridge_v2.py",
+    "new": "backup/code/20261002/tts/_rollback-20260929-emotion-v5/bridge_v2.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260929-emotion-v5/cue_scope.py",
+    "new": "backup/code/20261002/tts/_rollback-20260929-emotion-v5/cue_scope.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260929-emotion-v5/delivery_stage.py",
+    "new": "backup/code/20261002/tts/_rollback-20260929-emotion-v5/delivery_stage.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260929-emotion-v5/emotion_codebook.py",
+    "new": "backup/code/20261002/tts/_rollback-20260929-emotion-v5/emotion_codebook.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260929-emotion-v5/emotion_fusion.py",
+    "new": "backup/code/20261002/tts/_rollback-20260929-emotion-v5/emotion_fusion.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260929-emotion-v5/MD5SUMS.txt",
+    "new": "backup/code/20261002/tts/_rollback-20260929-emotion-v5/MD5SUMS.txt",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260929-emotion-v5/refusal_guard.py",
+    "new": "backup/code/20261002/tts/_rollback-20260929-emotion-v5/refusal_guard.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260929-emotion-v5/scene_plan.py",
+    "new": "backup/code/20261002/tts/_rollback-20260929-emotion-v5/scene_plan.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260929-emotion-v5/stream_server.py",
+    "new": "backup/code/20261002/tts/_rollback-20260929-emotion-v5/stream_server.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260929-emotion-v5/test_emotion_cue_scope.py",
+    "new": "backup/code/20261002/tts/_rollback-20260929-emotion-v5/test_emotion_cue_scope.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260929-emotion-v5/test_emotion_fusion.py",
+    "new": "backup/code/20261002/tts/_rollback-20260929-emotion-v5/test_emotion_fusion.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260929-emotion-v5/test_emotion_refusal.py",
+    "new": "backup/code/20261002/tts/_rollback-20260929-emotion-v5/test_emotion_refusal.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260929-emotion-v5/test_emotion_shared_core.py",
+    "new": "backup/code/20261002/tts/_rollback-20260929-emotion-v5/test_emotion_shared_core.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260929-emotion-v5/test_emotion_v3.py",
+    "new": "backup/code/20261002/tts/_rollback-20260929-emotion-v5/test_emotion_v3.py",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260929-emotion-v5/v2_golden.json",
+    "new": "backup/code/20261002/tts/_rollback-20260929-emotion-v5/v2_golden.json",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260929-emotion-v5/v4_cue_golden.json",
+    "new": "backup/code/20261002/tts/_rollback-20260929-emotion-v5/v4_cue_golden.json",
+    "category": "local-rollback"
+  },
+  {
+    "old": "tts/_rollback-20260929-emotion-v5/v4_refusal_golden.json",
+    "new": "backup/code/20261002/tts/_rollback-20260929-emotion-v5/v4_refusal_golden.json",
+    "category": "local-rollback"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/.env",
+    "new": "backup/profile-archives/win-albion-profile-20260924/.env",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/auth.json",
+    "new": "backup/profile-archives/win-albion-profile-20260924/auth.json",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/channel_directory.json",
+    "new": "backup/profile-archives/win-albion-profile-20260924/channel_directory.json",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/config.yaml",
+    "new": "backup/profile-archives/win-albion-profile-20260924/config.yaml",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/config.yaml.bak-20260919-ctx",
+    "new": "backup/profile-archives/win-albion-profile-20260924/config.yaml.bak-20260919-ctx",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/config.yaml.bak-20260919-ctx3",
+    "new": "backup/profile-archives/win-albion-profile-20260924/config.yaml.bak-20260919-ctx3",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/config.yaml.bak-20260919-deepseek",
+    "new": "backup/profile-archives/win-albion-profile-20260924/config.yaml.bak-20260919-deepseek",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/config.yaml.bak-20260919-ds2",
+    "new": "backup/profile-archives/win-albion-profile-20260924/config.yaml.bak-20260919-ds2",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/config.yaml.bak-20260919-low",
+    "new": "backup/profile-archives/win-albion-profile-20260924/config.yaml.bak-20260919-low",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/config.yaml.bak-20260919-nogrok",
+    "new": "backup/profile-archives/win-albion-profile-20260924/config.yaml.bak-20260919-nogrok",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/config.yaml.bak-20260919-opt",
+    "new": "backup/profile-archives/win-albion-profile-20260924/config.yaml.bak-20260919-opt",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/config.yaml.bak-20260919-swap",
+    "new": "backup/profile-archives/win-albion-profile-20260924/config.yaml.bak-20260919-swap",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/config.yaml.bak-20260919-title",
+    "new": "backup/profile-archives/win-albion-profile-20260924/config.yaml.bak-20260919-title",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/config.yaml.bak-20260920-clean",
+    "new": "backup/profile-archives/win-albion-profile-20260924/config.yaml.bak-20260920-clean",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/config.yaml.bak-20260920-fbback",
+    "new": "backup/profile-archives/win-albion-profile-20260924/config.yaml.bak-20260920-fbback",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/config.yaml.bak-20260920-slb2",
+    "new": "backup/profile-archives/win-albion-profile-20260924/config.yaml.bak-20260920-slb2",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/config.yaml.bak-20260921-fb1slb",
+    "new": "backup/profile-archives/win-albion-profile-20260924/config.yaml.bak-20260921-fb1slb",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/config.yaml.bak-cckey-0915_0937",
+    "new": "backup/profile-archives/win-albion-profile-20260924/config.yaml.bak-cckey-0915_0937",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/gateway_state.json",
+    "new": "backup/profile-archives/win-albion-profile-20260924/gateway_state.json",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/projects.db",
+    "new": "backup/profile-archives/win-albion-profile-20260924/projects.db",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/SOUL.md",
+    "new": "backup/profile-archives/win-albion-profile-20260924/SOUL.md",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/SOUL.md.bak-20260921-speechvsaside",
+    "new": "backup/profile-archives/win-albion-profile-20260924/SOUL.md.bak-20260921-speechvsaside",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/state.db",
+    "new": "backup/profile-archives/win-albion-profile-20260924/state.db",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/state.db-shm",
+    "new": "backup/profile-archives/win-albion-profile-20260924/state.db-shm",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/state.db-wal",
+    "new": "backup/profile-archives/win-albion-profile-20260924/state.db-wal",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/assets/avatar.png",
+    "new": "backup/profile-archives/win-albion-profile-20260924/assets/avatar.png",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/cron/.jobs.lock",
+    "new": "backup/profile-archives/win-albion-profile-20260924/cron/.jobs.lock",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/cron/.tick.lock",
+    "new": "backup/profile-archives/win-albion-profile-20260924/cron/.tick.lock",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/cron/executions.db",
+    "new": "backup/profile-archives/win-albion-profile-20260924/cron/executions.db",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/cron/ticker_heartbeat",
+    "new": "backup/profile-archives/win-albion-profile-20260924/cron/ticker_heartbeat",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/cron/ticker_last_success",
+    "new": "backup/profile-archives/win-albion-profile-20260924/cron/ticker_last_success",
+    "category": "private-backup"
+  },
+  {
+    "old": "_archive/win-albion-profile-20260924/weixin/accounts/924b9642df05@im.bot.sync.json",
+    "new": "backup/profile-archives/win-albion-profile-20260924/weixin/accounts/924b9642df05@im.bot.sync.json",
+    "category": "private-backup"
+  },
+  {
+    "old": "tts/_ab-emotion-v4/manifest.jsonl",
+    "new": "tests/output/tts/ab-emotion-v4/manifest.jsonl",
+    "category": "test-output"
+  },
+  {
+    "old": "tts/_ab-emotion-v4/README.md",
+    "new": "tests/output/tts/ab-emotion-v4/README.md",
+    "category": "test-output"
+  },
+  {
+    "old": "integrations/hermes/README.md",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "Hermes 回退快照撤掉（Hermes 已于 2026-10-07 从 WSL 删除）；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "integrations/hermes/patches/buffered-final.patch",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "Hermes 回退快照撤掉（Hermes 已于 2026-10-07 从 WSL 删除）；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "integrations/hermes/plugins/albion-voice/__init__.py",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "Hermes 回退快照撤掉（Hermes 已于 2026-10-07 从 WSL 删除）；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "integrations/hermes/plugins/albion-voice/native_voice.py",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "Hermes 回退快照撤掉（Hermes 已于 2026-10-07 从 WSL 删除）；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "integrations/hermes/plugins/albion-voice/plugin.yaml",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "Hermes 回退快照撤掉（Hermes 已于 2026-10-07 从 WSL 删除）；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "integrations/hermes/plugins/albion-voice/voice_checks.py",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "Hermes 回退快照撤掉（Hermes 已于 2026-10-07 从 WSL 删除）；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "integrations/hermes/plugins/albion-voice/voice_context.py",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "Hermes 回退快照撤掉（Hermes 已于 2026-10-07 从 WSL 删除）；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "integrations/hermes/plugins/albion-voice/voice_guard.py",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "Hermes 回退快照撤掉（Hermes 已于 2026-10-07 从 WSL 删除）；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "tests/hermes/test_api_server_buffered_final.py",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "随 integrations/hermes/ 一起撤；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "config/rebuild/hermes-environment.json",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "Hermes 环境快照；脑的非敏感快照改记在 config/rebuild/runtime.json 的 brain 段；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "_启动脑WSL.ps1",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "Hermes 版启动器，直接删除（_启动脑Pi.ps1 是原有的 Pi 脑启动器，不是它的新位置）；三个根启动器第 4 步改调 _启动脑Pi.ps1；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": ".gitattributes",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "唯一一条规则只管 integrations/hermes/patches/*.patch，随之撤；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "integrations/pi-brain/bin/guard.py",
+    "new": "integrations/pi-brain/agent/extensions/albion-guard.ts",
+    "category": "merged-20261016",
+    "note": "姿态口径等判定并进 TS 整理器，严格档/语义裁判/重生成撤掉；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "integrations/pi-brain/bin/test_guard.py",
+    "new": "tests/pi-brain/check_voice_tidy.ts",
+    "category": "merged-20261016",
+    "note": "用例迁进整理器口径表；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "tests/pi-brain/check_strip_posture.py",
+    "new": "tests/pi-brain/check_voice_tidy.ts",
+    "category": "merged-20261016",
+    "note": "姿态删句探针并进整理器口径表；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "tests/pi-brain/check_loopguard_edge.ts",
+    "new": "integrations/pi-brain/bin/test_loopguard.ts",
+    "category": "merged-20261016",
+    "note": "测的是已撤掉的 bash 解析；复读断路与快照账本的自检在 test_loopguard.ts；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "tests/pi-brain/check_loopguard_paste.ts",
+    "new": "integrations/pi-brain/bin/test_loopguard.ts",
+    "category": "merged-20261016",
+    "note": "测的是已撤掉的「补一句」兜底注；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/stores/albion-proactive.ts",
+    "new": "shell/packages/stage-ui/src/stores/albion-drafting.ts",
+    "category": "merged-20261016",
+    "note": "只留「他正在打字」租约给门铃用，票据/修订号撤掉；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/albion-proactive.ts",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "壳端主动开口 v2；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/albion-proactive.test.ts",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "壳端主动开口 v2 测试；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/albion-proactive-rate.ts",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "壳端主动间隔倍数；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/albion-proactive-rate.test.ts",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "壳端主动间隔倍数测试；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/albion-proactive-presence.browser.test.ts",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "壳端在场检查浏览器测试；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/albion-eyes.ts",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "壳端取图/在场检查（看东西改走脑里的 look 工具）；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/albion-ear.ts",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "壳自建备用耳朵（默认关，听力走 AIRI 自带模块）；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/libs/chat/albion-draft-guard.ts",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "草稿守卫（脑给的已是定稿）；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/libs/chat/albion-draft-guard.test.ts",
+    "new": null,
+    "category": "removed-20261016",
+    "note": "草稿守卫测试；2026-10-16 主动对话移进 WSL 脑、守卫精简；原文件可从 git 提交 5f755e83 取回"
+  },
+  {
+    "old": "pet/tools/_fix_atlas_rotate.py",
+    "new": "archive/legacy/pet/tools/_fix_atlas_rotate.py",
+    "category": "legacy-tools",
+    "note": "一次性脚本，无引用；2026-10-16 K3 归档（克小姐）"
+  },
+  {
+    "old": "pet/tools/_spine_extract.py",
+    "new": "archive/legacy/pet/tools/_spine_extract.py",
+    "category": "legacy-tools",
+    "note": "一次性脚本，无引用；2026-10-16 K3 归档（克小姐）"
+  },
+  {
+    "old": "pet/tools/_spine_pack.py",
+    "new": "archive/legacy/pet/tools/_spine_pack.py",
+    "category": "legacy-tools",
+    "note": "一次性脚本，无引用；2026-10-16 K3 归档（克小姐）"
+  },
+  {
+    "old": "docs/主动消息链路.md",
+    "new": "docs/history/主动消息链路.md",
+    "category": "docs-history",
+    "note": "壳端主动定时器与 LOOK 链路删除后已过时；2026-10-20 K2 归档并标注失效（DSH）"
+  },
+  {
+    "old": "D:/AI/scripts/tailscale-guard.cmd",
+    "new": "tools/tailscale-guard.cmd",
+    "category": "maintained-copy-20261020",
+    "note": "OpenViking 遗留修复；从现网建立无凭据维护源码，部署路径保留原位。"
+  },
+  {
+    "old": "D:/AI/scripts/tailscale-guard-conpty.pyw",
+    "new": "tools/tailscale-guard-conpty.pyw",
+    "category": "maintained-copy-20261020",
+    "note": "OpenViking 遗留修复；从现网建立无凭据维护源码，部署路径保留原位。"
+  },
+  {
+    "old": "D:/AI/scripts/openviking-memory-health.py",
+    "new": "tools/openviking-memory-health.py",
+    "category": "maintained-copy-20261020",
+    "note": "OpenViking 遗留修复；从现网建立无凭据维护源码，部署路径保留原位。"
+  },
+  {
+    "old": "WSL沙箱-进行中.md",
+    "new": "docs/history/WSL沙箱-进行中.md",
+    "category": "docs-history",
+    "note": "2026-09-18 的搬家执行清单，脑换 Pi 版后已过时；2026-10-20 归档并在文首标注失效"
+  },
+  {
+    "old": "WSL沙箱-完成.md",
+    "new": "docs/history/WSL沙箱-完成.md",
+    "category": "docs-history",
+    "note": "记录的脑是已删除的 Hermes albion profile，回退步骤会误删 Pi 脑；2026-10-20 归档并在文首标注失效"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/workers/vad/vad.test.ts",
+    "new": "shell/packages/stage-ui/src/workers/vad/vad.browser.test.ts",
+    "category": "framework-browser-test",
+    "note": "2026-10-20 shell-s3：VAD 初始化使用 document.baseURI 解析本地 ORT，移至现有 Vitest browser 项目，保留三项检测回归。无外部路径引用。"
+  },
+  {
+    "old": "shell/engines/stage-tamagotchi-godot/out/<os>",
+    "new": "shell/engines/stage-tamagotchi-godot/out/<os>/<arch>",
+    "category": "generated-runtime-output-20261021",
+    "note": "S3：导出工具、预设及 electron-builder extraResources 按架构隔离；仅改变后续生成位置，不移动生产包。Windows x64、macOS x64/arm64、Linux x64/arm64。"
+  },
+  {
+    "old": "godot-stage/packages/stage-ui-three/src/components/Environment/assets/sky_linekotsi_23_HDRI.hdr",
+    "new": "godot-stage/assets/sky_linekotsi_23_HDRI.hdr",
+    "category": "generated-runtime-resource-20261021",
+    "note": "S3：Windows/Linux HDR 复制到可执行文件旁的 assets；macOS 位于 godot-stage/godot-stage.app/Contents/Resources/assets。运行时从 OS.GetExecutablePath 定位；源 HDR 文件不移动。"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/libs/speech/pet-tag-filter.ts",
+    "new": "shell/packages/core-agent/src/runtime/pet-tag-filter.ts",
+    "category": "production-source-20261021",
+    "note": "S2-b：`[[ ]]` 标记削除收成一层，放到聊天编排器入口（core-agent），聊天、TTS、字幕共用；同目录 pet-tag-filter.test.ts 随迁。Stage.vue 与 caption.vue 不再自己削。"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/albion-act.ts",
+    "new": "shell/packages/stage-ui/src/albion/albion-act.ts",
+    "category": "albion-module-20261021",
+    "note": "S7-b：阿尔比恩专属模块集中到 src/albion/，行为不变；包内相对引用已改。"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/albion-defaults.ts",
+    "new": "shell/packages/stage-ui/src/albion/albion-defaults.ts",
+    "category": "albion-module-20261021",
+    "note": "S7-b：同上；包导出 ./albion-defaults 改为通配 ./albion/*，壳端改引 @proj-airi/stage-ui/albion/albion-defaults。"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/albion-pet.ts",
+    "new": "shell/packages/stage-ui/src/albion/albion-pet.ts",
+    "category": "albion-module-20261021",
+    "note": "S7-b：同上；包导出 ./albion-pet 改为通配 ./albion/*，壳端改引 @proj-airi/stage-ui/albion/albion-pet。"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/albion-pet.browser.test.ts",
+    "new": "shell/packages/stage-ui/src/albion/albion-pet.browser.test.ts",
+    "category": "albion-module-20261021",
+    "note": "S7-b：测试随源文件搬，仍由 stage-ui 的 Vitest browser 项目管理。"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/albion-interactions.ts",
+    "new": "shell/packages/stage-ui/src/albion/albion-interactions.ts",
+    "category": "albion-module-20261021",
+    "note": "S7-b：同上；public 下的 albion-interactions.json 与 albion-voice/*.wav 不动，只改相对路径层数。"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/albion-interactions.browser.test.ts",
+    "new": "shell/packages/stage-ui/src/albion/albion-interactions.browser.test.ts",
+    "category": "albion-module-20261021",
+    "note": "S7-b：测试随源文件搬，仍由 stage-ui 的 Vitest browser 项目管理。"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/albion-interaction-owner.ts",
+    "new": "shell/packages/stage-ui/src/albion/albion-interaction-owner.ts",
+    "category": "albion-module-20261021",
+    "note": "S7-b：同上。"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/stores/albion-drafting.ts",
+    "new": "shell/packages/stage-ui/src/albion/albion-drafting.ts",
+    "category": "albion-module-20261021",
+    "note": "S7-b：同上；接续 2026-10-16 由 stores/albion-proactive.ts 合并而来的记录。Pinia store id 'albion-drafting' 不变。"
+  },
+  {
+    "old": "shell/packages/stage-ui/src/composables/use-albion-draft-activity.ts",
+    "new": "shell/packages/stage-ui/src/albion/use-albion-draft-activity.ts",
+    "category": "albion-module-20261021",
+    "note": "S7-b：同上；壳端 InteractiveArea.vue、chatbox.vue、spotlight.vue 改引 @proj-airi/stage-ui/albion/use-albion-draft-activity。"
+  },
+  {
+    "old": "tts/irodori/_breq.log, tts/irodori/_translate_err.log",
+    "new": "logs/tts/_breq.log, logs/tts/_translate_err.log",
+    "category": "runtime-log-20261023",
+    "note": "TTS 桥首次创建轮转日志时写入仓库根 logs/tts/；现有日志由运行维护方在桥停止后迁移。"
+  },
+  {
+    "old": "pet/docs/Hermes-接入文档.md",
+    "new": "docs/history/pet-Hermes-接入文档.md",
+    "category": "docs-history",
+    "note": "2026-10-24 归档：Hermes 脑已弃用，文档内容未改动，仅移动并加来源前缀"
+  },
+  {
+    "old": "pet/docs/Hermes-配置文档.md",
+    "new": "docs/history/pet-Hermes-配置文档.md",
+    "category": "docs-history",
+    "note": "2026-10-24 归档：Hermes 脑已弃用，文档内容未改动，仅移动并加来源前缀"
+  },
+  {
+    "old": "shell/docs/albion/Hermes-接入文档.md",
+    "new": "docs/history/shell-Hermes-接入文档.md",
+    "category": "docs-history",
+    "note": "2026-10-24 归档：Hermes 脑已弃用，文档内容未改动，仅移动并加来源前缀"
+  },
+  {
+    "old": "shell/docs/albion/Hermes-配置文档.md",
+    "new": "docs/history/shell-Hermes-配置文档.md",
+    "category": "docs-history",
+    "note": "2026-10-24 归档：Hermes 脑已弃用，文档内容未改动，仅移动并加来源前缀"
+  },
+  {
+    "old": "_静默运行.ps1",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "零引用的一次性脚本/草稿，2026-10-24 删除"
+  },
+  {
+    "old": "archive/legacy/pet/tests/_apply_annot_fix.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tests/_recalib.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tests/_recalib2.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_add_fork_readme.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_add_priority.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_add_switches.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_api_publish.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_build_faithful_zip.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_clean_lint.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_do7.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_drop_fade.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_finish_push.sh",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_fix_atlas_rotate.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_fix_decay.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_fix_ts2769.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_l2dex_fields.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_l2dex_il.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_l2dex_res.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_l2dex_res2.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_l2dex_str.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_l2dex_types.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_l2dex_us.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_publish_fresh.sh",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_push_chunked.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_push_github.sh",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_push_patient.sh",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_push_ssh.sh",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_remote_tree.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_remote_tree2.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_remote_tree3.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_req1_sidecars.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_req1_sidecars2.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_restructure.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_spine_extract.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_spine_pack.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "archive/legacy/pet/tools/_tray_lint_fix.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性改码/发布脚本，2026-10-24 清空 archive/legacy（回看用 git 历史）"
+  },
+  {
+    "old": "docs/ORGANIZATION_REPORT.md",
+    "new": "docs/history/ORGANIZATION_REPORT.md",
+    "category": "docs-history",
+    "note": "2026-10-24 归档到 docs/history：已失效，文首加失效说明；来源前缀 pet-/pi-brain- 沿用现有惯例"
+  },
+  {
+    "old": "pet/docs/PLAN-四需求.md",
+    "new": "docs/history/pet-PLAN-四需求.md",
+    "category": "docs-history",
+    "note": "2026-10-24 归档到 docs/history：已失效，文首加失效说明；来源前缀 pet-/pi-brain- 沿用现有惯例"
+  },
+  {
+    "old": "pet/docs/PLAN-感知与主动.md",
+    "new": "docs/history/pet-PLAN-感知与主动.md",
+    "category": "docs-history",
+    "note": "2026-10-24 归档到 docs/history：已失效，文首加失效说明；来源前缀 pet-/pi-brain- 沿用现有惯例"
+  },
+  {
+    "old": "pet/docs/ROADMAP.md",
+    "new": "docs/history/pet-ROADMAP.md",
+    "category": "docs-history",
+    "note": "2026-10-24 归档到 docs/history：已失效，文首加失效说明；来源前缀 pet-/pi-brain- 沿用现有惯例"
+  },
+  {
+    "old": "pet/docs/STRUCTURE.md",
+    "new": "docs/history/pet-STRUCTURE.md",
+    "category": "docs-history",
+    "note": "2026-10-24 归档到 docs/history：已失效，文首加失效说明；来源前缀 pet-/pi-brain- 沿用现有惯例"
+  },
+  {
+    "old": "integrations/pi-brain/迁移报告.md",
+    "new": "docs/history/pi-brain-迁移报告.md",
+    "category": "docs-history",
+    "note": "2026-10-24 归档到 docs/history：已失效，文首加失效说明；来源前缀 pet-/pi-brain- 沿用现有惯例"
+  },
+  {
+    "old": "docs/协作纪要-20261020.md",
+    "new": "docs/history/协作纪要-20261020.md",
+    "category": "docs-history",
+    "note": "2026-10-24 归档到 docs/history：已失效，文首加失效说明；来源前缀 pet-/pi-brain- 沿用现有惯例"
+  },
+  {
+    "old": "docs/情感条件化方案-astra-2.md",
+    "new": "docs/history/情感条件化方案-astra-2.md",
+    "category": "docs-history",
+    "note": "2026-10-24 归档到 docs/history：已失效，文首加失效说明；来源前缀 pet-/pi-brain- 沿用现有惯例"
+  },
+  {
+    "old": "docs/情感条件化方案-astra-3.md",
+    "new": "docs/history/情感条件化方案-astra-3.md",
+    "category": "docs-history",
+    "note": "2026-10-24 归档到 docs/history：已失效，文首加失效说明；来源前缀 pet-/pi-brain- 沿用现有惯例"
+  },
+  {
+    "old": "docs/情感条件化方案-astra.md",
+    "new": "docs/history/情感条件化方案-astra.md",
+    "category": "docs-history",
+    "note": "2026-10-24 归档到 docs/history：已失效，文首加失效说明；来源前缀 pet-/pi-brain- 沿用现有惯例"
+  },
+  {
+    "old": "docs/流式TTS方案.md",
+    "new": "docs/history/流式TTS方案.md",
+    "category": "docs-history",
+    "note": "2026-10-24 归档到 docs/history：已失效，文首加失效说明；来源前缀 pet-/pi-brain- 沿用现有惯例"
+  },
+  {
+    "old": "pet/docs/打包与语音服务.md",
+    "new": "docs/打包与语音服务.md",
+    "category": "merged-20261024",
+    "note": "与 shell/docs/albion/打包与语音服务.md 重复，2026-10-24 合并为一份并改为 Pi 宿主 key 来源"
+  },
+  {
+    "old": "pet/tools/_kill_shell.ps1",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "零引用的一次性脚本/草稿，2026-10-24 删除"
+  },
+  {
+    "old": "pet/tools/find_band.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "零引用的一次性脚本/草稿，2026-10-24 删除"
+  },
+  {
+    "old": "pet/tools/shot_bbox.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "零引用的一次性脚本/草稿，2026-10-24 删除"
+  },
+  {
+    "old": "shell/docs/albion/打包与语音服务.md",
+    "new": null,
+    "category": "merged-20261024",
+    "note": "重复副本（旧路径版本），已删除；内容并入 docs/打包与语音服务.md"
+  },
+  {
+    "old": "tests/pet/_audit_auto.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_audit_controllers.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_bbox_subset.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_canvas_shot.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_check_loaded_motions.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_ctx_probe.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_diag.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_diag_clamped.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_diag_flash.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_diff_annot.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_emo_check.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_exe_fix_check.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_face_chain.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_faces.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_l2d_click_probe.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_measure_areas.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_menu_walk.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_raw_scan.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_read_annot.py",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_ruler_shot.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_shot.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_snap.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_alive.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_anim.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_atlas.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_atlasdump.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_bbox.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_bbox2.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_check.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_checkhide.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_chest.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_cmp.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_controls.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_dom.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_fit.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_full.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_hideslots.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_isolate.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_meshupdate.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_pixels.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_plugins.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_pma.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_poses.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_probe.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_reapply.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_render.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_rotdiff.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_rotslots.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_static.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_tap.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_trim.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_uv2.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_uvcheck.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_spine38_zuotui.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_static.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_t.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_verify_calib_dir.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_verify_click.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_verify_drag.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_verify_interactions.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_verify_priority2.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/_verify_priority3.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性桌面/CDP 探针，2026-10-24 删除；保留 _look_tag_filter_check / _author_engine_check / _verify_calib"
+  },
+  {
+    "old": "tests/pet/data/_areas_raw.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_aside_payload.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_aside_test.wav",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_chatws.txt",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_chunks.ts",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_expect_ranges.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_fake_mic.wav",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_fake_mic2.wav",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_fake_mic3.wav",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_flash_region.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_fragments.txt",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_hitmap.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_hitmap2.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_hitmap3.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_hitmap4.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_hitmap5.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_loop_align.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_loop_windows.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_model_ranges.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_ollmvt_conf.yaml",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_pages.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_paramids.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_petal_clusters.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_petal_identified.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_petal_series.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_petal_traj.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_raw_scan.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_recovered_full.ts",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_recovered_last_write.ts",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_tsc_errors.txt",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_tts_probe.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/data/_ws.txt",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "一次性测量/抓包中间产物，2026-10-24 删除；只保留 _zh_test.wav"
+  },
+  {
+    "old": "tests/pet/spine-official/allanims.js",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/allbones.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/analyze.js",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/attribution.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/bonediff.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/datacmp.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/diffall.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/dump.js",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/equivalence.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/exactframe.js",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/final_check.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/model/aerbien_42.png",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/model/aerbien_4_2.png",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/model/albion.atlas",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/model/albion.skel",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/modelA/aerbien_4.png",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/modelA/aerbien_42.png",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/modelA/albion.atlas",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/modelA/albion.skel",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/modelAiri/aerbien_42.png",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/modelAiri/aerbien_4_2.png",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/modelAiri/albion.atlas",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/modelAiri/albion.skel",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/noconstraints.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/package-lock.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/package.json",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/rootcause.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/rootcause_patched.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/slotscan.js",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/ssr38_rev.txt",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/sweep.js",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/vspixi.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/yDownOff.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tests/pet/spine-official/ydown_test.mjs",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "2026-09 Spine 3.8 根因排查一次性工程（依赖外部 sr38），结论已落地，2026-10-24 删除"
+  },
+  {
+    "old": "tts/GPT-sovits/新建 文本文档.txt",
+    "new": null,
+    "category": "removed-20261024",
+    "note": "零引用的一次性脚本/草稿，2026-10-24 删除"
+  },
+  {
+    "old": "pet/archive/",
+    "new": null,
+    "category": "local-cleanup-20261024",
+    "note": "Git 忽略区（本地历史资产）；2026-10-24 本地清理删除，未入库，无法从 Git 历史恢复"
+  },
+  {
+    "old": "tts/_p8_logs/",
+    "new": "logs/history/tts-p8/",
+    "category": "local-cleanup-20261024",
+    "note": "Git 忽略区（已关闭服务日志）；2026-10-24 迁入 logs/history/tts-p8/（prod_irodori、prod_stream、prod_bridge 三个日志），原目录已删除"
+  }
+]

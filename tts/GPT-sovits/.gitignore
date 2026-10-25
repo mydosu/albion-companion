@@ -1,0 +1,22 @@
+# 阿尔比恩桌宠的本地补充（2026-09-17）
+# 大块头：模型权重 / 运行环境 / 音频 / 训练产物 —— 一律不进 git
+
+GPT_weights*/
+SoVITS_weights*/
+GPT_SoVITS/
+runtime/
+audio/
+logs/
+__pycache__/
+*.pyc
+*.7z
+*.zip
+*.pth
+*.ckpt
+*.log
+*.png
+# 本地补充（2026-09-17）
+TEMP/
+tools/
+weight.json
+*.bak*

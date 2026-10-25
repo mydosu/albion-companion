@@ -1,0 +1,1178 @@
+{
+ "ONE": {
+  "H1_refuse_hint_whisper": {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "codebook_version": 2,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [
+      "ambiguous_word",
+      "form_cue"
+     ],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "A",
+      "L"
+     ],
+     "origin_ids": [
+      "hint"
+     ],
+     "reason": "unsupported_delivery"
+    },
+    "gap": null,
+    "guard": {
+     "class": "stop",
+     "forbid": "禁 bright",
+     "force_weak": false,
+     "hit": "やめて",
+     "meaning": "制止：命令/请求对方停手",
+     "reason": "family_not_forbidden(neutral)",
+     "replacement": null,
+     "valence": 0.5,
+     "veto": false
+    },
+    "policy": "cascade_v3"
+   },
+   "family": "neutral",
+   "level": 0.49,
+   "parent_id": 0,
+   "plan_version": 5,
+   "reason": "style=calm level=0.49 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0"
+  },
+  "H2_hint_whisper_calm_sentence": {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "codebook_version": 2,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "L"
+     ],
+     "origin_ids": [
+      "hint"
+     ],
+     "reason": "unsupported_delivery"
+    },
+    "gap": null,
+    "policy": "cascade_v3"
+   },
+   "family": "neutral",
+   "level": 0.33,
+   "parent_id": 0,
+   "plan_version": 5,
+   "reason": "style=calm level=0.33 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0"
+  },
+  "H3_hint_breathy_high_arousal": {
+   "caption": "感情的で、声を張り上げて、早口に",
+   "cfg": 3.2,
+   "codebook_version": 2,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "L"
+     ],
+     "origin_ids": [
+      "hint"
+     ],
+     "reason": "unsupported_delivery"
+    },
+    "gap": null,
+    "policy": "cascade_v3"
+   },
+   "family": "bright",
+   "level": 0.66,
+   "parent_id": 0,
+   "plan_version": 5,
+   "reason": "hint(breathy) level=0.66 tier=strong",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "bright",
+   "sub_index": 0,
+   "tier": "strong",
+   "unit_id": "u0"
+  },
+  "H4_refusal_whisper_negative": {
+   "caption": "低い声で、沈んだ調子に",
+   "cfg": 3.5,
+   "codebook_version": 2,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [
+      "ambiguous_word"
+     ],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "A",
+      "L"
+     ],
+     "origin_ids": [
+      "hint"
+     ],
+     "reason": "unsupported_delivery"
+    },
+    "gap": "refusal_bright_veto",
+    "guard": {
+     "class": "stop",
+     "forbid": "禁 bright",
+     "force_weak": true,
+     "hit": "やめて",
+     "meaning": "制止：命令/请求对方停手",
+     "reason": "forbid_bright(->sad)",
+     "replacement": "sad",
+     "valence": -0.6,
+     "veto": true
+    },
+    "policy": "cascade_v3"
+   },
+   "family": "sad",
+   "level": 0.69,
+   "parent_id": 0,
+   "plan_version": 5,
+   "reason": "hint(whispered)+guard(stop:やめて→sad) level=0.69 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "sad",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0"
+  },
+  "H5_negated_surface": {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "codebook_version": 2,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "L"
+     ],
+     "origin_ids": [
+      "hint"
+     ],
+     "reason": "unsupported_delivery"
+    },
+    "gap": null,
+    "policy": "cascade_v3"
+   },
+   "family": "neutral",
+   "level": 0.45,
+   "parent_id": 0,
+   "plan_version": 5,
+   "reason": "style=calm level=0.45 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0"
+  },
+  "H6_voiced_no_delivery": {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "codebook_version": 2,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [],
+     "origin_ids": [],
+     "reason": "ambiguous_only"
+    },
+    "gap": null,
+    "policy": "cascade_v3"
+   },
+   "family": "neutral",
+   "level": 0.42,
+   "parent_id": 0,
+   "plan_version": 5,
+   "reason": "style=calm level=0.42 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0"
+  },
+  "S1_paren_whisper": {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "codebook_version": 2,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "J"
+     ],
+     "origin_ids": [
+      "ja:whispered"
+     ],
+     "reason": "unsupported_delivery"
+    },
+    "gap": null,
+    "policy": "cascade_v3"
+   },
+   "family": "neutral",
+   "level": 0.45,
+   "parent_id": 0,
+   "plan_version": 5,
+   "reason": "style=calm level=0.45 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0"
+  },
+  "S2_breath_stage": {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "codebook_version": 2,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [],
+     "origin_ids": [],
+     "reason": "ambiguous_only"
+    },
+    "gap": null,
+    "policy": "cascade_v3"
+   },
+   "family": "neutral",
+   "level": 0.45,
+   "parent_id": 0,
+   "plan_version": 5,
+   "reason": "style=calm level=0.45 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0"
+  },
+  "S3_whisper_over_coarse": {
+   "caption": "息を荒くして、甘く喘ぐように、近い距離で",
+   "cfg": 4.5,
+   "codebook_version": 2,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [
+      "form_cue"
+     ],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "A",
+      "J"
+     ],
+     "origin_ids": [
+      "ja:whispered"
+     ],
+     "reason": "unsupported_delivery"
+    },
+    "gap": null,
+    "policy": "cascade_v3"
+   },
+   "family": "intimate",
+   "level": 0.73,
+   "parent_id": 0,
+   "plan_version": 5,
+   "reason": "style=moan level=0.73 tier=strong",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "moan",
+   "sub_index": 0,
+   "tier": "strong",
+   "unit_id": "u0"
+  },
+  "S4_conflict_hint_breathy": {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "codebook_version": 2,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "conflict": [
+      "breathy",
+      "whispered"
+     ],
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "J",
+      "L"
+     ],
+     "origin_ids": [
+      "ja:whispered",
+      "hint"
+     ],
+     "reason": "conflicting_evidence"
+    },
+    "gap": null,
+    "policy": "cascade_v3"
+   },
+   "family": "neutral",
+   "level": 0.45,
+   "parent_id": 0,
+   "plan_version": 5,
+   "reason": "style=calm level=0.45 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0"
+  },
+  "V1_stop_neutral": {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "codebook_version": 2,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [
+      "ambiguous_word"
+     ],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "A"
+     ],
+     "origin_ids": [],
+     "reason": "ambiguous_only"
+    },
+    "gap": "refusal_bright_veto",
+    "guard": {
+     "class": "stop",
+     "forbid": "禁 bright",
+     "force_weak": true,
+     "hit": "しないで",
+     "meaning": "制止：命令/请求对方停手",
+     "reason": "forbid_bright(->neutral)",
+     "replacement": "neutral",
+     "valence": -0.3,
+     "veto": true
+    },
+    "policy": "cascade_v3"
+   },
+   "family": "neutral",
+   "level": 0.54,
+   "parent_id": 0,
+   "plan_version": 5,
+   "reason": "hint(voiced)+guard(stop:しないで→neutral) level=0.54 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0"
+  },
+  "V2_stop_sad": {
+   "caption": "低い声で、沈んだ調子に",
+   "cfg": 3.5,
+   "codebook_version": 2,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [
+      "ambiguous_word"
+     ],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "A"
+     ],
+     "origin_ids": [],
+     "reason": "ambiguous_only"
+    },
+    "gap": "refusal_bright_veto",
+    "guard": {
+     "class": "stop",
+     "forbid": "禁 bright",
+     "force_weak": true,
+     "hit": "やめて",
+     "meaning": "制止：命令/请求对方停手",
+     "reason": "forbid_bright(->sad)",
+     "replacement": "sad",
+     "valence": -0.6,
+     "veto": true
+    },
+    "policy": "cascade_v3"
+   },
+   "family": "sad",
+   "level": 0.69,
+   "parent_id": 0,
+   "plan_version": 5,
+   "reason": "hint(voiced)+guard(stop:やめて→sad) level=0.69 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "sad",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0"
+  },
+  "V3_soothe": {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "codebook_version": 2,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [],
+     "origin_ids": [],
+     "reason": "ambiguous_only"
+    },
+    "gap": "refusal_bright_veto",
+    "guard": {
+     "class": "soothe",
+     "forbid": "禁 bright + 禁强档（提高嗓门/早口）",
+     "force_weak": true,
+     "hit": "落ち着いて",
+     "meaning": "安抚降温：要对方冷静下来",
+     "reason": "forbid_bright(->neutral)",
+     "replacement": "neutral",
+     "valence": -0.2,
+     "veto": true
+    },
+    "policy": "cascade_v3"
+   },
+   "family": "neutral",
+   "level": 0.6,
+   "parent_id": 0,
+   "plan_version": 5,
+   "reason": "hint(voiced)+guard(soothe:落ち着いて→neutral) level=0.60 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0"
+  },
+  "V4_positive_no_change": {
+   "caption": "感情的で、声を張り上げて、早口に",
+   "cfg": 3.2,
+   "codebook_version": 2,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [],
+     "origin_ids": [],
+     "reason": "ambiguous_only"
+    },
+    "gap": null,
+    "policy": "cascade_v3"
+   },
+   "family": "bright",
+   "level": 0.714,
+   "parent_id": 0,
+   "plan_version": 5,
+   "reason": "style=happy level=0.71 tier=strong",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "happy",
+   "sub_index": 0,
+   "tier": "strong",
+   "unit_id": "u0"
+  }
+ },
+ "X": {
+  "X1_persist_whisper": [
+   {
+    "caption": "柔らかく、優しく囁くように",
+    "cfg": 3.0,
+    "codebook_version": 2,
+    "diagnostics": {
+     "cue_scope": {
+      "basis": "span",
+      "cross_sentence": "unsupported",
+      "cues": 1,
+      "id": "0-23#0",
+      "out_of_scope": 0,
+      "repeat": false
+     },
+     "delivery": "whispered",
+     "delivery_rel": 0.85,
+     "delivery_stage": {
+      "accepted": true,
+      "ambiguous": [],
+      "candidate_delivery": "whispered",
+      "dropped_correlated": 0,
+      "evidence_groups": [
+       "D"
+      ],
+      "origin_ids": [
+       "cue:[4, 6]"
+      ],
+      "reason": "explicit_directive"
+     },
+     "gap": "neutral_whisper_candidate_untested",
+     "policy": "cascade_v3"
+    },
+    "family": "neutral",
+    "level": 0.45,
+    "parent_id": 0,
+    "plan_version": 5,
+    "reason": "style=calm level=0.45 tier=weak delivery=whispered",
+    "role": "speech",
+    "scene_id": 1,
+    "style": "neutral",
+    "sub_index": 0,
+    "tier": "weak",
+    "unit_id": "u0:0"
+   },
+   {
+    "caption": "落ち着いた、静かな声で",
+    "cfg": 3.0,
+    "codebook_version": 2,
+    "diagnostics": {
+     "cue_scope": {
+      "basis": "span",
+      "cross_sentence": "unsupported",
+      "cues": 0,
+      "id": "0-23#1",
+      "out_of_scope": 0,
+      "repeat": false
+     },
+     "delivery": null,
+     "delivery_rel": 0.0,
+     "delivery_stage": {
+      "accepted": false,
+      "ambiguous": [],
+      "candidate_delivery": null,
+      "dropped_correlated": 0,
+      "evidence_groups": [
+       "H"
+      ],
+      "origin_ids": [
+       "prev"
+      ],
+      "reason": "stale_context"
+     },
+     "gap": null,
+     "policy": "cascade_v3"
+    },
+    "family": "neutral",
+    "level": 0.28,
+    "parent_id": 0,
+    "plan_version": 5,
+    "reason": "inherit(neutral)1 level=0.28 tier=weak",
+    "role": "speech",
+    "scene_id": 1,
+    "style": "neutral",
+    "sub_index": 0,
+    "tier": "weak",
+    "unit_id": "u0:1"
+   },
+   {
+    "caption": "落ち着いた、静かな声で",
+    "cfg": 3.0,
+    "codebook_version": 2,
+    "diagnostics": {
+     "cue_scope": {
+      "basis": "span",
+      "cross_sentence": "unsupported",
+      "cues": 0,
+      "id": "0-23#2",
+      "out_of_scope": 0,
+      "repeat": false
+     },
+     "delivery": null,
+     "delivery_rel": 0.0,
+     "delivery_stage": {
+      "accepted": false,
+      "ambiguous": [],
+      "candidate_delivery": null,
+      "dropped_correlated": 0,
+      "evidence_groups": [],
+      "origin_ids": [],
+      "reason": "ambiguous_only"
+     },
+     "gap": null,
+     "policy": "cascade_v3"
+    },
+    "family": "neutral",
+    "level": 0.11,
+    "parent_id": 0,
+    "plan_version": 5,
+    "reason": "inherit(neutral)2 level=0.11 tier=weak",
+    "role": "speech",
+    "scene_id": 1,
+    "style": "neutral",
+    "sub_index": 0,
+    "tier": "weak",
+    "unit_id": "u0:2"
+   }
+  ],
+  "X2_revoke": [
+   {
+    "caption": "柔らかく、優しく囁くように",
+    "cfg": 3.0,
+    "codebook_version": 2,
+    "diagnostics": {
+     "cue_scope": {
+      "basis": "span",
+      "cross_sentence": "unsupported",
+      "cues": 1,
+      "id": "0-31#0",
+      "out_of_scope": 0,
+      "repeat": false
+     },
+     "delivery": "whispered",
+     "delivery_rel": 0.85,
+     "delivery_stage": {
+      "accepted": true,
+      "ambiguous": [],
+      "candidate_delivery": "whispered",
+      "dropped_correlated": 0,
+      "evidence_groups": [
+       "D"
+      ],
+      "origin_ids": [
+       "cue:[4, 6]"
+      ],
+      "reason": "explicit_directive"
+     },
+     "gap": "neutral_whisper_candidate_untested",
+     "policy": "cascade_v3"
+    },
+    "family": "neutral",
+    "level": 0.45,
+    "parent_id": 0,
+    "plan_version": 5,
+    "reason": "style=calm level=0.45 tier=weak delivery=whispered",
+    "role": "speech",
+    "scene_id": 1,
+    "style": "neutral",
+    "sub_index": 0,
+    "tier": "weak",
+    "unit_id": "u0:0"
+   },
+   {
+    "caption": "落ち着いた、静かな声で",
+    "cfg": 3.0,
+    "codebook_version": 2,
+    "diagnostics": {
+     "cue_scope": {
+      "basis": "span",
+      "cross_sentence": "unsupported",
+      "cues": 0,
+      "id": "0-31#1",
+      "out_of_scope": 0,
+      "repeat": false
+     },
+     "delivery": null,
+     "delivery_rel": 0.0,
+     "delivery_stage": {
+      "accepted": false,
+      "ambiguous": [],
+      "candidate_delivery": null,
+      "dropped_correlated": 0,
+      "evidence_groups": [
+       "H"
+      ],
+      "origin_ids": [
+       "prev"
+      ],
+      "reason": "stale_context"
+     },
+     "gap": null,
+     "policy": "cascade_v3"
+    },
+    "family": "neutral",
+    "level": 0.28,
+    "parent_id": 0,
+    "plan_version": 5,
+    "reason": "inherit(neutral)1 level=0.28 tier=weak",
+    "role": "speech",
+    "scene_id": 1,
+    "style": "neutral",
+    "sub_index": 0,
+    "tier": "weak",
+    "unit_id": "u0:1"
+   },
+   {
+    "caption": "落ち着いた、静かな声で",
+    "cfg": 3.0,
+    "codebook_version": 2,
+    "diagnostics": {
+     "cue_scope": {
+      "basis": "span",
+      "cross_sentence": "unsupported",
+      "cues": 0,
+      "id": "0-31#2",
+      "out_of_scope": 0,
+      "repeat": false
+     },
+     "delivery": null,
+     "delivery_rel": 0.0,
+     "delivery_stage": {
+      "accepted": false,
+      "ambiguous": [
+       "ambiguous_word"
+      ],
+      "candidate_delivery": null,
+      "dropped_correlated": 0,
+      "evidence_groups": [
+       "A"
+      ],
+      "origin_ids": [],
+      "reason": "ambiguous_only"
+     },
+     "gap": null,
+     "policy": "cascade_v3"
+    },
+    "family": "neutral",
+    "level": 0.11,
+    "parent_id": 0,
+    "plan_version": 5,
+    "reason": "inherit(neutral)2 level=0.11 tier=weak",
+    "role": "speech",
+    "scene_id": 1,
+    "style": "neutral",
+    "sub_index": 0,
+    "tier": "weak",
+    "unit_id": "u0:2"
+   },
+   {
+    "caption": "落ち着いた、静かな声で",
+    "cfg": 3.0,
+    "codebook_version": 2,
+    "diagnostics": {
+     "cue_scope": {
+      "basis": "span",
+      "cross_sentence": "unsupported",
+      "cues": 0,
+      "id": "0-31#3",
+      "out_of_scope": 0,
+      "repeat": false
+     },
+     "delivery": null,
+     "delivery_rel": 0.0,
+     "delivery_stage": {
+      "accepted": false,
+      "ambiguous": [],
+      "candidate_delivery": null,
+      "dropped_correlated": 0,
+      "evidence_groups": [],
+      "origin_ids": [],
+      "reason": "ambiguous_only"
+     },
+     "gap": null,
+     "policy": "cascade_v3"
+    },
+    "family": "neutral",
+    "level": 0.0,
+    "parent_id": 0,
+    "plan_version": 5,
+    "reason": "inherit(neutral)3 level=0.00 tier=weak",
+    "role": "speech",
+    "scene_id": 1,
+    "style": "neutral",
+    "sub_index": 0,
+    "tier": "weak",
+    "unit_id": "u0:3"
+   }
+  ],
+  "X3_leftover_ja_stage": [
+   {
+    "caption": "落ち着いた、静かな声で",
+    "cfg": 3.0,
+    "codebook_version": 2,
+    "diagnostics": {
+     "cue_scope": {
+      "basis": "span",
+      "cross_sentence": "unsupported",
+      "cues": 0,
+      "id": "0-7#0",
+      "out_of_scope": 0,
+      "repeat": false
+     },
+     "delivery": null,
+     "delivery_rel": 0.0,
+     "delivery_stage": {
+      "accepted": false,
+      "ambiguous": [],
+      "candidate_delivery": null,
+      "dropped_correlated": 0,
+      "evidence_groups": [
+       "J"
+      ],
+      "origin_ids": [
+       "ja:whispered"
+      ],
+      "reason": "unsupported_delivery"
+     },
+     "gap": null,
+     "policy": "cascade_v3"
+    },
+    "family": "neutral",
+    "level": 0.45,
+    "parent_id": 0,
+    "plan_version": 5,
+    "reason": "style=calm level=0.45 tier=weak",
+    "role": "speech",
+    "scene_id": 1,
+    "style": "neutral",
+    "sub_index": 0,
+    "tier": "weak",
+    "unit_id": "u0:0"
+   }
+  ]
+ },
+ "X_off_scope": {
+  "X1_persist_whisper": [
+   {
+    "caption": "柔らかく、優しく囁くように",
+    "cfg": 3.0,
+    "codebook_version": 2,
+    "diagnostics": {
+     "delivery": "whispered",
+     "delivery_rel": 0.85,
+     "delivery_stage": {
+      "accepted": true,
+      "ambiguous": [],
+      "candidate_delivery": "whispered",
+      "dropped_correlated": 0,
+      "evidence_groups": [
+       "D"
+      ],
+      "origin_ids": [
+       "cue:[4, 6]"
+      ],
+      "reason": "explicit_directive"
+     },
+     "gap": "neutral_whisper_candidate_untested",
+     "policy": "cascade_v3"
+    },
+    "family": "neutral",
+    "level": 0.45,
+    "parent_id": 0,
+    "plan_version": 5,
+    "reason": "style=calm level=0.45 tier=weak delivery=whispered",
+    "role": "speech",
+    "scene_id": 1,
+    "style": "neutral",
+    "sub_index": 0,
+    "tier": "weak",
+    "unit_id": "u0:0"
+   },
+   {
+    "caption": "落ち着いた、静かな声で",
+    "cfg": 3.0,
+    "codebook_version": 2,
+    "diagnostics": {
+     "delivery": null,
+     "delivery_rel": 0.0,
+     "delivery_stage": {
+      "accepted": false,
+      "ambiguous": [],
+      "candidate_delivery": null,
+      "dropped_correlated": 0,
+      "evidence_groups": [
+       "H"
+      ],
+      "origin_ids": [
+       "prev"
+      ],
+      "reason": "stale_context"
+     },
+     "gap": null,
+     "policy": "cascade_v3"
+    },
+    "family": "neutral",
+    "level": 0.28,
+    "parent_id": 0,
+    "plan_version": 5,
+    "reason": "inherit(neutral)1 level=0.28 tier=weak",
+    "role": "speech",
+    "scene_id": 1,
+    "style": "neutral",
+    "sub_index": 0,
+    "tier": "weak",
+    "unit_id": "u0:1"
+   },
+   {
+    "caption": "落ち着いた、静かな声で",
+    "cfg": 3.0,
+    "codebook_version": 2,
+    "diagnostics": {
+     "delivery": null,
+     "delivery_rel": 0.0,
+     "delivery_stage": {
+      "accepted": false,
+      "ambiguous": [],
+      "candidate_delivery": null,
+      "dropped_correlated": 0,
+      "evidence_groups": [],
+      "origin_ids": [],
+      "reason": "ambiguous_only"
+     },
+     "gap": null,
+     "policy": "cascade_v3"
+    },
+    "family": "neutral",
+    "level": 0.11,
+    "parent_id": 0,
+    "plan_version": 5,
+    "reason": "inherit(neutral)2 level=0.11 tier=weak",
+    "role": "speech",
+    "scene_id": 1,
+    "style": "neutral",
+    "sub_index": 0,
+    "tier": "weak",
+    "unit_id": "u0:2"
+   }
+  ],
+  "X2_revoke": [
+   {
+    "caption": "柔らかく、優しく囁くように",
+    "cfg": 3.0,
+    "codebook_version": 2,
+    "diagnostics": {
+     "delivery": "whispered",
+     "delivery_rel": 0.85,
+     "delivery_stage": {
+      "accepted": true,
+      "ambiguous": [],
+      "candidate_delivery": "whispered",
+      "dropped_correlated": 0,
+      "evidence_groups": [
+       "D"
+      ],
+      "origin_ids": [
+       "cue:[4, 6]"
+      ],
+      "reason": "explicit_directive"
+     },
+     "gap": "neutral_whisper_candidate_untested",
+     "policy": "cascade_v3"
+    },
+    "family": "neutral",
+    "level": 0.45,
+    "parent_id": 0,
+    "plan_version": 5,
+    "reason": "style=calm level=0.45 tier=weak delivery=whispered",
+    "role": "speech",
+    "scene_id": 1,
+    "style": "neutral",
+    "sub_index": 0,
+    "tier": "weak",
+    "unit_id": "u0:0"
+   },
+   {
+    "caption": "落ち着いた、静かな声で",
+    "cfg": 3.0,
+    "codebook_version": 2,
+    "diagnostics": {
+     "delivery": null,
+     "delivery_rel": 0.0,
+     "delivery_stage": {
+      "accepted": false,
+      "ambiguous": [],
+      "candidate_delivery": null,
+      "dropped_correlated": 0,
+      "evidence_groups": [
+       "H"
+      ],
+      "origin_ids": [
+       "prev"
+      ],
+      "reason": "stale_context"
+     },
+     "gap": null,
+     "policy": "cascade_v3"
+    },
+    "family": "neutral",
+    "level": 0.28,
+    "parent_id": 0,
+    "plan_version": 5,
+    "reason": "inherit(neutral)1 level=0.28 tier=weak",
+    "role": "speech",
+    "scene_id": 1,
+    "style": "neutral",
+    "sub_index": 0,
+    "tier": "weak",
+    "unit_id": "u0:1"
+   },
+   {
+    "caption": "落ち着いた、静かな声で",
+    "cfg": 3.0,
+    "codebook_version": 2,
+    "diagnostics": {
+     "delivery": null,
+     "delivery_rel": 0.0,
+     "delivery_stage": {
+      "accepted": false,
+      "ambiguous": [
+       "ambiguous_word"
+      ],
+      "candidate_delivery": null,
+      "dropped_correlated": 0,
+      "evidence_groups": [
+       "A"
+      ],
+      "origin_ids": [],
+      "reason": "ambiguous_only"
+     },
+     "gap": null,
+     "policy": "cascade_v3"
+    },
+    "family": "neutral",
+    "level": 0.11,
+    "parent_id": 0,
+    "plan_version": 5,
+    "reason": "inherit(neutral)2 level=0.11 tier=weak",
+    "role": "speech",
+    "scene_id": 1,
+    "style": "neutral",
+    "sub_index": 0,
+    "tier": "weak",
+    "unit_id": "u0:2"
+   },
+   {
+    "caption": "落ち着いた、静かな声で",
+    "cfg": 3.0,
+    "codebook_version": 2,
+    "diagnostics": {
+     "delivery": null,
+     "delivery_rel": 0.0,
+     "delivery_stage": {
+      "accepted": false,
+      "ambiguous": [],
+      "candidate_delivery": null,
+      "dropped_correlated": 0,
+      "evidence_groups": [],
+      "origin_ids": [],
+      "reason": "ambiguous_only"
+     },
+     "gap": null,
+     "policy": "cascade_v3"
+    },
+    "family": "neutral",
+    "level": 0.0,
+    "parent_id": 0,
+    "plan_version": 5,
+    "reason": "inherit(neutral)3 level=0.00 tier=weak",
+    "role": "speech",
+    "scene_id": 1,
+    "style": "neutral",
+    "sub_index": 0,
+    "tier": "weak",
+    "unit_id": "u0:3"
+   }
+  ],
+  "X3_leftover_ja_stage": [
+   {
+    "caption": "落ち着いた、静かな声で",
+    "cfg": 3.0,
+    "codebook_version": 2,
+    "diagnostics": {
+     "delivery": null,
+     "delivery_rel": 0.0,
+     "delivery_stage": {
+      "accepted": false,
+      "ambiguous": [],
+      "candidate_delivery": null,
+      "dropped_correlated": 0,
+      "evidence_groups": [
+       "J"
+      ],
+      "origin_ids": [
+       "ja:whispered"
+      ],
+      "reason": "unsupported_delivery"
+     },
+     "gap": null,
+     "policy": "cascade_v3"
+    },
+    "family": "neutral",
+    "level": 0.45,
+    "parent_id": 0,
+    "plan_version": 5,
+    "reason": "style=calm level=0.45 tier=weak",
+    "role": "speech",
+    "scene_id": 1,
+    "style": "neutral",
+    "sub_index": 0,
+    "tier": "weak",
+    "unit_id": "u0:0"
+   }
+  ]
+ },
+ "meta": {
+  "how": "_tmp/gen_v5_frozen_golden.py（用快照模块跑）",
+  "source": "backup/code/20261002/tts/_rollback-20260929-emotion-v5",
+  "why": "v5 冻结输出：ALBION_PLAN_VERSION=5 回退后必须逐字段一致"
+ }
+}

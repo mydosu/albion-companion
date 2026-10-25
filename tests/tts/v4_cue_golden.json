@@ -1,0 +1,696 @@
+{
+ "BI": [
+  {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": "soft",
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": true,
+     "ambiguous": [],
+     "candidate_delivery": "soft",
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "D"
+     ],
+     "origin_ids": [
+      "cue:[0, 5]"
+     ],
+     "reason": "explicit_directive"
+    },
+    "gap": null,
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.45,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "style=calm level=0.45 tier=weak delivery=soft",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:0"
+  }
+ ],
+ "M1": [
+  {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": "soft",
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": true,
+     "ambiguous": [],
+     "candidate_delivery": "soft",
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "D"
+     ],
+     "origin_ids": [
+      "cue:[0, 5]"
+     ],
+     "reason": "explicit_directive"
+    },
+    "gap": null,
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.45,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "style=calm level=0.45 tier=weak delivery=soft",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:0"
+  },
+  {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "H"
+     ],
+     "origin_ids": [
+      "prev"
+     ],
+     "reason": "stale_context"
+    },
+    "gap": null,
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.28,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "inherit(neutral)1 level=0.28 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:1"
+  }
+ ],
+ "M2": [
+  {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": "soft",
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": true,
+     "ambiguous": [],
+     "candidate_delivery": "soft",
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "D"
+     ],
+     "origin_ids": [
+      "cue:[11, 16]"
+     ],
+     "reason": "explicit_directive"
+    },
+    "gap": null,
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.45,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "style=calm level=0.45 tier=weak delivery=soft",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:0"
+  },
+  {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "H"
+     ],
+     "origin_ids": [
+      "prev"
+     ],
+     "reason": "stale_context"
+    },
+    "gap": null,
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.28,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "inherit(neutral)1 level=0.28 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:1"
+  }
+ ],
+ "M2b": [
+  {
+   "caption": "柔らかく、優しく囁くように",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": "whispered",
+    "delivery_rel": 0.85,
+    "delivery_stage": {
+     "accepted": true,
+     "ambiguous": [],
+     "candidate_delivery": "whispered",
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "D"
+     ],
+     "origin_ids": [
+      "cue:[11, 15]"
+     ],
+     "reason": "explicit_directive"
+    },
+    "gap": "neutral_whisper_candidate_untested",
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.45,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "style=calm level=0.45 tier=weak delivery=whispered",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:0"
+  },
+  {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "H"
+     ],
+     "origin_ids": [
+      "prev"
+     ],
+     "reason": "stale_context"
+    },
+    "gap": null,
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.28,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "inherit(neutral)1 level=0.28 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:1"
+  }
+ ],
+ "M3": [
+  {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": "soft",
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": true,
+     "ambiguous": [],
+     "candidate_delivery": "soft",
+     "conflict": [
+      "soft",
+      "whispered"
+     ],
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "D"
+     ],
+     "origin_ids": [
+      "cue:[0, 5]",
+      "cue:[9, 11]"
+     ],
+     "reason": "conflicting_evidence"
+    },
+    "gap": null,
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.45,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "style=calm level=0.45 tier=weak delivery=soft",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:0"
+  },
+  {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "H"
+     ],
+     "origin_ids": [
+      "prev"
+     ],
+     "reason": "stale_context"
+    },
+    "gap": null,
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.28,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "inherit(neutral)1 level=0.28 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:1"
+  },
+  {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [],
+     "origin_ids": [],
+     "reason": "ambiguous_only"
+    },
+    "gap": null,
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.11,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "inherit(neutral)2 level=0.11 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:2"
+  }
+ ],
+ "M4": [
+  {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": "soft",
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": true,
+     "ambiguous": [],
+     "candidate_delivery": "soft",
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "D"
+     ],
+     "origin_ids": [
+      "cue:[3, 8]"
+     ],
+     "reason": "explicit_directive"
+    },
+    "gap": null,
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.45,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "style=calm level=0.45 tier=weak delivery=soft",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:0"
+  }
+ ],
+ "M5": [
+  {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [],
+     "origin_ids": [],
+     "reason": "ambiguous_only"
+    },
+    "gap": null,
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.45,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "style=calm level=0.45 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:0"
+  }
+ ],
+ "M6": [
+  {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": "soft",
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": true,
+     "ambiguous": [],
+     "candidate_delivery": "soft",
+     "conflict": [
+      "soft",
+      "whispered"
+     ],
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "D"
+     ],
+     "origin_ids": [
+      "cue:[0, 5]",
+      "cue:[5, 7]",
+      "cue:[9, 11]",
+      "cue:[26, 30]"
+     ],
+     "reason": "conflicting_evidence"
+    },
+    "gap": null,
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.45,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "style=calm level=0.45 tier=weak delivery=soft",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:0"
+  },
+  {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "H"
+     ],
+     "origin_ids": [
+      "prev"
+     ],
+     "reason": "stale_context"
+    },
+    "gap": null,
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.28,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "inherit(neutral)1 level=0.28 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:1"
+  },
+  {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [],
+     "origin_ids": [],
+     "reason": "ambiguous_only"
+    },
+    "gap": null,
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.11,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "inherit(neutral)2 level=0.11 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:2"
+  }
+ ],
+ "M9": [
+  {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": "soft",
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": true,
+     "ambiguous": [],
+     "candidate_delivery": "soft",
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "D"
+     ],
+     "origin_ids": [
+      "cue:[0, 5]"
+     ],
+     "reason": "explicit_directive"
+    },
+    "gap": null,
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.45,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "style=calm level=0.45 tier=weak delivery=soft",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:0"
+  }
+ ],
+ "N1": [
+  {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [],
+     "origin_ids": [],
+     "reason": "ambiguous_only"
+    },
+    "gap": null,
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.45,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "style=calm level=0.45 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:0"
+  },
+  {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [],
+     "origin_ids": [],
+     "reason": "ambiguous_only"
+    },
+    "gap": null,
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.28,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "inherit(neutral)1 level=0.28 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:1"
+  }
+ ],
+ "XC": [
+  {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": "soft",
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": true,
+     "ambiguous": [],
+     "candidate_delivery": "soft",
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "D"
+     ],
+     "origin_ids": [
+      "cue:[4, 6]"
+     ],
+     "reason": "explicit_directive"
+    },
+    "gap": null,
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.45,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "style=calm level=0.45 tier=weak delivery=soft",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:0"
+  },
+  {
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "diagnostics": {
+    "delivery": null,
+    "delivery_rel": 0.0,
+    "delivery_stage": {
+     "accepted": false,
+     "ambiguous": [],
+     "candidate_delivery": null,
+     "dropped_correlated": 0,
+     "evidence_groups": [
+      "H"
+     ],
+     "origin_ids": [
+      "prev"
+     ],
+     "reason": "stale_context"
+    },
+    "gap": null,
+    "policy": "cascade_v2"
+   },
+   "family": "neutral",
+   "level": 0.28,
+   "parent_id": 0,
+   "plan_version": 4,
+   "reason": "inherit(neutral)1 level=0.28 tier=weak",
+   "role": "speech",
+   "scene_id": 1,
+   "style": "neutral",
+   "sub_index": 0,
+   "tier": "weak",
+   "unit_id": "u0:1"
+  }
+ ]
+}

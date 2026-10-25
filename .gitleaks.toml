@@ -1,0 +1,15 @@
+# 阿尔比恩补充规则：在保留 Gitleaks 默认规则的基础上，拦截命令行里直接写明的采集端 token。
+# 背景：采集端 token 曾以字面值写在启动脚本与 README 里，现有默认规则没有匹配到。
+# 规则只按形状匹配 `--token <值>` / `--token=<值>`，不内置任何实际值；
+# 占位写法（`<TOKEN>`、`$TOKEN`）和环境变量引用（`%EYES_TOK%`，启动脚本从 token.txt 读入后这样传）不会命中。
+
+title = "albion-gitleaks"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "albion-cli-token"
+description = "命令行参数里直接写明 token"
+regex = '''--token(?:=|\s+)["']?[^\s"'<>$%]{6,}'''
+tags = ["token", "albion"]

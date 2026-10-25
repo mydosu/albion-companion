@@ -1,0 +1,238 @@
+{
+  "repository": "mydosu/Albion-Companion-Wife",
+  "release": "weights-v1",
+  "assets": [
+    {
+      "asset": "albion_inv__ckpt_0000500__speaker.safetensors",
+      "destination": "tts/irodori/outputs/albion_inv/checkpoint_0000500.speaker.safetensors",
+      "size": 49264,
+      "sha256": "d0294e6a468d4ff56109fea208ed8f2783909f05b63e4d7bade294f10e4892d7"
+    },
+    {
+      "asset": "albion_lora_emo_spk__final__lora.safetensors",
+      "destination": "tts/irodori/outputs/albion_lora_emo_spk/checkpoint_final/adapter_model.safetensors",
+      "size": 105654092,
+      "sha256": "6d53b2ebc0894d0f72c39f33fb5f2e0bc1375dad133451ff2e5de24e19409c22",
+      "adapter_config": "config/rebuild/adapters/albion_lora_emo_spk/checkpoint_final/adapter_config.json"
+    },
+    {
+      "asset": "brest_inv__ckpt_0000500__speaker.safetensors",
+      "destination": "tts/irodori/outputs/brest_inv/checkpoint_0000500.speaker.safetensors",
+      "size": 49264,
+      "sha256": "4df6f498a7d226446281ddf27bf212ece527fa5ca115525da0b87d1970db4fb5"
+    },
+    {
+      "asset": "brest_inv__ckpt_0001000__speaker.safetensors",
+      "destination": "tts/irodori/outputs/brest_inv/checkpoint_0001000.speaker.safetensors",
+      "size": 49264,
+      "sha256": "fe3efb079d504550aa4784db4c3cf51349915e02b6552b8b0d9229ee14dce515"
+    },
+    {
+      "asset": "brest_inv__final__speaker.safetensors",
+      "destination": "tts/irodori/outputs/brest_inv/checkpoint_final.speaker.safetensors",
+      "size": 49264,
+      "sha256": "fe3efb079d504550aa4784db4c3cf51349915e02b6552b8b0d9229ee14dce515"
+    },
+    {
+      "asset": "brest_lora_emo_spk__final__lora.safetensors",
+      "destination": "tts/irodori/outputs/brest_lora_emo_spk/checkpoint_final/adapter_model.safetensors",
+      "size": 105654092,
+      "sha256": "129c8e752eec6ec703cad5f82ccbab8d6cc0cb38ccf3626787bbe41a8bbdf012",
+      "adapter_config": "config/rebuild/adapters/brest_lora_emo_spk/checkpoint_final/adapter_config.json"
+    },
+    {
+      "asset": "jinshi_inv_clean__ckpt_0000500__speaker.safetensors",
+      "destination": "tts/irodori/outputs/jinshi_inv_clean/checkpoint_0000500.speaker.safetensors",
+      "size": 49264,
+      "sha256": "e7f20c7b27d785ae63b996d1ccd3a4142e899fcf5609863c059350399b0d85eb"
+    },
+    {
+      "asset": "jinshi_inv_clean__ckpt_0001000__speaker.safetensors",
+      "destination": "tts/irodori/outputs/jinshi_inv_clean/checkpoint_0001000.speaker.safetensors",
+      "size": 49264,
+      "sha256": "cce3fb16cdca9711e9cb0e2becc5135d794d8945b64ef268cef28bd938446b17"
+    },
+    {
+      "asset": "jinshi_inv_clean__final__speaker.safetensors",
+      "destination": "tts/irodori/outputs/jinshi_inv_clean/checkpoint_final.speaker.safetensors",
+      "size": 49264,
+      "sha256": "cce3fb16cdca9711e9cb0e2becc5135d794d8945b64ef268cef28bd938446b17"
+    },
+    {
+      "asset": "jinshi_inv__ckpt_0000500__speaker.safetensors",
+      "destination": "tts/irodori/outputs/jinshi_inv/checkpoint_0000500.speaker.safetensors",
+      "size": 49264,
+      "sha256": "4309e24a8e72d0f09ac92ec3bc948e1fda8409bc1512512c5ad2adb5a88cee71"
+    },
+    {
+      "asset": "jinshi_inv__ckpt_0001000__speaker.safetensors",
+      "destination": "tts/irodori/outputs/jinshi_inv/checkpoint_0001000.speaker.safetensors",
+      "size": 49264,
+      "sha256": "5ac8f79712880d2f7ab22e59b5ed73037179e4115f20fcaaf639d1976b2e3541"
+    },
+    {
+      "asset": "jinshi_inv__final__speaker.safetensors",
+      "destination": "tts/irodori/outputs/jinshi_inv/checkpoint_final.speaker.safetensors",
+      "size": 49264,
+      "sha256": "5ac8f79712880d2f7ab22e59b5ed73037179e4115f20fcaaf639d1976b2e3541"
+    },
+    {
+      "asset": "jinshi_lora_clean200__ckpt_0000100__lora.safetensors",
+      "destination": "tts/irodori/outputs/jinshi_lora_clean200/checkpoint_0000100/adapter_model.safetensors",
+      "size": 105654092,
+      "sha256": "62c14d16c09a0312955f315f7d61962bdf0f7936f2f4bf499c08c51dd64b0936",
+      "adapter_config": "config/rebuild/adapters/jinshi_lora_clean200/checkpoint_0000100/adapter_config.json"
+    },
+    {
+      "asset": "jinshi_lora_clean200__ckpt_0000200__lora.safetensors",
+      "destination": "tts/irodori/outputs/jinshi_lora_clean200/checkpoint_0000200/adapter_model.safetensors",
+      "size": 105654092,
+      "sha256": "143d9a01cde67c3315a6e0992f8ee2f2da4e1f9dd0b24100d27be788f55b3786",
+      "adapter_config": "config/rebuild/adapters/jinshi_lora_clean200/checkpoint_0000200/adapter_config.json"
+    },
+    {
+      "asset": "jinshi_lora_clean200__final__lora.safetensors",
+      "destination": "tts/irodori/outputs/jinshi_lora_clean200/checkpoint_final/adapter_model.safetensors",
+      "size": 105654092,
+      "sha256": "143d9a01cde67c3315a6e0992f8ee2f2da4e1f9dd0b24100d27be788f55b3786",
+      "adapter_config": "config/rebuild/adapters/jinshi_lora_clean200/checkpoint_final/adapter_config.json"
+    },
+    {
+      "asset": "jinshi_lora_clean__ckpt_0000250__lora.safetensors",
+      "destination": "tts/irodori/outputs/jinshi_lora_clean/checkpoint_0000250/adapter_model.safetensors",
+      "size": 105654092,
+      "sha256": "7e82f0c7da4d4ce8424f45310dc85ed951be1ab8da61f2e3a5e224adf678a829",
+      "adapter_config": "config/rebuild/adapters/jinshi_lora_clean/checkpoint_0000250/adapter_config.json"
+    },
+    {
+      "asset": "jinshi_lora_clean__ckpt_0000500__lora.safetensors",
+      "destination": "tts/irodori/outputs/jinshi_lora_clean/checkpoint_0000500/adapter_model.safetensors",
+      "size": 105654092,
+      "sha256": "61ce674e5b3441e643d1e619a70f83197ef4eff0c35b41eaf5199c438ee65426",
+      "adapter_config": "config/rebuild/adapters/jinshi_lora_clean/checkpoint_0000500/adapter_config.json"
+    },
+    {
+      "asset": "jinshi_lora_clean__final__lora.safetensors",
+      "destination": "tts/irodori/outputs/jinshi_lora_clean/checkpoint_final/adapter_model.safetensors",
+      "size": 105654092,
+      "sha256": "61ce674e5b3441e643d1e619a70f83197ef4eff0c35b41eaf5199c438ee65426",
+      "adapter_config": "config/rebuild/adapters/jinshi_lora_clean/checkpoint_final/adapter_config.json"
+    },
+    {
+      "asset": "jinshi_lora_emo_spk__final__lora.safetensors",
+      "destination": "tts/irodori/outputs/jinshi_lora_emo_spk/checkpoint_final/adapter_model.safetensors",
+      "size": 105654092,
+      "sha256": "4c88557ba3caa10a78770d04268d1da5a7b86ec7d13f6eb1f10820aa4c1462df",
+      "adapter_config": "config/rebuild/adapters/jinshi_lora_emo_spk/checkpoint_final/adapter_config.json"
+    },
+    {
+      "asset": "shinano_inv__ckpt_0000500__speaker.safetensors",
+      "destination": "tts/irodori/outputs/shinano_inv/checkpoint_0000500.speaker.safetensors",
+      "size": 49264,
+      "sha256": "7a87d732702140c59343f606dd60373cc45069bac1fcfb76e7144d22506fdef6"
+    },
+    {
+      "asset": "shinano_inv__ckpt_0001000__speaker.safetensors",
+      "destination": "tts/irodori/outputs/shinano_inv/checkpoint_0001000.speaker.safetensors",
+      "size": 49264,
+      "sha256": "d46226aa4c5718fcc077ed3b8fb80eb6c477f9cf47d867d0d270e2c4f714e9a7"
+    },
+    {
+      "asset": "shinano_inv__final__speaker.safetensors",
+      "destination": "tts/irodori/outputs/shinano_inv/checkpoint_final.speaker.safetensors",
+      "size": 49264,
+      "sha256": "d46226aa4c5718fcc077ed3b8fb80eb6c477f9cf47d867d0d270e2c4f714e9a7"
+    },
+    {
+      "asset": "shinano_lora_emo_spk__final__lora.safetensors",
+      "destination": "tts/irodori/outputs/shinano_lora_emo_spk/checkpoint_final/adapter_model.safetensors",
+      "size": 105654092,
+      "sha256": "a123509e73e2c25eeeb6afa19f34d116684c7cc6571867613764d8b219472a79",
+      "adapter_config": "config/rebuild/adapters/shinano_lora_emo_spk/checkpoint_final/adapter_config.json"
+    },
+    {
+      "asset": "taihou_inv_clean__ckpt_0000500__speaker.safetensors",
+      "destination": "tts/irodori/outputs/taihou_inv_clean/checkpoint_0000500.speaker.safetensors",
+      "size": 49264,
+      "sha256": "1a68ca359efb0b140409c1c676b1ca7c5fe48730efcc23503f9199d5539d1e66"
+    },
+    {
+      "asset": "taihou_inv_clean__ckpt_0001000__speaker.safetensors",
+      "destination": "tts/irodori/outputs/taihou_inv_clean/checkpoint_0001000.speaker.safetensors",
+      "size": 49264,
+      "sha256": "de16eb04262ff3ca985aef97d03c43841c763d73ff49dcf940de2deb33959cd2"
+    },
+    {
+      "asset": "taihou_inv_clean__final__speaker.safetensors",
+      "destination": "tts/irodori/outputs/taihou_inv_clean/checkpoint_final.speaker.safetensors",
+      "size": 49264,
+      "sha256": "de16eb04262ff3ca985aef97d03c43841c763d73ff49dcf940de2deb33959cd2"
+    },
+    {
+      "asset": "taihou_inv__ckpt_0000500__speaker.safetensors",
+      "destination": "tts/irodori/outputs/taihou_inv/checkpoint_0000500.speaker.safetensors",
+      "size": 49264,
+      "sha256": "704789fcf90b8e2e6e8a64dc1a5bf1bc76e6ab6a3aca61bf33657615b1d189bb"
+    },
+    {
+      "asset": "taihou_inv__ckpt_0001000__speaker.safetensors",
+      "destination": "tts/irodori/outputs/taihou_inv/checkpoint_0001000.speaker.safetensors",
+      "size": 49264,
+      "sha256": "21ec9dfe4b6fcdc25180562688cc343cae9926b58b781d8bd23038e6a3d18a64"
+    },
+    {
+      "asset": "taihou_inv__final__speaker.safetensors",
+      "destination": "tts/irodori/outputs/taihou_inv/checkpoint_final.speaker.safetensors",
+      "size": 49264,
+      "sha256": "21ec9dfe4b6fcdc25180562688cc343cae9926b58b781d8bd23038e6a3d18a64"
+    },
+    {
+      "asset": "taihou_lora_clean200__ckpt_0000100__lora.safetensors",
+      "destination": "tts/irodori/outputs/taihou_lora_clean200/checkpoint_0000100/adapter_model.safetensors",
+      "size": 105654092,
+      "sha256": "858cd7d8e02b7ddcf5aed271ec6d34499bb90113e10f0d85aca19297f9b8caaf",
+      "adapter_config": "config/rebuild/adapters/taihou_lora_clean200/checkpoint_0000100/adapter_config.json"
+    },
+    {
+      "asset": "taihou_lora_clean200__ckpt_0000200__lora.safetensors",
+      "destination": "tts/irodori/outputs/taihou_lora_clean200/checkpoint_0000200/adapter_model.safetensors",
+      "size": 105654092,
+      "sha256": "45918d2587dc6172fb39fa036baa3d3bca9561dd6b3782059d769004dabc356f",
+      "adapter_config": "config/rebuild/adapters/taihou_lora_clean200/checkpoint_0000200/adapter_config.json"
+    },
+    {
+      "asset": "taihou_lora_clean200__final__lora.safetensors",
+      "destination": "tts/irodori/outputs/taihou_lora_clean200/checkpoint_final/adapter_model.safetensors",
+      "size": 105654092,
+      "sha256": "45918d2587dc6172fb39fa036baa3d3bca9561dd6b3782059d769004dabc356f",
+      "adapter_config": "config/rebuild/adapters/taihou_lora_clean200/checkpoint_final/adapter_config.json"
+    }
+  ],
+  "local_assets": [
+    {
+      "path": "tts/irodori/checkpoints/model.safetensors",
+      "size": 3064295596,
+      "sha256": "c85de88c01700cb53538e706f128ebcb1b8513ad21d7d0e75f58bc82cdbf89f6",
+      "source": "restore private offline assets; confirm exact baseline before replacing"
+    },
+    {
+      "path": "shell/packages/stage-ui/src/assets/live2d/models/albion.zip",
+      "size": 30596602,
+      "sha256": "292f8afd71148018d31facb496b6c2d20cea9ddc74e11ace3222983851731219",
+      "source": "restore private offline assets; confirm exact baseline before replacing"
+    },
+    {
+      "path": "shell/packages/stage-ui/src/assets/spine/models/albion-spine-38.zip",
+      "size": 11265348,
+      "sha256": "56d3082f480cfdb3cf58b6397a389480c44b746e6db26f18d7ce7f81750c8ce8",
+      "source": "restore private offline assets; confirm exact baseline before replacing"
+    }
+  ],
+  "external_directories": [
+    "pet/models/modelscope/iic",
+    "tts/GPT-sovits/runtime",
+    "tts/GPT-sovits/audio",
+    "tts/GPT-sovits/GPT_SoVITS",
+    "her-home"
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "providers": {
+    "commandcode": {
+      "baseUrl": "http://127.0.0.1:8798/v1",
+      "api": "openai-completions",
+      "apiKey": "$COMMANDCODE_API_KEY",
+      "models": [
+        {
+          "id": "reflection/beam:free",
+          "name": "Beam 1.0 Free (manual fallback)",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 1048576,
+          "maxTokens": 8192,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "headers": {
+            "User-Agent": "curl/8.5.0"
+          }
+        },
+        {
+          "id": "deepseek/deepseek-v4-flash",
+          "name": "DeepSeek V4 Flash (commandcode, via local relay)",
+          "maxOutputTokens": 32000,
+          "headers": { "User-Agent": "curl/8.5.0" }
+        },
+        {
+          "id": "deepseek/deepseek-v4.1-flash",
+          "name": "DeepSeek V4.1 Flash (commandcode, via local relay)",
+          "maxOutputTokens": 32000,
+          "headers": { "User-Agent": "curl/8.5.0" }
+        }
+      ]
+    }
+  }
+}

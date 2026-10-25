@@ -1,0 +1,34 @@
+# Reviewed upstream fixtures, example JWT, public QQ invite and sponsor avatar URLs.
+# Exact historical fingerprints only; new locations/commits must be reviewed again.
+8858c1219add7f8a923dc92a45c288f05fa6fb6b:shell/.agents/skills/vueuse-functions/references/useJwt.md:jwt:21
+8858c1219add7f8a923dc92a45c288f05fa6fb6b:shell/README.md:generic-api-key:47
+8858c1219add7f8a923dc92a45c288f05fa6fb6b:shell/docs/README.ko-KR.md:generic-api-key:30
+8858c1219add7f8a923dc92a45c288f05fa6fb6b:shell/docs/README.fr.md:generic-api-key:30
+8858c1219add7f8a923dc92a45c288f05fa6fb6b:shell/docs/README.ja-JP.md:generic-api-key:30
+8858c1219add7f8a923dc92a45c288f05fa6fb6b:shell/docs/README.vi.md:generic-api-key:30
+8858c1219add7f8a923dc92a45c288f05fa6fb6b:shell/docs/README.ru-RU.md:generic-api-key:30
+8858c1219add7f8a923dc92a45c288f05fa6fb6b:shell/docs/content/en/docs/manual/tamagotchi/setup-and-use/index.md:generic-api-key:27
+8858c1219add7f8a923dc92a45c288f05fa6fb6b:shell/docs/content/ko/docs/manual/tamagotchi/setup-and-use/index.md:generic-api-key:27
+8858c1219add7f8a923dc92a45c288f05fa6fb6b:shell/docs/content/public/assets/sponsors/sponsors.json:generic-api-key:13898
+8858c1219add7f8a923dc92a45c288f05fa6fb6b:shell/docs/content/public/assets/sponsors/sponsors.json:generic-api-key:16263
+8858c1219add7f8a923dc92a45c288f05fa6fb6b:shell/docs/content/public/assets/sponsors/sponsors.json:generic-api-key:19665
+8858c1219add7f8a923dc92a45c288f05fa6fb6b:shell/docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/index.md:generic-api-key:31
+8858c1219add7f8a923dc92a45c288f05fa6fb6b:shell/server/apps/api/src/libs/tests/request-auth.test.ts:generic-api-key:96
+8858c1219add7f8a923dc92a45c288f05fa6fb6b:shell/server/apps/api/src/routes/audio-transcription-stream/route.test.ts:generic-api-key:75
+8858c1219add7f8a923dc92a45c288f05fa6fb6b:shell/server/apps/api/src/routes/audio-transcription-stream/route.test.ts:generic-api-key:108
+2154b3de47d7aecfb135e5315fe221c233702f5b:server/apps/api/src/libs/tests/request-auth.test.ts:generic-api-key:96
+2154b3de47d7aecfb135e5315fe221c233702f5b:server/apps/api/src/routes/audio-transcription-stream/route.test.ts:generic-api-key:75
+2154b3de47d7aecfb135e5315fe221c233702f5b:server/apps/api/src/routes/audio-transcription-stream/route.test.ts:generic-api-key:108
+d52f3912d80314a78dc3d6356b02b6b4bd58ca65:docs/README.fr.md:generic-api-key:30
+d52f3912d80314a78dc3d6356b02b6b4bd58ca65:docs/README.ja-JP.md:generic-api-key:30
+d52f3912d80314a78dc3d6356b02b6b4bd58ca65:docs/README.ko-KR.md:generic-api-key:30
+d52f3912d80314a78dc3d6356b02b6b4bd58ca65:docs/README.vi.md:generic-api-key:30
+d52f3912d80314a78dc3d6356b02b6b4bd58ca65:docs/README.ru-RU.md:generic-api-key:30
+d52f3912d80314a78dc3d6356b02b6b4bd58ca65:docs/content/en/docs/manual/tamagotchi/setup-and-use/index.md:generic-api-key:27
+d52f3912d80314a78dc3d6356b02b6b4bd58ca65:docs/content/ko/docs/manual/tamagotchi/setup-and-use/index.md:generic-api-key:27
+d52f3912d80314a78dc3d6356b02b6b4bd58ca65:docs/content/public/assets/sponsors/sponsors.json:generic-api-key:13898
+d52f3912d80314a78dc3d6356b02b6b4bd58ca65:docs/content/public/assets/sponsors/sponsors.json:generic-api-key:16263
+d52f3912d80314a78dc3d6356b02b6b4bd58ca65:docs/content/public/assets/sponsors/sponsors.json:generic-api-key:19665
+d52f3912d80314a78dc3d6356b02b6b4bd58ca65:docs/content/zh-Hans/docs/manual/tamagotchi/setup-and-use/index.md:generic-api-key:31
+d41b0865b3d9cfe29d264292a7c74919de0c5b8f:.agents/skills/vueuse-functions/references/useJwt.md:jwt:21
+34e8b75155464c86a9ce6a1608a673ef6daaa4f6:README.md:generic-api-key:47

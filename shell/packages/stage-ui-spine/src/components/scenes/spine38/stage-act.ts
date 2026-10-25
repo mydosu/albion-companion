@@ -1,0 +1,204 @@
+/**
+ * 脑在 ACT 标记里能指挥的 Spine 3.8 表演：脸（face）、保持多久（hold）、头部小动作（motion）。
+ *
+ * 这个模型没有手势动画：骨架里只有 `normal`（全身待机）和 '1'..'11'（0 秒的整张脸替换）。
+ * 所以"动作"= 换哪张脸 + 头骨 `lian` 上的程序化点头/歪头/摇头。脑只看到语义名，
+ * 动画名留在壳里，换模型时只改这里的表。
+ */
+
+/** ACT 里和 Spine 有关的字段（albion-pet 解析后经 Stage 交给场景）。 */
+export interface SpineStageAct {
+  emotion?: string
+  face?: string
+  motion?: string
+  hold?: unknown
+}
+
+/**
+ * 脸的语义名 → 换脸动画名。对照来自 2026-10-25 逐张截图
+ * （tests/output/spine-act-20261025/faces-sheet.png）：
+ *   calm 平静 · nervous 慌张（颤线+汗）· smile 张嘴笑 · worried 担心（o 嘴+汗）· wry 冒汗苦笑
+ *   bashful 含羞小嘴 · fluster 着急咧嘴 · gentle 温和抿笑 · happy 红脸微笑 · shy 害羞到冒圈
+ *   dizzy 一只眼闭、发晕 · pout 鼓气（头上一朵小云）
+ */
+export const FACE_ANIMATION: Readonly<Record<string, string>> = Object.freeze({
+  calm: 'normal',
+  nervous: '1',
+  smile: '2',
+  worried: '3',
+  wry: '4',
+  bashful: '5',
+  fluster: '6',
+  gentle: '7',
+  happy: '8',
+  shy: '9',
+  dizzy: '10',
+  pout: '11',
+})
+
+/**
+ * AIRI 的 9 种情绪 → 默认脸（她没写 face 时用）。脸号沿用 2026-09-17 的实拍标注。
+ */
+const FACE_OF_EMOTION: Readonly<Record<string, string>> = Object.freeze({
+  neutral: 'normal',
+  happy: '8',
+  sad: '11',
+  angry: '10',
+  surprised: '1',
+  awkward: '9',
+  question: '3',
+  think: '2',
+  curious: '3',
+})
+
+/**
+ * 这一条 ACT 要换的脸（动画名）。face 认得就用 face；不认得或没写才看 emotion；都没有返回 undefined（脸不动）。
+ *
+ * @example
+ * resolveFace({ emotion: 'happy', face: 'pout' }) // => '11'
+ * resolveFace({ emotion: 'happy', face: '8' })    // => '8'（壳不认脸号，退回 emotion）
+ */
+export function resolveFace(act: SpineStageAct): string | undefined {
+  const face = typeof act.face === 'string' ? FACE_ANIMATION[act.face.trim().toLowerCase()] : undefined
+  if (face)
+    return face
+  return typeof act.emotion === 'string' ? FACE_OF_EMOTION[act.emotion.trim().toLowerCase()] : undefined
+}
+
+/** 头部小动作：只认这三个；Live2D 的组名（touch_head 等）在 Spine 下一律忽略。 */
+export const HEAD_MOTIONS = ['nod', 'tilt', 'shake'] as const
+export type HeadMotion = typeof HEAD_MOTIONS[number]
+
+export function asHeadMotion(value: unknown): HeadMotion | undefined {
+  const v = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  return (HEAD_MOTIONS as readonly string[]).includes(v) ? v as HeadMotion : undefined
+}
+
+/**
+ * 头骨在第 t 秒相对原位的偏移；播完返回 undefined（调用方把偏移归零 = 回原位）。
+ * rot 是度（正 = 逆时针），down / right 是骨架世界单位（≈0.7 CSS px）。幅度刻意小：
+ * 鼠标跟随最多 ±3°，这里最多 6°，叠在待机动画之上不抢戏。
+ *
+ * @example
+ * headMotionOffset('tilt', 1) // => { rot: 6, down: 0, right: 0 }
+ * headMotionOffset('tilt', 9) // => undefined
+ */
+export function headMotionOffset(kind: HeadMotion, t: number): { rot: number, down: number, right: number } | undefined {
+  if (!(t >= 0))
+    return undefined
+  if (kind === 'nod') {
+    // 两下点头：第一下 9 单位、第二下 5 单位，各 0.45s，sin² 起落没有拐点
+    const beat = 0.45
+    if (t >= beat * 2)
+      return undefined
+    const amp = t < beat ? 9 : 5
+    const s = Math.sin(Math.PI * (t % beat) / beat)
+    return { rot: -1.5 * s * s, down: amp * s * s, right: 0 }
+  }
+  if (kind === 'tilt') {
+    // 歪头：0.35s 歪过去，停 1.2s，0.45s 回来
+    const into = 0.35
+    const hold = 1.2
+    const out = 0.45
+    if (t >= into + hold + out)
+      return undefined
+    const ease = (x: number) => x * x * (3 - 2 * x)
+    const k = t < into ? ease(t / into) : t < into + hold ? 1 : ease(1 - (t - into - hold) / out)
+    return { rot: 6 * k, down: 0, right: 0 }
+  }
+  // 摇头：左右三下、逐渐收住，1.2s
+  const dur = 1.2
+  if (t >= dur)
+    return undefined
+  const s = Math.sin(2 * Math.PI * t / 0.4) * (1 - t / dur)
+  return { rot: 1.5 * s, down: 0, right: 6 * s }
+}
+
+/** hold 的三种写法：默认跟着这段说话走；`keep` 留到下一个 ACT（有上限）；数字是秒。 */
+export type FaceHold = { kind: 'speech' } | { kind: 'keep' } | { kind: 'seconds', seconds: number }
+
+/**
+ * @example
+ * parseHold('keep') // => { kind: 'keep' }
+ * parseHold('8')    // => { kind: 'seconds', seconds: 8 }
+ * parseHold(999)    // => { kind: 'seconds', seconds: 60 }
+ * parseHold(undefined) // => { kind: 'speech' }
+ */
+export function parseHold(value: unknown): FaceHold {
+  if (typeof value === 'string' && value.trim().toLowerCase() === 'keep')
+    return { kind: 'keep' }
+  const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : Number.NaN
+  if (Number.isFinite(n) && n > 0)
+    return { kind: 'seconds', seconds: Math.min(60, Math.max(1, n)) }
+  return { kind: 'speech' }
+}
+
+/** 说话结束后脸再留一会儿，免得最后一个字刚落脸就变。 */
+const SPEECH_TAIL_MS = 1500
+/** 这一轮没出声（静音、只给 ACT 的静默回合）时脸留多久。 */
+const NO_SPEECH_MS = 6000
+/** 说话中的安全上限，和 Stage 整轮播放门闩的 180s 超时对齐。 */
+const SPEECH_MAX_MS = 180_000
+/** keep 的安全上限：下一个 ACT 会先替换它，万一一直没有新回复，2 分钟后也回到 normal。 */
+const KEEP_MAX_MS = 120_000
+
+/**
+ * 脸什么时候退回 normal。
+ *
+ * 状态：当前 hold、这一轮是否正在出声（Stage 的 assistantTurnBusy，整轮门闩而不是单段）、
+ * 是否已经出过声。`start` 换新的一张脸时重置；`cancel` 在场景卸载、换脸到 normal 时调用。
+ * 到点只调一次 `release`。
+ */
+export class FaceHoldTimer {
+  private timer: ReturnType<typeof setTimeout> | undefined
+  private hold: FaceHold | undefined
+  private speaking = false
+  private heardSpeech = false
+  private readonly release: () => void
+
+  constructor(release: () => void) {
+    this.release = release
+  }
+
+  start(hold: FaceHold, speaking: boolean) {
+    this.hold = hold
+    this.speaking = speaking
+    this.heardSpeech = speaking
+    this.arm()
+  }
+
+  setSpeaking(speaking: boolean) {
+    this.speaking = speaking
+    if (speaking)
+      this.heardSpeech = true
+    if (this.hold?.kind === 'speech')
+      this.arm()
+  }
+
+  cancel() {
+    clearTimeout(this.timer)
+    this.timer = undefined
+    this.hold = undefined
+  }
+
+  private arm() {
+    clearTimeout(this.timer)
+    const hold = this.hold
+    if (!hold)
+      return
+    let ms: number
+    if (hold.kind === 'seconds')
+      ms = hold.seconds * 1000
+    else if (hold.kind === 'keep')
+      ms = KEEP_MAX_MS
+    else if (this.speaking)
+      ms = SPEECH_MAX_MS
+    else
+      ms = this.heardSpeech ? SPEECH_TAIL_MS : NO_SPEECH_MS
+    this.timer = setTimeout(() => {
+      this.timer = undefined
+      this.hold = undefined
+      this.release()
+    }, ms)
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "transport": "sse",
+  "defaultProvider": "commandcode",
+  "defaultModel": "deepseek/deepseek-v4-flash",
+  "defaultThinkingLevel": "medium",
+  "hideThinkingBlock": true,
+  "retry": {
+    "enabled": true,
+    "maxRetries": 2
+  },
+  "images": {
+    "autoResize": false
+  }
+}

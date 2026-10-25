@@ -1,0 +1,9 @@
+{
+  "_note": "每条船的资产配置：lora=outputs 下的 LoRA 目录名（null 或不写=不挂）；inv=嵌入目录名（null=按 <ship>_inv 约定找）；joint_cfg=统一 cfg（null=用基调族 cfg）；lora_off=true 强制不挂 LoRA。改完自动生效，不用重启。下划线开头的键被忽略。",
+
+  "albion":  { "lora": "albion_lora_emo_spk",  "inv": null },
+  "taihou":  { "lora": "taihou_lora_clean200", "inv": "taihou_inv_clean", "joint_cfg": 4.5 },
+  "shinano": { "lora": "shinano_lora_emo_spk", "inv": null },
+  "brest":   { "lora": "brest_lora_emo_spk",   "inv": null },
+  "jinshi":  { "lora": "jinshi_lora_clean200", "inv": "jinshi_inv_clean" }
+}
