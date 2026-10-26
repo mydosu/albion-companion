@@ -241,6 +241,14 @@ export function setupWindowFlags(mainWindow: BrowserWindow) {
   // 她一旦拿到焦点就会被抬到最前面 ⇒ 底层开关开着时，获焦/显示后压回最底
   mainWindow.on('focus', resinkIfBottomLayer)
   mainWindow.on('show', resinkIfBottomLayer)
+  // 控制岛挂载时会按渲染端自己的「置顶」设置调一次 setAlwaysOnTop(true)，把启动时的沉底盖掉
+  // （2026-10-26 真机：重启后不沉底，托盘取消再勾才好）⇒ 底层开关开着时，谁置顶都撤回再沉底
+  mainWindow.on('always-on-top-changed', (_event, isAlwaysOnTop) => {
+    if (!flags.bottomLayer || !isAlwaysOnTop)
+      return
+    setWindowAlwaysOnTop(mainWindow, false)
+    resinkIfBottomLayer()
+  })
 
   // 生命周期跟主窗走：主窗关掉后不再沉底，待执行的那次也取消
   mainWindow.once('closed', () => {

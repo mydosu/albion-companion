@@ -244,6 +244,32 @@ describe('setupWindowFlags', () => {
     expect(mocks.sinkWindowToDesktopBottom).toHaveBeenCalledTimes(2)
   })
 
+  // ROOT CAUSE:
+  //
+  // The controls island calls setAlwaysOnTop(true) on mount from its own renderer setting,
+  // after the main process already sank the window. The bottom layer was lost until the tray toggled it again.
+  //
+  // We fixed this by undoing any always-on-top change while the bottom layer flag is on.
+  it('undoes a later always-on-top request while the bottom layer is on', async () => {
+    mocks.storedFlags.value = { bottomLayer: true, lockDrag: false, lockWheelZoom: false }
+    const main = createMainWindow()
+    const flags = setupWindowFlags(main.window)
+    await vi.advanceTimersByTimeAsync(2000)
+    mocks.setWindowAlwaysOnTop.mockClear()
+    mocks.sinkWindowToDesktopBottom.mockClear()
+
+    main.emitter.emit('always-on-top-changed', {}, true)
+    expect(mocks.setWindowAlwaysOnTop).toHaveBeenCalledWith(main.window, false)
+    await vi.advanceTimersByTimeAsync(60)
+    expect(mocks.sinkWindowToDesktopBottom).toHaveBeenCalledTimes(1)
+
+    // 开关关着时，置顶请求照常生效
+    flags.set('bottomLayer', false)
+    mocks.setWindowAlwaysOnTop.mockClear()
+    main.emitter.emit('always-on-top-changed', {}, true)
+    expect(mocks.setWindowAlwaysOnTop).not.toHaveBeenCalled()
+  })
+
   it('does not sink when the bottom layer flag is off, and drops a pending sink after it is turned off', async () => {
     mocks.storedFlags.value = { bottomLayer: false, lockDrag: false, lockWheelZoom: false }
     const main = createMainWindow()
