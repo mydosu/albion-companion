@@ -165,6 +165,8 @@ class TrainConfig:
     save_every: int = 1000
     checkpoint_best_n: int = 0
     valid_ratio: float = 0.0
+    # 显式验证 manifest（JSONL）：给了就不做随机切分，验证行完全不进训练。
+    valid_manifest_path: str = ""
     valid_every: int = 0
     progress: bool = True
     progress_all_ranks: bool = False

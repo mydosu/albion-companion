@@ -2320,6 +2320,14 @@ def main() -> None:
         help=("Split ratio for validation set from the single manifest. 0 disables validation."),
     )
     parser.add_argument(
+        "--valid-manifest",
+        default=None,
+        help=(
+            "Explicit validation manifest (JSONL, same format/speaker as --manifest). "
+            "Rows in it are never trained on; --valid-ratio is ignored when set."
+        ),
+    )
+    parser.add_argument(
         "--valid-every",
         type=int,
         default=0,
@@ -2579,6 +2587,8 @@ def main() -> None:
         train_cfg = replace(train_cfg, checkpoint_best_n=args.checkpoint_best_n)
     if cli_provided(raw_argv, "--valid-ratio"):
         train_cfg = replace(train_cfg, valid_ratio=args.valid_ratio)
+    if args.valid_manifest:
+        train_cfg = replace(train_cfg, valid_manifest_path=str(args.valid_manifest))
     if cli_provided(raw_argv, "--valid-every"):
         train_cfg = replace(train_cfg, valid_every=args.valid_every)
     if args.progress is not None:
@@ -2965,9 +2975,14 @@ def main() -> None:
         raise ValueError(f"valid_ratio must be in [0, 1), got {train_cfg.valid_ratio}")
     if train_cfg.valid_every < 0:
         raise ValueError(f"valid_every must be >= 0, got {train_cfg.valid_every}")
+    if train_cfg.valid_manifest_path and train_cfg.valid_ratio > 0.0:
+        raise ValueError("--valid-manifest and --valid-ratio are mutually exclusive.")
+    if train_cfg.valid_manifest_path and train_cfg.valid_every <= 0:
+        raise ValueError("valid_every must be > 0 when valid_manifest_path is set.")
     if train_cfg.valid_ratio > 0.0 and train_cfg.valid_every <= 0:
         raise ValueError("valid_every must be > 0 when valid_ratio > 0.")
-    if train_cfg.valid_ratio == 0.0 and train_cfg.valid_every > 0 and is_main_process:
+    if (train_cfg.valid_ratio == 0.0 and not train_cfg.valid_manifest_path
+            and train_cfg.valid_every > 0 and is_main_process):
         print("warning: valid_every is set but valid_ratio=0. Validation is disabled.")
     if train_cfg.checkpoint_best_n < 0:
         raise ValueError(f"checkpoint_best_n must be >= 0, got {train_cfg.checkpoint_best_n}")
@@ -3109,7 +3124,39 @@ def main() -> None:
                 f"{_CODEC_FRAMES_PER_SECOND} Hz)."
             )
     valid_dataset = None
-    if train_cfg.valid_ratio > 0.0:
+    if train_cfg.valid_manifest_path:
+        valid_index = _ManifestIndex.build(
+            manifest_path=Path(train_cfg.valid_manifest_path),
+            show_progress=bool(train_cfg.progress and is_main_process),
+            progress_desc="Index Valid Manifest",
+        )
+        train_dataset = LatentTextDataset(
+            manifest_path=train_cfg.manifest_path,
+            latent_dim=model_cfg.latent_dim,
+            max_latent_steps=train_cfg.max_latent_steps,
+            enable_caption_condition=model_cfg.use_caption_condition,
+            enable_speaker_condition=model_cfg.use_speaker_condition_resolved,
+            manifest_index=manifest_index,
+            ref_min_frames=ref_min_frames_cfg,
+            ref_max_frames=ref_max_frames_cfg,
+        )
+        valid_dataset = LatentTextDataset(
+            manifest_path=train_cfg.valid_manifest_path,
+            latent_dim=model_cfg.latent_dim,
+            max_latent_steps=train_cfg.max_latent_steps,
+            enable_caption_condition=model_cfg.use_caption_condition,
+            enable_speaker_condition=model_cfg.use_speaker_condition_resolved,
+            manifest_index=valid_index,
+            ref_min_frames=ref_min_frames_cfg,
+            ref_max_frames=ref_max_frames_cfg,
+        )
+        if is_main_process:
+            print(
+                f"Explicit validation manifest: train={len(train_dataset)} "
+                f"valid={len(valid_dataset)} ({train_cfg.valid_manifest_path}, "
+                f"valid_every={train_cfg.valid_every} steps)."
+            )
+    elif train_cfg.valid_ratio > 0.0:
         train_indices, valid_indices = split_train_valid_indices(
             num_samples=len(manifest_index.offsets),
             valid_ratio=train_cfg.valid_ratio,

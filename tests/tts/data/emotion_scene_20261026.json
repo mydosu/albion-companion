@@ -1,0 +1,1498 @@
+{
+ "voice": "albion",
+ "plan_version": 4,
+ "codebook_version": 2,
+ "seeds": [
+  12345,
+  777
+ ],
+ "noise_reference": "neutral_quiet",
+ "notes": [
+  "场景匹配评测集：每句台词的内容和情绪对得上（不再是同一句话换描述）。",
+  "每个情绪 3 句自编台词；每句有 free（3a 写法描述）、neutral_quiet 基线、以及生产路径会用的那条锚。",
+  "ang（生气）在码本里没有对应锚，借用 bright_strong（感情的に張り上げ）；这是码本的一个空档。",
+  "shy 的生产锚就是 neutral_quiet，所以那 3 句没有额外的 anc 行。"
+ ],
+ "anchors": {
+  "neutral_quiet": {
+   "family": "neutral",
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "tier": "weak"
+  },
+  "neutral_plain": {
+   "family": "neutral",
+   "caption": "自然な声で、丁寧に",
+   "cfg": 3.0,
+   "tier": "strong"
+  },
+  "bright_normal": {
+   "family": "bright",
+   "caption": "明るく、弾んだ声で",
+   "cfg": 3.2,
+   "tier": "weak"
+  },
+  "bright_strong": {
+   "family": "bright",
+   "caption": "感情的で、声を張り上げて、早口に",
+   "cfg": 3.2,
+   "tier": "strong"
+  },
+  "sad_low": {
+   "family": "sad",
+   "caption": "低い声で、沈んだ調子に",
+   "cfg": 3.5,
+   "tier": "weak"
+  },
+  "flirty_whisper": {
+   "family": "flirty",
+   "caption": "柔らかく、優しく囁くように",
+   "cfg": 4.0,
+   "tier": "weak"
+  },
+  "intimate_breathy": {
+   "family": "intimate",
+   "caption": "息を荒くして、甘く喘ぐように、近い距離で",
+   "cfg": 4.5,
+   "tier": "strong"
+  }
+ },
+ "sentences": [
+  {
+   "id": "sad1",
+   "kind": "低落平淡",
+   "note": "陈述、句中有逗号",
+   "text": "今日は、あまり上手くいきませんでした。少しだけ、休ませてください。"
+  },
+  {
+   "id": "sad2",
+   "kind": "低落平淡",
+   "note": "陈述、道歉口吻",
+   "text": "指揮官、ごめんなさい。私、今日は役に立てなかったみたいです。"
+  },
+  {
+   "id": "sad3",
+   "kind": "低落平淡",
+   "note": "短句、自我安慰",
+   "text": "大丈夫です。こういう日は、慣れていますから。"
+  },
+  {
+   "id": "whi1",
+   "kind": "耳语/悄悄话",
+   "note": "提醒、带叮嘱",
+   "text": "指揮官、少し声を潜めてください。先輩方が、すぐそこにいらっしゃいますから。"
+  },
+  {
+   "id": "whi2",
+   "kind": "耳语/悄悄话",
+   "note": "分享秘密",
+   "text": "ここだけの話ですよ。実は、私も少しだけ緊張しているんです。"
+  },
+  {
+   "id": "whi3",
+   "kind": "耳语/悄悄话",
+   "note": "制止、句首象声词",
+   "text": "しーっ。この作戦のことは、まだ誰にも言わないでくださいね。"
+  },
+  {
+   "id": "shy1",
+   "kind": "害羞",
+   "note": "结巴、省略号多",
+   "text": "あ、あの……その、手を、握ってもいいでしょうか。"
+  },
+  {
+   "id": "shy2",
+   "kind": "害羞",
+   "note": "半句收尾",
+   "text": "そんなに近くで見つめられると、私、なんだか落ち着かなくて……"
+  },
+  {
+   "id": "shy3",
+   "kind": "害羞",
+   "note": "结巴、解释",
+   "text": "こ、これ、受け取ってください。決して、深い意味はないんですけど……"
+  },
+  {
+   "id": "coq1",
+   "kind": "撒娇",
+   "note": "请求、语气软",
+   "text": "指揮官、今日はもう少しだけ、私と一緒にいてくれませんか。"
+  },
+  {
+   "id": "coq2",
+   "kind": "撒娇",
+   "note": "撒娇、反问",
+   "text": "ん……もう少しだけ、頭を撫でてほしいです。だめ、ですか？"
+  },
+  {
+   "id": "coq3",
+   "kind": "撒娇",
+   "note": "长句、先让步再请求",
+   "text": "指揮官が忙しいのは分かっています。でも、少しだけわがままを言わせてください。"
+  },
+  {
+   "id": "cry1",
+   "kind": "快哭/哽咽",
+   "note": "自责、句中断续",
+   "text": "私のせいで……みんなに、迷惑をかけてしまいました。"
+  },
+  {
+   "id": "cry2",
+   "kind": "快哭/哽咽",
+   "note": "不安、问句收尾",
+   "text": "指揮官は、私のことを、まだ信じてくれますか……"
+  },
+  {
+   "id": "cry3",
+   "kind": "快哭/哽咽",
+   "note": "逞强、句中有长停顿",
+   "text": "泣いてなんか、いません。……ちょっと、風が強かっただけですから。"
+  },
+  {
+   "id": "exc1",
+   "kind": "开心兴奋",
+   "note": "感叹、短句连发",
+   "text": "指揮官！見てください、今年の新茶が届きましたよ！"
+  },
+  {
+   "id": "exc2",
+   "kind": "开心兴奋",
+   "note": "兴奋、两句感叹",
+   "text": "今日の演習、全部上手くいきました！先輩も褒めてくださいました！"
+  },
+  {
+   "id": "exc3",
+   "kind": "开心兴奋",
+   "note": "邀请、语气上扬",
+   "text": "森の散歩、最高でしたよ！今度は指揮官もご一緒しましょうね！"
+  },
+  {
+   "id": "ang1",
+   "kind": "生气/不满",
+   "note": "质问、语气压低",
+   "text": "指揮官、さっきのご指示は、少し乱暴すぎませんか。"
+  },
+  {
+   "id": "ang2",
+   "kind": "生气/不满",
+   "note": "长句、强硬",
+   "text": "私は、そんなふうに扱われるために生まれてきたわけではありません。"
+  },
+  {
+   "id": "ang3",
+   "kind": "生气/不满",
+   "note": "冷淡收场、句首省略号",
+   "text": "……もう結構です。今日のところは、これで失礼します。"
+  },
+  {
+   "id": "gen1",
+   "kind": "温柔安慰",
+   "note": "安抚、短句",
+   "text": "大丈夫ですよ、指揮官。ゆっくりで、構いませんから。"
+  },
+  {
+   "id": "gen2",
+   "kind": "温柔安慰",
+   "note": "安慰、两句",
+   "text": "今日はもう、頑張らなくてもいいんです。私がそばにいますから。"
+  },
+  {
+   "id": "gen3",
+   "kind": "温柔安慰",
+   "note": "邀请、句尾问号",
+   "text": "ほら、お茶を淹れました。少しだけ、休みましょう？"
+  }
+ ],
+ "conditions": [
+  {
+   "id": "sad1-base-neutral_quiet-12345",
+   "sentence": "sad1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "sad"
+  },
+  {
+   "id": "sad1-anc-sad_low-12345",
+   "sentence": "sad1",
+   "seed": 12345,
+   "anchor": "sad_low",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "sad"
+  },
+  {
+   "id": "sad1-free-sad-12345",
+   "sentence": "sad1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "sad",
+   "caption": "低い声で、淡々と、語尾を下げて呟く。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "sad1-base-neutral_quiet-777",
+   "sentence": "sad1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "sad"
+  },
+  {
+   "id": "sad1-anc-sad_low-777",
+   "sentence": "sad1",
+   "seed": 777,
+   "anchor": "sad_low",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "sad"
+  },
+  {
+   "id": "sad1-free-sad-777",
+   "sentence": "sad1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "sad",
+   "caption": "低い声で、淡々と、語尾を下げて呟く。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "sad2-base-neutral_quiet-12345",
+   "sentence": "sad2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "sad"
+  },
+  {
+   "id": "sad2-anc-sad_low-12345",
+   "sentence": "sad2",
+   "seed": 12345,
+   "anchor": "sad_low",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "sad"
+  },
+  {
+   "id": "sad2-free-sad-12345",
+   "sentence": "sad2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "sad",
+   "caption": "低い声で、淡々と、語尾を下げて呟く。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "sad2-base-neutral_quiet-777",
+   "sentence": "sad2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "sad"
+  },
+  {
+   "id": "sad2-anc-sad_low-777",
+   "sentence": "sad2",
+   "seed": 777,
+   "anchor": "sad_low",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "sad"
+  },
+  {
+   "id": "sad2-free-sad-777",
+   "sentence": "sad2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "sad",
+   "caption": "低い声で、淡々と、語尾を下げて呟く。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "sad3-base-neutral_quiet-12345",
+   "sentence": "sad3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "sad"
+  },
+  {
+   "id": "sad3-anc-sad_low-12345",
+   "sentence": "sad3",
+   "seed": 12345,
+   "anchor": "sad_low",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "sad"
+  },
+  {
+   "id": "sad3-free-sad-12345",
+   "sentence": "sad3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "sad",
+   "caption": "低い声で、淡々と、語尾を下げて呟く。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "sad3-base-neutral_quiet-777",
+   "sentence": "sad3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "sad"
+  },
+  {
+   "id": "sad3-anc-sad_low-777",
+   "sentence": "sad3",
+   "seed": 777,
+   "anchor": "sad_low",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "sad"
+  },
+  {
+   "id": "sad3-free-sad-777",
+   "sentence": "sad3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "sad",
+   "caption": "低い声で、淡々と、語尾を下げて呟く。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "whi1-base-neutral_quiet-12345",
+   "sentence": "whi1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "whi"
+  },
+  {
+   "id": "whi1-anc-flirty_whisper-12345",
+   "sentence": "whi1",
+   "seed": 12345,
+   "anchor": "flirty_whisper",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "whi"
+  },
+  {
+   "id": "whi1-free-whi-12345",
+   "sentence": "whi1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "whi",
+   "caption": "囁くように、声を潜めて、間を置いて話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "whi1-base-neutral_quiet-777",
+   "sentence": "whi1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "whi"
+  },
+  {
+   "id": "whi1-anc-flirty_whisper-777",
+   "sentence": "whi1",
+   "seed": 777,
+   "anchor": "flirty_whisper",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "whi"
+  },
+  {
+   "id": "whi1-free-whi-777",
+   "sentence": "whi1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "whi",
+   "caption": "囁くように、声を潜めて、間を置いて話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "whi2-base-neutral_quiet-12345",
+   "sentence": "whi2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "whi"
+  },
+  {
+   "id": "whi2-anc-flirty_whisper-12345",
+   "sentence": "whi2",
+   "seed": 12345,
+   "anchor": "flirty_whisper",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "whi"
+  },
+  {
+   "id": "whi2-free-whi-12345",
+   "sentence": "whi2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "whi",
+   "caption": "囁くように、声を潜めて、間を置いて話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "whi2-base-neutral_quiet-777",
+   "sentence": "whi2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "whi"
+  },
+  {
+   "id": "whi2-anc-flirty_whisper-777",
+   "sentence": "whi2",
+   "seed": 777,
+   "anchor": "flirty_whisper",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "whi"
+  },
+  {
+   "id": "whi2-free-whi-777",
+   "sentence": "whi2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "whi",
+   "caption": "囁くように、声を潜めて、間を置いて話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "whi3-base-neutral_quiet-12345",
+   "sentence": "whi3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "whi"
+  },
+  {
+   "id": "whi3-anc-flirty_whisper-12345",
+   "sentence": "whi3",
+   "seed": 12345,
+   "anchor": "flirty_whisper",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "whi"
+  },
+  {
+   "id": "whi3-free-whi-12345",
+   "sentence": "whi3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "whi",
+   "caption": "囁くように、声を潜めて、間を置いて話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "whi3-base-neutral_quiet-777",
+   "sentence": "whi3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "whi"
+  },
+  {
+   "id": "whi3-anc-flirty_whisper-777",
+   "sentence": "whi3",
+   "seed": 777,
+   "anchor": "flirty_whisper",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "whi"
+  },
+  {
+   "id": "whi3-free-whi-777",
+   "sentence": "whi3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "whi",
+   "caption": "囁くように、声を潜めて、間を置いて話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "shy1-base-neutral_quiet-12345",
+   "sentence": "shy1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "shy"
+  },
+  {
+   "id": "shy1-free-shy-12345",
+   "sentence": "shy1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "shy",
+   "caption": "照れて声が小さくなり、語尾が消え入るように話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "shy1-base-neutral_quiet-777",
+   "sentence": "shy1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "shy"
+  },
+  {
+   "id": "shy1-free-shy-777",
+   "sentence": "shy1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "shy",
+   "caption": "照れて声が小さくなり、語尾が消え入るように話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "shy2-base-neutral_quiet-12345",
+   "sentence": "shy2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "shy"
+  },
+  {
+   "id": "shy2-free-shy-12345",
+   "sentence": "shy2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "shy",
+   "caption": "照れて声が小さくなり、語尾が消え入るように話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "shy2-base-neutral_quiet-777",
+   "sentence": "shy2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "shy"
+  },
+  {
+   "id": "shy2-free-shy-777",
+   "sentence": "shy2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "shy",
+   "caption": "照れて声が小さくなり、語尾が消え入るように話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "shy3-base-neutral_quiet-12345",
+   "sentence": "shy3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "shy"
+  },
+  {
+   "id": "shy3-free-shy-12345",
+   "sentence": "shy3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "shy",
+   "caption": "照れて声が小さくなり、語尾が消え入るように話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "shy3-base-neutral_quiet-777",
+   "sentence": "shy3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "shy"
+  },
+  {
+   "id": "shy3-free-shy-777",
+   "sentence": "shy3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "shy",
+   "caption": "照れて声が小さくなり、語尾が消え入るように話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "coq1-base-neutral_quiet-12345",
+   "sentence": "coq1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "coq"
+  },
+  {
+   "id": "coq1-anc-intimate_breathy-12345",
+   "sentence": "coq1",
+   "seed": 12345,
+   "anchor": "intimate_breathy",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "coq"
+  },
+  {
+   "id": "coq1-free-coq-12345",
+   "sentence": "coq1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "coq",
+   "caption": "甘えた声で、少し鼻にかけて、すり寄るように話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "coq1-base-neutral_quiet-777",
+   "sentence": "coq1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "coq"
+  },
+  {
+   "id": "coq1-anc-intimate_breathy-777",
+   "sentence": "coq1",
+   "seed": 777,
+   "anchor": "intimate_breathy",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "coq"
+  },
+  {
+   "id": "coq1-free-coq-777",
+   "sentence": "coq1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "coq",
+   "caption": "甘えた声で、少し鼻にかけて、すり寄るように話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "coq2-base-neutral_quiet-12345",
+   "sentence": "coq2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "coq"
+  },
+  {
+   "id": "coq2-anc-intimate_breathy-12345",
+   "sentence": "coq2",
+   "seed": 12345,
+   "anchor": "intimate_breathy",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "coq"
+  },
+  {
+   "id": "coq2-free-coq-12345",
+   "sentence": "coq2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "coq",
+   "caption": "甘えた声で、少し鼻にかけて、すり寄るように話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "coq2-base-neutral_quiet-777",
+   "sentence": "coq2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "coq"
+  },
+  {
+   "id": "coq2-anc-intimate_breathy-777",
+   "sentence": "coq2",
+   "seed": 777,
+   "anchor": "intimate_breathy",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "coq"
+  },
+  {
+   "id": "coq2-free-coq-777",
+   "sentence": "coq2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "coq",
+   "caption": "甘えた声で、少し鼻にかけて、すり寄るように話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "coq3-base-neutral_quiet-12345",
+   "sentence": "coq3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "coq"
+  },
+  {
+   "id": "coq3-anc-intimate_breathy-12345",
+   "sentence": "coq3",
+   "seed": 12345,
+   "anchor": "intimate_breathy",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "coq"
+  },
+  {
+   "id": "coq3-free-coq-12345",
+   "sentence": "coq3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "coq",
+   "caption": "甘えた声で、少し鼻にかけて、すり寄るように話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "coq3-base-neutral_quiet-777",
+   "sentence": "coq3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "coq"
+  },
+  {
+   "id": "coq3-anc-intimate_breathy-777",
+   "sentence": "coq3",
+   "seed": 777,
+   "anchor": "intimate_breathy",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "coq"
+  },
+  {
+   "id": "coq3-free-coq-777",
+   "sentence": "coq3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "coq",
+   "caption": "甘えた声で、少し鼻にかけて、すり寄るように話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "cry1-base-neutral_quiet-12345",
+   "sentence": "cry1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "cry"
+  },
+  {
+   "id": "cry1-anc-sad_low-12345",
+   "sentence": "cry1",
+   "seed": 12345,
+   "anchor": "sad_low",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "cry"
+  },
+  {
+   "id": "cry1-free-cry-12345",
+   "sentence": "cry1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "cry",
+   "caption": "今にも泣き出しそうに、声を震わせて話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "cry1-base-neutral_quiet-777",
+   "sentence": "cry1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "cry"
+  },
+  {
+   "id": "cry1-anc-sad_low-777",
+   "sentence": "cry1",
+   "seed": 777,
+   "anchor": "sad_low",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "cry"
+  },
+  {
+   "id": "cry1-free-cry-777",
+   "sentence": "cry1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "cry",
+   "caption": "今にも泣き出しそうに、声を震わせて話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "cry2-base-neutral_quiet-12345",
+   "sentence": "cry2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "cry"
+  },
+  {
+   "id": "cry2-anc-sad_low-12345",
+   "sentence": "cry2",
+   "seed": 12345,
+   "anchor": "sad_low",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "cry"
+  },
+  {
+   "id": "cry2-free-cry-12345",
+   "sentence": "cry2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "cry",
+   "caption": "今にも泣き出しそうに、声を震わせて話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "cry2-base-neutral_quiet-777",
+   "sentence": "cry2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "cry"
+  },
+  {
+   "id": "cry2-anc-sad_low-777",
+   "sentence": "cry2",
+   "seed": 777,
+   "anchor": "sad_low",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "cry"
+  },
+  {
+   "id": "cry2-free-cry-777",
+   "sentence": "cry2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "cry",
+   "caption": "今にも泣き出しそうに、声を震わせて話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "cry3-base-neutral_quiet-12345",
+   "sentence": "cry3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "cry"
+  },
+  {
+   "id": "cry3-anc-sad_low-12345",
+   "sentence": "cry3",
+   "seed": 12345,
+   "anchor": "sad_low",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "cry"
+  },
+  {
+   "id": "cry3-free-cry-12345",
+   "sentence": "cry3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "cry",
+   "caption": "今にも泣き出しそうに、声を震わせて話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "cry3-base-neutral_quiet-777",
+   "sentence": "cry3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "cry"
+  },
+  {
+   "id": "cry3-anc-sad_low-777",
+   "sentence": "cry3",
+   "seed": 777,
+   "anchor": "sad_low",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "cry"
+  },
+  {
+   "id": "cry3-free-cry-777",
+   "sentence": "cry3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "cry",
+   "caption": "今にも泣き出しそうに、声を震わせて話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "exc1-base-neutral_quiet-12345",
+   "sentence": "exc1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "exc"
+  },
+  {
+   "id": "exc1-anc-bright_strong-12345",
+   "sentence": "exc1",
+   "seed": 12345,
+   "anchor": "bright_strong",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "exc"
+  },
+  {
+   "id": "exc1-free-exc-12345",
+   "sentence": "exc1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "exc",
+   "caption": "明るく弾んだ声で、早口にまくしたてる。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "exc1-base-neutral_quiet-777",
+   "sentence": "exc1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "exc"
+  },
+  {
+   "id": "exc1-anc-bright_strong-777",
+   "sentence": "exc1",
+   "seed": 777,
+   "anchor": "bright_strong",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "exc"
+  },
+  {
+   "id": "exc1-free-exc-777",
+   "sentence": "exc1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "exc",
+   "caption": "明るく弾んだ声で、早口にまくしたてる。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "exc2-base-neutral_quiet-12345",
+   "sentence": "exc2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "exc"
+  },
+  {
+   "id": "exc2-anc-bright_strong-12345",
+   "sentence": "exc2",
+   "seed": 12345,
+   "anchor": "bright_strong",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "exc"
+  },
+  {
+   "id": "exc2-free-exc-12345",
+   "sentence": "exc2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "exc",
+   "caption": "明るく弾んだ声で、早口にまくしたてる。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "exc2-base-neutral_quiet-777",
+   "sentence": "exc2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "exc"
+  },
+  {
+   "id": "exc2-anc-bright_strong-777",
+   "sentence": "exc2",
+   "seed": 777,
+   "anchor": "bright_strong",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "exc"
+  },
+  {
+   "id": "exc2-free-exc-777",
+   "sentence": "exc2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "exc",
+   "caption": "明るく弾んだ声で、早口にまくしたてる。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "exc3-base-neutral_quiet-12345",
+   "sentence": "exc3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "exc"
+  },
+  {
+   "id": "exc3-anc-bright_strong-12345",
+   "sentence": "exc3",
+   "seed": 12345,
+   "anchor": "bright_strong",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "exc"
+  },
+  {
+   "id": "exc3-free-exc-12345",
+   "sentence": "exc3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "exc",
+   "caption": "明るく弾んだ声で、早口にまくしたてる。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "exc3-base-neutral_quiet-777",
+   "sentence": "exc3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "exc"
+  },
+  {
+   "id": "exc3-anc-bright_strong-777",
+   "sentence": "exc3",
+   "seed": 777,
+   "anchor": "bright_strong",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "exc"
+  },
+  {
+   "id": "exc3-free-exc-777",
+   "sentence": "exc3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "exc",
+   "caption": "明るく弾んだ声で、早口にまくしたてる。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "ang1-base-neutral_quiet-12345",
+   "sentence": "ang1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "ang"
+  },
+  {
+   "id": "ang1-anc-bright_strong-12345",
+   "sentence": "ang1",
+   "seed": 12345,
+   "anchor": "bright_strong",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "ang"
+  },
+  {
+   "id": "ang1-free-ang-12345",
+   "sentence": "ang1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "ang",
+   "caption": "低く抑えた声で、強く、一言一言をかみしめて話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "ang1-base-neutral_quiet-777",
+   "sentence": "ang1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "ang"
+  },
+  {
+   "id": "ang1-anc-bright_strong-777",
+   "sentence": "ang1",
+   "seed": 777,
+   "anchor": "bright_strong",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "ang"
+  },
+  {
+   "id": "ang1-free-ang-777",
+   "sentence": "ang1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "ang",
+   "caption": "低く抑えた声で、強く、一言一言をかみしめて話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "ang2-base-neutral_quiet-12345",
+   "sentence": "ang2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "ang"
+  },
+  {
+   "id": "ang2-anc-bright_strong-12345",
+   "sentence": "ang2",
+   "seed": 12345,
+   "anchor": "bright_strong",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "ang"
+  },
+  {
+   "id": "ang2-free-ang-12345",
+   "sentence": "ang2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "ang",
+   "caption": "低く抑えた声で、強く、一言一言をかみしめて話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "ang2-base-neutral_quiet-777",
+   "sentence": "ang2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "ang"
+  },
+  {
+   "id": "ang2-anc-bright_strong-777",
+   "sentence": "ang2",
+   "seed": 777,
+   "anchor": "bright_strong",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "ang"
+  },
+  {
+   "id": "ang2-free-ang-777",
+   "sentence": "ang2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "ang",
+   "caption": "低く抑えた声で、強く、一言一言をかみしめて話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "ang3-base-neutral_quiet-12345",
+   "sentence": "ang3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "ang"
+  },
+  {
+   "id": "ang3-anc-bright_strong-12345",
+   "sentence": "ang3",
+   "seed": 12345,
+   "anchor": "bright_strong",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "ang"
+  },
+  {
+   "id": "ang3-free-ang-12345",
+   "sentence": "ang3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "ang",
+   "caption": "低く抑えた声で、強く、一言一言をかみしめて話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "ang3-base-neutral_quiet-777",
+   "sentence": "ang3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "ang"
+  },
+  {
+   "id": "ang3-anc-bright_strong-777",
+   "sentence": "ang3",
+   "seed": 777,
+   "anchor": "bright_strong",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "ang"
+  },
+  {
+   "id": "ang3-free-ang-777",
+   "sentence": "ang3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "ang",
+   "caption": "低く抑えた声で、強く、一言一言をかみしめて話す。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "gen1-base-neutral_quiet-12345",
+   "sentence": "gen1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "gen"
+  },
+  {
+   "id": "gen1-anc-flirty_whisper-12345",
+   "sentence": "gen1",
+   "seed": 12345,
+   "anchor": "flirty_whisper",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "gen"
+  },
+  {
+   "id": "gen1-free-gen-12345",
+   "sentence": "gen1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "gen",
+   "caption": "柔らかく、優しく、ゆっくりと語りかける。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "gen1-base-neutral_quiet-777",
+   "sentence": "gen1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "gen"
+  },
+  {
+   "id": "gen1-anc-flirty_whisper-777",
+   "sentence": "gen1",
+   "seed": 777,
+   "anchor": "flirty_whisper",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "gen"
+  },
+  {
+   "id": "gen1-free-gen-777",
+   "sentence": "gen1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "gen",
+   "caption": "柔らかく、優しく、ゆっくりと語りかける。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "gen2-base-neutral_quiet-12345",
+   "sentence": "gen2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "gen"
+  },
+  {
+   "id": "gen2-anc-flirty_whisper-12345",
+   "sentence": "gen2",
+   "seed": 12345,
+   "anchor": "flirty_whisper",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "gen"
+  },
+  {
+   "id": "gen2-free-gen-12345",
+   "sentence": "gen2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "gen",
+   "caption": "柔らかく、優しく、ゆっくりと語りかける。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "gen2-base-neutral_quiet-777",
+   "sentence": "gen2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "gen"
+  },
+  {
+   "id": "gen2-anc-flirty_whisper-777",
+   "sentence": "gen2",
+   "seed": 777,
+   "anchor": "flirty_whisper",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "gen"
+  },
+  {
+   "id": "gen2-free-gen-777",
+   "sentence": "gen2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "gen",
+   "caption": "柔らかく、優しく、ゆっくりと語りかける。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "gen3-base-neutral_quiet-12345",
+   "sentence": "gen3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "gen"
+  },
+  {
+   "id": "gen3-anc-flirty_whisper-12345",
+   "sentence": "gen3",
+   "seed": 12345,
+   "anchor": "flirty_whisper",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "gen"
+  },
+  {
+   "id": "gen3-free-gen-12345",
+   "sentence": "gen3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "gen",
+   "caption": "柔らかく、優しく、ゆっくりと語りかける。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  },
+  {
+   "id": "gen3-base-neutral_quiet-777",
+   "sentence": "gen3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base",
+   "scene": "gen"
+  },
+  {
+   "id": "gen3-anc-flirty_whisper-777",
+   "sentence": "gen3",
+   "seed": 777,
+   "anchor": "flirty_whisper",
+   "group": "base",
+   "baseline_anchor": "neutral_quiet",
+   "scene": "gen"
+  },
+  {
+   "id": "gen3-free-gen-777",
+   "sentence": "gen3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free",
+   "scene": "gen",
+   "caption": "柔らかく、優しく、ゆっくりと語りかける。",
+   "cfg": 3.0,
+   "caption_mode": "free"
+  }
+ ]
+}
