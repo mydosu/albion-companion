@@ -80,6 +80,7 @@ defineExpose({
   captureFrame: () => canvasRef.value?.captureFrame(),
   setEmotion: (emotion: string, intensity?: number) => modelRef.value?.setEmotion(emotion, intensity),
   applyAct: (act: SpineStageAct) => modelRef.value?.applyAct(act) ?? false,
+  setMouthLevel: (level: number) => modelRef.value?.setMouthLevel(level),
   listAnimations: () => modelRef.value?.listAnimations() ?? [],
   listSkins: () => modelRef.value?.listSkins() ?? [],
   skeletonVersion: () => modelRef.value?.skeletonVersion() ?? '',

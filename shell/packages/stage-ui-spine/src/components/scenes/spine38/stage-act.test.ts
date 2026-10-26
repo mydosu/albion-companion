@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { asHeadMotion, FACE_ANIMATION, FaceHoldTimer, HEAD_MOTIONS, headMotionOffset, parseHold, resolveFace } from './stage-act'
+import { asHeadMotion, FACE_ANIMATION, FaceHoldTimer, HEAD_MOTIONS, headMotionOffset, holdDurationMs, parseHold, resolveFace } from './stage-act'
 
 describe('resolveFace', () => {
   it('prefers a known face over emotion, and maps every semantic name including 4-7', () => {
@@ -70,7 +70,8 @@ describe('faceHoldTimer', () => {
     const release = vi.fn()
     const hold = new FaceHoldTimer(release)
     hold.start({ kind: 'speech' }, true)
-    vi.advanceTimersByTime(60_000)
+    // 说话中的上限是 6s（脸图期间眼睛不动，宁短勿长），所以别越过它
+    vi.advanceTimersByTime(5_000)
     expect(release).not.toHaveBeenCalled()
     hold.setSpeaking(false)
     vi.advanceTimersByTime(1499)
@@ -83,14 +84,16 @@ describe('faceHoldTimer', () => {
     expect(release).toHaveBeenCalledTimes(1)
   })
 
-  it('speech hold without any speech releases after 6s; speaking has a 180s cap', () => {
+  it('speech hold without any speech releases after 6s; speaking caps the face at 6s too', () => {
     const release = vi.fn()
     const hold = new FaceHoldTimer(release)
     hold.start({ kind: 'speech' }, false)
     vi.advanceTimersByTime(6000)
     expect(release).toHaveBeenCalledTimes(1)
     hold.start({ kind: 'speech' }, true)
-    vi.advanceTimersByTime(180_000)
+    vi.advanceTimersByTime(5999)
+    expect(release).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(1)
     expect(release).toHaveBeenCalledTimes(2)
   })
 
@@ -114,5 +117,19 @@ describe('faceHoldTimer', () => {
     hold.cancel()
     vi.advanceTimersByTime(200_000)
     expect(release).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('holdDurationMs', () => {
+  it('caps a default speech face at 6s and hands out the tail once speech stops', () => {
+    expect(holdDurationMs({ kind: 'speech' }, true, true)).toBe(6000)
+    expect(holdDurationMs({ kind: 'speech' }, true, false)).toBe(6000)
+    expect(holdDurationMs({ kind: 'speech' }, false, true)).toBe(1500)
+    expect(holdDurationMs({ kind: 'speech' }, false, false)).toBe(6000)
+  })
+
+  it('honours an explicit seconds value and keep', () => {
+    expect(holdDurationMs({ kind: 'seconds', seconds: 8 }, true, true)).toBe(8000)
+    expect(holdDurationMs({ kind: 'keep' }, false, false)).toBe(120_000)
   })
 })
