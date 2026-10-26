@@ -49,6 +49,8 @@ GROW_PX = 2
 FEATHER_PX = 1.5
 # 擦完以后每只眼允许残留的「眼白/虹膜」像素上限（不达标直接报错）
 LEFTOVER_LIMIT = 15
+# 凸包外扩：虹膜上缘那圈最淡的紫不进 seed，靠凸包长大覆盖
+HULL_PAD_PX = 3
 
 
 def parse_atlas(text: str) -> dict[str, dict]:
@@ -233,6 +235,7 @@ def build_mask(page_img: Image.Image, face_name: str, face: dict, atlas: dict, e
     ink = [[False] * W for _ in range(H)]
     browc = [[False] * W for _ in range(H)]
     warm = [[False] * W for _ in range(H)]
+    hairc = [[False] * W for _ in range(H)]
     for y in range(H):
         for x in range(W):
             r, g, b, a = wp[x, y]
@@ -241,19 +244,26 @@ def build_mask(page_img: Image.Image, face_name: str, face: dict, atlas: dict, e
             lum = 0.299 * r + 0.587 * g + 0.114 * b
             sat = max(r, g, b) - min(r, g, b)
             iswhite = lum > 195 and sat < 45
-            isiris = sat > 60
+            # 虹膜：有的脸虹膜上缘是「淡紫/蓝紫」（b 比 r 大 15–30、sat 40–55），只认 sat>60
+            # 会把这只眼的虹膜整个漏掉；皮肤是 r>b（暖），发丝 sat≈17，用 sat>28 且 b-r>12 分开。
+            isiris = (sat > 60) or (sat > 28 and (b - r) > 12)
             dark = lum < 105
             inlim = lim[x, y] > 127
             seed[y][x] = inlim and (iswhite or isiris)
             ink[y][x] = inlim and (dark or iswhite or isiris)
             browc[y][x] = inlim and (b - r) >= 3 and 50 <= lum <= 210
             warm[y][x] = inlim and (r - b) >= 22 and 150 <= lum <= 240
+            hairc[y][x] = inlim and sat < 28 and 100 <= lum <= 200
 
-    # 头发上的高光也是「亮、低饱和」，会混进 seed，把额头/刘海一起擦掉。
-    # 它们紧挨着偏紫的发丝（b-r>=3），所以 seed 离这类像素 3px 以内的都不要。
-    brow_d = dilate(browc, W, H, 3)
-    seed = [[seed[y][x] and not brow_d[y][x] for x in range(W)] for y in range(H)]
-    ink = [[ink[y][x] and not brow_d[y][x] for x in range(W)] for y in range(H)]
+    # 发丝排除**已删**：按「低饱和浅紫」排（sat<28, lum 100–200）实测仍会把眼睛最淡的那圈
+    # （sat 18–27 的虹膜上缘/眼白反光）一起排掉，脸 1/2/3/4/6/7/8/11 各留几十 px 没擦。
+    # 头发高光本来就在眼槽 poly（lim）之外，poly 已经把额头/刘海挡住了，这条排除是多余的。
+    hair = hairc
+    hair_d = hair
+    hair_px = sum(1 for y in range(H) for x in range(W) if hair[y][x])
+    hair_only = sum(1 for y in range(H) for x in range(W) if hair[y][x] and not (seed[y][x] or ink[y][x]))
+    seed = [[seed[y][x] and not hair_d[y][x] for x in range(W)] for y in range(H)]
+    ink = [[ink[y][x] and not hair_d[y][x] for x in range(W)] for y in range(H)]
 
     bodies = [c for c in comps8(seed, W, H) if len(c) >= 40]
     if not bodies:
@@ -301,7 +311,11 @@ def build_mask(page_img: Image.Image, face_name: str, face: dict, atlas: dict, e
             hd.polygon(hp, fill=255)
     hull = hull_img.load()
 
-    body = [[ink[y][x] or hull[x, y] > 127 for x in range(W)] for y in range(H)]
+    # 凸包外扩 3px 再并进本体：虹膜上缘那圈「淡紫/蓝紫」饱和度不够（sat 40–55），进不了 seed，
+    # 但紧贴虹膜，靠凸包外扩才能盖住——否则脸 1/2/3/4/6/7/8/11 会留一圈没擦的上缘。
+    hull_b = [[hull[x, y] > 127 for x in range(W)] for y in range(H)]
+    hull_d = dilate(hull_b, W, H, HULL_PAD_PX, [[lim[x, y] > 127 for x in range(W)] for y in range(H)])
+    body = [[ink[y][x] or hull_d[y][x] for x in range(W)] for y in range(H)]
     # 闭运算会吃掉孤立的眼白小岛，最后把原始 seed 并回来——mask 必须覆盖每一颗眼白/虹膜
     closed = fill_holes(erode(dilate(body, W, H, 1), W, H, 1), W, H)
     body = [[closed[y][x] or seed[y][x] for x in range(W)] for y in range(H)]
@@ -311,7 +325,7 @@ def build_mask(page_img: Image.Image, face_name: str, face: dict, atlas: dict, e
     for bi, cells in enumerate(bodies):
         for (x, y) in cells:
             gid[y][x] = gid_of[bi]
-    allowed = [[(ink[y][x] or warm[y][x] or hull[x, y] > 127) and lim[x, y] > 127 for x in range(W)] for y in range(H)]
+    allowed = [[(ink[y][x] or warm[y][x] or hull_d[y][x]) and lim[x, y] > 127 for x in range(W)] for y in range(H)]
     grow = [row[:] for row in body]
     q = deque()
     for y in range(H):
@@ -382,28 +396,42 @@ def build_mask(page_img: Image.Image, face_name: str, face: dict, atlas: dict, e
                 n += 1
     m = m.filter(ImageFilter.GaussianBlur(FEATHER_PX))
 
-    # 自检：擦完以后每只眼残留的「眼白/虹膜」像素必须 < LEFTOVER_LIMIT，否则报错（不静默输出）
-    leftover = {}
-    for g in sorted(gtop):
-        leftover[g] = sum(1 for y in range(H) for x in range(W)
-                          if seed[y][x] and not final[y][x] and band_of(x) == g)
-    # 没有分组 id 的 seed 像素（理论上不该有）也算进最近的一组
-    orphan = sum(1 for y in range(H) for x in range(W) if seed[y][x] and not final[y][x] and gid[y][x] < 0)
-    if any(v >= LEFTOVER_LIMIT for v in leftover.values()) or orphan >= LEFTOVER_LIMIT:
-        dbg = {}
-        for g in sorted(gtop):
-            cells = [(x, y) for y in range(H) for x in range(W) if seed[y][x] and not final[y][x] and gid[y][x] == g]
-            if cells:
-                xs2 = [c[0] for c in cells]
-                ys2 = [c[1] for c in cells]
-                dbg[g] = {"n": len(cells), "bbox": [min(xs2), min(ys2), max(xs2), max(ys2)],
-                          "range": [gtop[g], gbot[g]], "inMerged": sum(1 for (x, y) in cells if merged[y][x]),
-                          "inGrow": sum(1 for (x, y) in cells if grow[y][x]), "inBody": sum(1 for (x, y) in cells if body[y][x])}
-        raise SystemExit(f"脸 {face_name}: 擦后仍有眼白/虹膜残留 {leftover} orphan={orphan}（上限 {LEFTOVER_LIMIT}），{dbg}")
+    # 自检：**独立判据**，不复用 seed 的排除规则（复用等于自己查自己）。
+    # 擦后仍满足「b-r>15 且 sat>35（虹膜色）」或「lum>200 且 sat<45（眼白）」的像素，左右分开数。
+    leftover = {"L": 0, "R": 0}
+    for y in range(H):
+        for x in range(W):
+            if final[y][x]:
+                continue
+            r, g, b, a = wp[x, y]
+            if a <= 40:
+                continue
+            lum2 = 0.299 * r + 0.587 * g + 0.114 * b
+            sat2 = max(r, g, b) - min(r, g, b)
+            if (b - r > 15 and sat2 > 35) or (lum2 > 200 and sat2 < 45):
+                leftover["L" if band_of(x) == 0 else "R"] += 1
+    if max(leftover.values()) > LEFTOVER_LIMIT:
+        cells = [(x, y) for y in range(H) for x in range(W) if not final[y][x] and wp[x, y][3] > 40
+                 and ((wp[x, y][2] - wp[x, y][0] > 15 and max(wp[x, y][:3]) - min(wp[x, y][:3]) > 35)
+                      or (0.299 * wp[x, y][0] + 0.587 * wp[x, y][1] + 0.114 * wp[x, y][2] > 200
+                          and max(wp[x, y][:3]) - min(wp[x, y][:3]) < 45))]
+        out_lim = sum(1 for (x, y) in cells if lim[x, y] <= 127)
+        out_hull = sum(1 for (x, y) in cells if not hull_d[y][x])
+        out_band = sum(1 for (x, y) in cells if not (gtop[band_of(x)] - UPPER_MARGIN_PX <= y <= gbot[band_of(x)] + LOWER_MARGIN_PX))
+        xs2 = [c[0] for c in cells] or [0]
+        ys2 = [c[1] for c in cells] or [0]
+        raise SystemExit(f"脸 {face_name}: 擦后仍有虹膜/眼白残留 {leftover}（每侧上限 {LEFTOVER_LIMIT}）；"
+                         f"残留 bbox {(min(xs2), min(ys2), max(xs2), max(ys2))}，"
+                         f"其中在 poly 外 {out_lim}、在凸包外 {out_hull}、在竖直范围外 {out_band}、"
+                         f"在 allowed 外 {sum(1 for (x, y) in cells if not allowed[y][x])}、"
+                         f"在 grow 外 {sum(1 for (x, y) in cells if not grow[y][x])}、"
+                         f"在 merged 外 {sum(1 for (x, y) in cells if not merged[y][x])}、"
+                         f"在 hair_d 内 {sum(1 for (x, y) in cells if hair_d[y][x])}，mask 不合格")
     stats = {"maskPx": n, "maskPctOfFace": round(100 * n / (rw * rh), 1),
              "browsPx": sum(1 for y in range(H) for x in range(W) if brows[y][x]),
              "bodyPx": sum(1 for y in range(H) for x in range(W) if body[y][x]),
-             "leftover": leftover, "groups": len(gtop)}
+             "leftover": leftover, "groups": len(gtop),
+             "hairPx": hair_px, "hairOnlyPx": hair_only}
     return m, (x0, y0, W, H), stats
 
 
