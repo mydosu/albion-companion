@@ -102,6 +102,9 @@ if !PORTFREE!==1 (
   echo [6/6] 壳已在跑，跳过
 )
 
+rem 状态挂件：自己占 :47654 单实例，重复启动会自己退出
+wscript "%~dp0pet\widget\AlbionStatus.vbs"
+
 echo ---- 等模型加载, 然后自检（最多 90 秒）----
 "%WIFE%\tts\GPT-sovits\runtime\python.exe" "%WIFE%\pet\check_all.py" 90
 
