@@ -1046,8 +1046,11 @@ function setFace(anim: string) {
   const st = author.value
   if (!st)
     return false
+  // `表情` 的初值是 undefined（AuthorState.vars 从 {} 开始），按 0 = normal 处理：
+  // 否则进程起来后的第一张脸会被当成"已经在显示脸"，淡入被跳过，normal 还会白跑一次淡出。
+  const shown = st.vars['表情'] ?? 0
   if (anim === 'normal') {
-    if (st.vars['表情'] === 0) {
+    if (shown === 0) {
       faceFadeOut = false
       faceAlphaTarget = 1
       return true
@@ -1057,7 +1060,7 @@ function setFace(anim: string) {
     faceAlphaTarget = 0
     return true
   }
-  const wasFace = st.vars['表情'] !== 0
+  const wasFace = shown !== 0
   st.vars['表情'] = Number(anim)
   syncIdle()
   if (!FACES_WITH_OVERLAY.has(anim)) {
