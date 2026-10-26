@@ -1147,7 +1147,8 @@ async def run(matrix, texts, out, backend, only=None, reuse=False, log=print):
                      group=cond.get("group", "base"), anchor=cond["anchor"], text=text,
                      family=spec.get("family"), caption=spec.get("caption"),
                      cfg=spec.get("cfg"), tier=spec.get("tier"),
-                     caption_mode=spec.get("caption_mode"), bytes=len(blob))
+                     caption_mode=spec.get("caption_mode"),
+                     baseline_anchor=cond.get("baseline_anchor"), bytes=len(blob))
             rows.append(m)
             log("[%3d/%3d] %-34s dur=%5.2fs f0=%6s dyn=%5.1f rate=%5s blocks=%d %s"
                 % (i, len(conds), cond["id"], m["dur"], fmt(m["f0_mean"], "%.0f"), m["dyn_db"],
@@ -1158,6 +1159,14 @@ async def run(matrix, texts, out, backend, only=None, reuse=False, log=print):
 
 
 def write_outputs(out, run_name, matrix, rows, failures):
+    # 「相对哪个锚」是条件上的信息：老 metrics.json 没存过它，这里按 id 从矩阵补回来，
+    # 否则 --report-only 会把多锚矩阵的锚基线差值全算成空（2026-10-26 实测踩过）。
+    by_id = {c.get("id"): c for c in matrix.get("conditions") or []}
+    for r in rows:
+        if r.get("baseline_anchor") is None:
+            c = by_id.get(r.get("id"))
+            if c:
+                r["baseline_anchor"] = c.get("baseline_anchor")
     rows = attach_baselines(rows)
     floor, floor_detail = noise_floor(rows, matrix.get("noise_reference") or "quiet")
     payload = dict(run=run_name, created=time.strftime("%Y-%m-%dT%H:%M:%S"), matrix=matrix,
