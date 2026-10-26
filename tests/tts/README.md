@@ -1,11 +1,27 @@
 # TTS 验证
 
-离线：`python -B -m unittest discover -s tests/tts -p 'test_*.py'`。
+离线：`python -B -m unittest discover -s tests/tts -p 'test_*.py'`（要 numpy/httpx，
+系统 python 缺依赖，用 `D:\AI\Wife\tts\irodori\.venv\Scripts\python.exe`；当前 375 项）。
 `test_first_packet_and_logs.py` 覆盖源句并发上限、顺序、异常排空、首单元预取及取消、日志脱敏与轮转。
 `test_longline_prepare.py` 覆盖 60s 准备预算、客户端超时/HTTP 断开后释放会话名额、重复等待者与重试去重，
 以及默认 Command Code 路由、显式 API 情绪翻译路由、凭据来源优先级和启动器覆盖；不联网、不读取真实密钥。
 `test_link_not_spoken.py` 覆盖纯网址/路径/代码单元不送翻译（剥完没汉字、假名就返回空串）、
 中文夹网址时送翻译的文本里没有链接，以及 /v2/prepare 对纯链接单元直接回 no_audio；不联网。
+`probes/emotion_bench.py --out <tests/output 下目录>` 是**情感评测台**：固定 6 句自编日语（长短、
+陈述/疑问）× 固定 seed × 可描述条件（caption 锚 + 正文 emoji 位置），每条量 时长、F0 均值/方差、
+能量动态、字速、发声块（位置和数量）、坏音（削波/静音占比/时长异常）；写出 wav + `metrics.json`
++ 自动生成的一页 `README.md`（表格 + 「先听这几条」）。
+默认矩阵就是 emoji 位置实验（169 条：风格类 11 个 emoji、非语言类 6 个，各跑句首/句中(逗号后)/句末，
+每条件 2 个 seed；另有 5 句基线含 5 个 seed 量噪声底、换句复现、单个 vs 叠两个、两句连写看串句）。
+`--dump-matrix x.json` 导出条件表改完再用 `--matrix x.json` 读进来；`--only 子串` 只跑一部分，
+`--reuse` 复用已有 wav 只重算指标，`--report-only` 只重出 README。
+**前置**：生产后端 :9889 在跑（只调 `/v2/render` 白名单内的锚，不重启、不做第二个实例）；
+用 irodori 的 venv 跑（要 httpx + numpy）。判「可测」要同时超过「同句换 seed 的 spread」和最小可辨
+阈值（时长 0.15 s / F0 10 Hz / 动态 2 dB / 字速 0.3 字每秒），且各 seed 同号——比这小的差异当噪声。
+说话人相似度这一列跳过：本机没有能从任意 wav 提说话人向量的编码器（`speaker_inversion` 是训练出来的
+嵌入目标，不是编码器；resemblyzer/speechbrain/pyannote 都没装，不为它装新依赖）。
+实测见 `tests/output/tts-emoji-pos-20261026/`（README 是自动表，REPORT.md 是结论与建议规则）。
+
 `probes/benchmark_prepare.py --baseline-file <旧版 bridge_v2.py> --out <tests/output 下 JSON>`
 用固定延迟离线比较两版准备阶段，不调用翻译或 GPU，不能代替真实首音频 p50。
 `probes/verify_original_tts.py --out <tests/output 下目录>` 需要 :9881/:9885/:9889、
@@ -57,3 +73,4 @@ JSON 中的人工项保留 UNVERIFIED/REQUIRES_REVIEW，须另附真实壳、播
 实际停启由维护窗口按端口和脚本身份核对后执行，启动命令须使用绝对 bat 路径；
 Deploy/Rollback 会等监听端口释放，仍有监听则拒绝，不会自行停止进程。
 	est_session_text_chunking.py 验证同一段文本整段/逐字/固定 seed 随机块送入 SessionText 切出的单元序列一致；	est_emotion_degraded_health.py 验证 /v2/health 的 motion_degraded 随翻译 key 可用性变化。
+

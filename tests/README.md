@@ -61,6 +61,8 @@ TTS 套件仍要求装了 fastapi 等依赖的解释器（见上面的 `--python
 `tests/pet/*.mjs` 这类探针是例外，见下面一段。
 
 `tests/tts/eval/` 真正运行时会请求 :9881/:9889，并可能触发翻译费用与 GPU 推理。
+`probes/emotion_bench.py` 同样只打生产 :9889（`/v2/render` 白名单内的锚），结果写
+`tests/output/<运行名>/`，不能计入纯单元测试；用法与前置条件见 `tests/tts/README.md`。
 `probes/say_albion_mood.py` 请求真实 TTS，结果写入 `tests/output/tts/mood/`，
 不能把它计入纯单元测试。
 
