@@ -25,6 +25,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 import cue_scope
+import voice_caption
 
 KANA = re.compile(r"[\u3040-\u30ff]")
 HAN = re.compile(r"[\u4e00-\u9fff]")
@@ -252,6 +253,8 @@ class PrepareService:
         self._sem = asyncio.Semaphore(max_in_flight)
         self.max_in_flight = max_in_flight
         self.session_window = session_window
+        # 阶段 3d：句末非语言 emoji 的**每条回复 1 个**额度（开关默认关，关着时这张表永远是空的）
+        self._emoji_budget = voice_caption.EmojiBudget()
         self._held = {}                                   # session_id -> set((generation, unit_id))
         self._running = {}                                # (session_id, generation, unit_id) -> Task
         self._waiters = {}                                # 同一 unit 当前仍在等待的请求数
@@ -420,9 +423,46 @@ class PrepareService:
                 emo["src_scope"] = "unknown_after_first_segment"
             if emo:
                 seg["emotion"] = emo            # 可缺字段：缺了规划器就只用关键词表，不影响译文
+            text, extra = self._voice_fields(req, t, emo)
+            seg["text"] = text
+            if extra:
+                seg.update(extra)
             segs.append(seg)
         return PrepareResult(unit_id=req.unit_id, status="ready", source_unit_id=req.unit_id,
                              ja_segments=tuple(segs), translated=translated, duration_ms=_ms(t0))
+
+    def _voice_fields(self, req, ja_text, emo):
+        """阶段 3d：给一个子段加受控声音描述与句末非语言 emoji。返回 `(文本, 附加字段|None)`。
+
+        开关默认**关**（`ALBION_VOICE_CAPTION` / `ALBION_VOICE_EMOJI`）：关着时原样返回、
+        附加字段为 None，准备结果逐字段不变。开着时：
+
+          * `voice_caption`：只由 `voice_caption` 的词表拼（声音动作词 + 「少し/とても」前缀），
+            没通过校验就**不加** —— 规划器看不到这个字段，自然回原来的码本锚路径；
+          * emoji：先剥掉译文里**所有** emoji（模型自己写的位置/个数不受控），再按「每条回复
+            最多 1 个」（`EmojiBudget` 按 session+generation 记账）追加一个白名单 emoji。
+            台词本身在笑/叹气/打哈欠/哭才算有，判据看中文原文 + 日语译文。
+        """
+        caption_on = voice_caption.voice_caption_on()
+        emoji_on = voice_caption.voice_emoji_on()
+        if not caption_on and not emoji_on:
+            return ja_text, None
+        extra = {}
+        text = ja_text
+        if emoji_on:
+            text, stripped = voice_caption.strip_emoji(text)
+            if stripped:
+                print("[voice] unit=%s 剥掉 %d 个不受控 emoji" % (req.unit_id, stripped),
+                      flush=True)
+            pick = voice_caption.pick_emoji(req.raw_text, req.speech_text, ja_text)
+            key = (req.session_id, req.generation)
+            if pick and self._emoji_budget.take(key):
+                text = text.rstrip() + pick
+        if caption_on:
+            caption = voice_caption.caption_for(emo, ja_text)
+            if caption:
+                extra["voice_caption"] = caption
+        return text, (extra or None)
 
     def _unit_key(self, req):
         """本单元的源范围（壳侧 `source_range`）——源句身份 `<key>#<句号>` 的前缀。

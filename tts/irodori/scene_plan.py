@@ -245,6 +245,35 @@ def _src_cues_of(u):
     return [c for c in cues if isinstance(c, dict) and c.get("kind")][:8] or None
 
 
+def _voice_caption_in(u):
+    """桥写的受控声音描述（阶段 3d）：开关关着时**一律当成没有**。
+
+    两条闸都在这里：① `ALBION_VOICE_CAPTION` 没开 ⇒ 直接 None（生产逐字段不变）；
+    ② 开了也要过 `voice_caption.validate_caption` —— 超长/空/词表外实词的描述一律不用，
+    这句回原来的码本锚路径，绝不把半截描述送进模型。
+    """
+    if not isinstance(u, dict) or not VC.voice_caption_on():
+        return None
+    v = u.get("voice_caption")
+    if not isinstance(v, str) or VC.validate_caption(v):
+        return None
+    return v
+
+
+def _apply_voice_caption(rec, caption):
+    """把受控描述当 caption 发出去（`caption_mode="free"`），其余诊断字段原样保留。
+
+    * `family` 保持规划器定下的族：render_queue 仍要按它校验；描述只换「怎么说」，不换语义族；
+    * `cfg` 固定 `voice_caption.FREE_CFG`（3.0）：评测台结论是 cfg 不是强度旋钮，强度写在词里；
+    * `caption_mode="free"` 是后端放过码本白名单的唯一钥匙（不带它，自由 caption 会被 400）；
+    * `tier/level` 不动（诊断口径一致），`reason` 加一段可归因的尾巴。
+    """
+    rec["caption"] = caption
+    rec["cfg"] = VC.FREE_CFG
+    rec["caption_mode"] = "free"
+    rec["reason"] = (rec.get("reason") or "") + " caption=voice"
+
+
 def _norm_units(units):
     """把单元规整成 dict（也接受纯字符串）。
 
@@ -259,10 +288,11 @@ def _norm_units(units):
                         "parent_id": u.get("parent_id", i), "complete": bool(u.get("complete", True)),
                         "emotion": u.get("emotion") if isinstance(u.get("emotion"), dict) else None,
                         "advance": (u.get("advance", True) is not False) and bool(u.get("complete", True)),
-                        "src_cues": _src_cues_of(u)})
+                        "src_cues": _src_cues_of(u), "voice_caption": _voice_caption_in(u)})
         else:
             out.append({"text": str(u), "unit_id": None, "parent_id": i, "complete": True,
-                        "emotion": None, "advance": True, "src_cues": None})
+                        "emotion": None, "advance": True, "src_cues": None,
+                        "voice_caption": None})
     return out
 
 
@@ -393,6 +423,7 @@ import emotion_codebook as CB
 import emotion_fusion as F
 import cue_scope as CS
 import refusal_guard as RG
+import voice_caption as VC
 
 PLAN_VERSION_V3 = 3
 PLAN_VERSION_V4 = 4          # astra-3 §5.1：v4 = v3 + codebook v2（neutral 说耳语时借既有耳语锚）
@@ -515,6 +546,14 @@ def _hint_phonation_on(body):
     return _flag_on(body, "hint_phonation", "ALBION_HINT_PHONATION")
 
 
+def _voice_caption_on(body):
+    """阶段 3d：受控声音描述（`ALBION_VOICE_CAPTION`，默认**关**）。
+
+    关着时桥不产 `voice_caption`、这里也不认它 —— 规划器输出与加这段之前逐字段相同。
+    """
+    return _flag_on(body, "voice_caption", VC.VOICE_CAPTION_ENV, default=False)
+
+
 def _cross_sentence_on(body):
     """② `ALBION_CROSS_SENTENCE`（v6 默认开）：跨句指令生效（本 unit 内 + 桥按 `source_prefix`
     重放出的前文延续；跨 unit 的续接由桥做，见 `cue_scope.active_directive`）。"""
@@ -587,7 +626,7 @@ def plan_units_v3(units, extra_ctx="", prev=None, style_override=None,
                   plan_version=PLAN_VERSION_V3, allow_neutral_whisper=False,
                   weak_delivery=False, cue_scope=False, refusal_guard=False,
                   hint_phonation=False, cross_sentence=False, ja_stage_cue=False,
-                  level_rebase=False):
+                  level_rebase=False, voice_caption=False):
     """返回 (records, state)；`state` 由协调器原样带回下一次调用当作 `prev`。
 
     输出记录仍是渲染队列认识的那套字段，另外多带 `tier/level`（诊断用，不参与校验）。
@@ -822,6 +861,8 @@ def plan_units_v3(units, extra_ctx="", prev=None, style_override=None,
                                             else {"cross_sentence": CS.CROSS_SENTENCE})})
                                                  if cue_scope else {}),
                                      **(dict(delivery_stage=d_log) if d_log else {})}})
+        if voice_caption and us[i]["voice_caption"]:
+            _apply_voice_caption(recs[-1], us[i]["voice_caption"])
     last = recs[-1]
     state = {"family": last["family"], "caption": last["caption"], "level": last["level"],
              "style": last["style"], "scene_id": last["scene_id"], "tier": last["tier"],
@@ -876,7 +917,7 @@ def split_within_budget(text, count, limit=TOKEN_LIMIT):
 FUSION_POLICY = "fusion_v1"
 
 
-def plan_units_fusion(units, extra_ctx="", prev=None, style_override=None):
+def plan_units_fusion(units, extra_ctx="", prev=None, style_override=None, voice_caption=False):
     """fusion_v1：五路证据融合 + 低置信不切换（方案第一问；实现见 `emotion_fusion.py`）。
 
     与 cascade（`plan_units_v3`）的区别：
@@ -956,6 +997,8 @@ def plan_units_fusion(units, extra_ctx="", prev=None, style_override=None):
                                      "margin": d.get("margin"), "conflict": conflict,
                                      "gap": gap or cond.get("gap"), "phonation": phon,
                                      "held": held}})
+        if voice_caption and u["voice_caption"]:
+            _apply_voice_caption(recs[-1], u["voice_caption"])
     last = recs[-1]
     state = {"family": last["family"], "caption": last["caption"], "level": last["level"],
              "style": last["style"], "scene_id": last["scene_id"], "tier": last["tier"],
@@ -1024,6 +1067,7 @@ def install(app):
             xs = v6 and _cross_sentence_on(body)          # ② 跨句指令（本 unit 内）
             jc = v6 and _ja_stage_cue_on(body)            # ③ 日语表层舞台提示
             lr = v6 and _level_rebase_on(body)            # ④ 换族后 level 重算
+            vc = _voice_caption_on(body)                  # 阶段 3d：受控声音描述（默认关）
             extra = {} if policy == FUSION_POLICY else {"plan_version": pv,
                                                         "allow_neutral_whisper": v4,
                                                         "weak_delivery": weak,
@@ -1033,6 +1077,7 @@ def install(app):
                                                         "cross_sentence": xs,
                                                         "ja_stage_cue": jc,
                                                         "level_rebase": lr}
+            extra["voice_caption"] = vc
             try:
                 recs, state = fn(units, ctx, prev=body.get("prev"),
                                  style_override=body.get("style_override"), **extra)
@@ -1074,6 +1119,8 @@ def install(app):
                     out["refusal_guard"] = True                      # ② 闸门是否打开（归因用）
                 if cs:
                     out["cue_scope"] = True                          # 开关关时响应形状不变
+                if vc:
+                    out["voice_caption"] = True                      # 阶段 3d 开关打开（归因用）
                 if v6:
                     # v6 的四个开关**逐个**报出来（归因用）：关掉哪个、还剩哪个，一眼可读
                     out["v6_features"] = {"hint_phonation": hp, "cross_sentence": xs,

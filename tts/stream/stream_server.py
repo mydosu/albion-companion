@@ -406,7 +406,7 @@ class Coordinator:
         return r.json()
 
     async def plan(self, text, unit_id, context_before="", prev=None, emotion=None,
-                   advance=True, force_v2=False):
+                   advance=True, force_v2=False, voice_caption=None):
         """I /v2/plan：纯 CPU 的场景/风格规划。
 
         v3（默认）：把**前文**与**上一档状态**一起送上去，让规划器能做逐句滞回；
@@ -415,6 +415,9 @@ class Coordinator:
         legacy（或本会话已被降级）：只发 v2 认识的字段 —— `emotion`/`prev` 这些 v3 专属键
         一个都不塞，回滚才是**字段级**干净，而不是"多发几个键但对方不看"。
         `context_before` 两个版本都要发：v2 自己的 `_ctx_style` 就靠它判邻句。
+
+        `voice_caption`（阶段 3d）：桥写的受控声音描述。**只在桥真的写了的时候才带**
+        （开关关着时它恒为 None），v3 才转发；规划器自己再校验一次，非法就回锚路径。
         """
         v3 = self.cfg.emotion_mode == "v3" and not force_v2
         unit = {"unit_id": unit_id, "text": text}
@@ -423,6 +426,8 @@ class Coordinator:
         if v3:
             unit["emotion"] = emotion
             unit["advance"] = bool(advance)
+            if voice_caption:
+                unit["voice_caption"] = voice_caption
             body["emotion_policy"] = self.cfg.emotion_policy
             if prev:
                 body["prev"] = prev
@@ -566,7 +571,8 @@ class Coordinator:
         # 不是一个 `translated_text`——多句单元就该在这里逐子段送下去（复核问题 1）。
         # 2026-09-28：子段上可能带 `emotion`（桥的翻译腿顺带判的情绪，见 bridge.to_japanese_ex），
         # 一起带走送进规划；缺就当没有，绝不因此丢译文。
-        segments = [(s.get("sub_index", i), (s.get("text") or "").strip(), s.get("emotion"))
+        segments = [(s.get("sub_index", i), (s.get("text") or "").strip(), s.get("emotion"),
+                     s.get("voice_caption"))
                     for i, s in enumerate(prepared.get("ja_segments") or [])]
         segments = [s for s in segments if s[1]]
         if not segments:
@@ -633,7 +639,7 @@ class Coordinator:
         span_sent = False
         seg = None                       # 当前子段的账：start 发过没、帧数、样本数
         try:
-            for sub_index, ja_text, emotion in segments:
+            for sub_index, ja_text, emotion, voice_caption in segments:
                 if sess.cancelled:
                     return
                 # 每个子段开跑前也看一眼余额（省一次白烧的 GPU 渲染）；帧级检查仍在发帧前兜底。
@@ -648,6 +654,7 @@ class Coordinator:
                 plan, state, fell_back = await self.plan(
                     ja_text, uid, context_before=sess.emotion_ctx,
                     prev=sess.emotion_prev, emotion=emotion, force_v2=sess.plan_v2_only,
+                    voice_caption=voice_caption,
                     # soft/force 切出的单元是**同一自然句的续片**，不重复推进"无信号"计数
                     advance=(unit.reason not in ("soft", "force")))
                 if fell_back and not sess.plan_v2_only:
@@ -666,6 +673,9 @@ class Coordinator:
                     u_body["level"] = plan["level"]
                 if plan.get("codebook_version") is not None:
                     u_body["codebook_version"] = plan["codebook_version"]   # v4 才有
+                if plan.get("caption_mode"):
+                    # 阶段 3d：规划器把桥写的受控描述当自由 caption 发下来时才带（默认关 ⇒ 不出现）
+                    u_body["caption_mode"] = plan["caption_mode"]
                 render_sid, render_gen = await self.open_render(sess)
                 body = {"session_id": render_sid, "generation": render_gen,
                         "plan_version": plan.get("plan_version", 2),
