@@ -450,6 +450,8 @@ async function applyEyeMasks() {
 
   // 一张 atlas 页常被多张脸共用，所以按 baseTexture 攒 canvas，最后统一 update 一次
   const pages = new Map<BaseTexture, { canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D }>()
+  /** 真正擦成功的脸：mask 缺失或解码失败的脸不能去动它的 timeline（否则每次换脸眼槽又会被置 None）。 */
+  const applied: string[] = []
   let erasedPx = 0
   for (const face of faces) {
     const entry = manifest.faces[face]
@@ -486,13 +488,18 @@ async function applyEyeMasks() {
       mctx.drawImage(img, 0, 0)
       const mask = mctx.getImageData(0, 0, mw, mh).data
       const id = page.ctx.getImageData(mx, my, mw, mh)
-      erasedPx += eraseMaskedPixels(id.data, mask)
+      const changed = eraseMaskedPixels(id.data, mask)
       page.ctx.putImageData(id, mx, my)
+      erasedPx += changed
+      if (changed > 0)
+        applied.push(face)
     }
     catch (err) {
       console.warn(`[spine38] 擦眼失败（脸 ${face}）`, err)
     }
   }
+  if (!applied.length)
+    return
   for (const [bt, page] of pages) {
     ;(bt.resource as unknown as { source: CanvasImageSource }).source = page.canvas
     bt.update()
@@ -502,13 +509,13 @@ async function applyEyeMasks() {
   // 真眼只在换脸的同一帧里露一下。
   const eyeIdx = new Set(EYE_SLOT_NAMES.map(n => data.slots.findIndex(s => String(s.name) === n)))
   for (const anim of data.animations as Array<{ name: string, timelines: StripTimeline[] }>) {
-    if (!faces.includes(anim.name))
+    if (!applied.includes(anim.name))
       continue
     anim.timelines = stripSlotTimelines(anim.timelines, tl =>
       tl.slotIndex != null && eyeIdx.has(tl.slotIndex) && tl.constructor?.name === 'AttachmentTimeline')
   }
   if (import.meta.env.DEV)
-    console.info(`[spine38] 擦眼：${pages.size} 张页面、${faces.length} 张脸、${erasedPx} 个像素`)
+    console.info(`[spine38] 擦眼：${pages.size} 张页面、${applied.length}/${faces.length} 张脸、${erasedPx} 个像素`)
 }
 
 function installControllers() {

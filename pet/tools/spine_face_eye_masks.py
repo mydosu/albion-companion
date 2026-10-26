@@ -41,10 +41,14 @@ ERASABLE = ["1", "2", "3", "4", "5", "6", "7", "8", "11"]
 EYE_SLOTS = ["youyan-1", "youyan-3", "youyan-4", "youyan-5", "youyan-6", "youyan-7", "youyan-8", "youyan-9",
              "zuoyan-1", "zuoyan-2", "zuoyan-3", "zuoyan-4", "zuoyan-5", "zuoyan-6", "zuoyan-7", "zuoyan-8"]
 POLY_DILATE_PX = 6
+# 上限多边形的额外外扩：11 张脸的头角度略有差别，只按 setup pose 的 6px 会把别的脸的眼睛切掉一半
+POLY_PAD_EXTRA = 6
 UPPER_MARGIN_PX = 8
 LOWER_MARGIN_PX = 2
 GROW_PX = 2
 FEATHER_PX = 1.5
+# 擦完以后每只眼允许残留的「眼白/虹膜」像素上限（不达标直接报错）
+LEFTOVER_LIMIT = 15
 
 
 def parse_atlas(text: str) -> dict[str, dict]:
@@ -210,10 +214,11 @@ def build_mask(page_img: Image.Image, face_name: str, face: dict, atlas: dict, e
 
     xs = [p[0] for poly in polys for p in poly]
     ys = [p[1] for poly in polys for p in poly]
-    x0 = max(int(rx), int(min(xs)) - POLY_DILATE_PX - 4)
-    y0 = max(int(ry), int(min(ys)) - POLY_DILATE_PX - 4)
-    x1 = min(int(rx + rw), int(max(xs)) + POLY_DILATE_PX + 4)
-    y1 = min(int(ry + rh), int(max(ys)) + POLY_DILATE_PX + 4)
+    pad = POLY_DILATE_PX + POLY_PAD_EXTRA + 4
+    x0 = max(int(rx), int(min(xs)) - pad)
+    y0 = max(int(ry), int(min(ys)) - pad)
+    x1 = min(int(rx + rw), int(max(xs)) + pad)
+    y1 = min(int(ry + rh), int(max(ys)) + pad)
     W, H = x1 - x0, y1 - y0
     win = page_img.crop((x0, y0, x1, y1))
     wp = win.load()
@@ -222,7 +227,7 @@ def build_mask(page_img: Image.Image, face_name: str, face: dict, atlas: dict, e
     d = ImageDraw.Draw(poly_img)
     for poly in polys:
         d.polygon([(p[0] - x0, p[1] - y0) for p in poly], fill=255)
-    lim = poly_img.filter(ImageFilter.MaxFilter(2 * POLY_DILATE_PX + 1)).load()
+    lim = poly_img.filter(ImageFilter.MaxFilter(2 * (POLY_DILATE_PX + POLY_PAD_EXTRA) + 1)).load()
 
     seed = [[False] * W for _ in range(H)]
     ink = [[False] * W for _ in range(H)]
@@ -244,53 +249,126 @@ def build_mask(page_img: Image.Image, face_name: str, face: dict, atlas: dict, e
             browc[y][x] = inlim and (b - r) >= 3 and 50 <= lum <= 210
             warm[y][x] = inlim and (r - b) >= 22 and 150 <= lum <= 240
 
+    # 头发上的高光也是「亮、低饱和」，会混进 seed，把额头/刘海一起擦掉。
+    # 它们紧挨着偏紫的发丝（b-r>=3），所以 seed 离这类像素 3px 以内的都不要。
+    brow_d = dilate(browc, W, H, 3)
+    seed = [[seed[y][x] and not brow_d[y][x] for x in range(W)] for y in range(H)]
+    ink = [[ink[y][x] and not brow_d[y][x] for x in range(W)] for y in range(H)]
+
     bodies = [c for c in comps8(seed, W, H) if len(c) >= 40]
     if not bodies:
         raise SystemExit(f"脸 {face_name}: 找不到眼睛本体（白/虹膜）")
+
+    # 分组：按连通块质心 x 排序、在最大间隙处切成左右两组。11 张脸的头角度不同，
+    # 不能按窗口中线切眼（会把一只眼拆成两半，2026-10-26 实测左眼只擦掉最左边一条）。
+    cents = sorted((sum(p[0] for p in c) / len(c), i) for i, c in enumerate(bodies))
+    if len(cents) == 1:
+        gid_of = {cents[0][1]: 0}
+    else:
+        gaps = [(cents[k + 1][0] - cents[k][0], k) for k in range(len(cents) - 1)]
+        _, split = max(gaps)
+        gid_of = {bi: (0 if idx <= split else 1) for idx, (_, bi) in enumerate(cents)}
+    gtop, gbot, gminx, gmaxx = {}, {}, {}, {}
+    for bi, cells in enumerate(bodies):
+        g = gid_of[bi]
+        ys2 = [p[1] for p in cells]
+        xs3 = [p[0] for p in cells]
+        gtop[g] = min(ys2) if g not in gtop else min(gtop[g], min(ys2))
+        gbot[g] = max(ys2) if g not in gbot else max(gbot[g], max(ys2))
+        gminx[g] = min(xs3) if g not in gminx else min(gminx[g], min(xs3))
+        gmaxx[g] = max(xs3) if g not in gmaxx else max(gmaxx[g], max(xs3))
+    # 左右两组之间的分界：取「左组右缘」和「右组左缘」的中点（不假设窗口中线）
+    split_x = (gmaxx[0] + gminx[1]) / 2 if 0 in gmaxx and 1 in gminx else W / 2
+    def band_of(x):
+        return 0 if x < split_x else 1
+
+    # 竖直范围按「本侧所有眼白/虹膜像素」取上下缘（不是只按 ≥40px 的大块）：
+    # 下眼睑那条亮带也是 seed，按大块的下缘去裁会把它切掉，留下一道残线。
+    gtop, gbot = {}, {}
+    for y in range(H):
+        for x in range(W):
+            if not seed[y][x]:
+                continue
+            g = band_of(x)
+            gtop[g] = min(gtop.get(g, y), y)
+            gbot[g] = max(gbot.get(g, y), y)
+
     hull_img = Image.new("L", (W, H), 0)
     hd = ImageDraw.Draw(hull_img)
-    spans = []
     for c in bodies:
         hp = convex_hull(c)
         if len(hp) >= 3:
             hd.polygon(hp, fill=255)
-            ys2 = [p[1] for p in hp]
-            xs2 = [p[0] for p in hp]
-            spans.append((min(ys2), max(ys2), min(xs2), max(xs2)))
     hull = hull_img.load()
 
     body = [[ink[y][x] or hull[x, y] > 127 for x in range(W)] for y in range(H)]
-    body = fill_holes(erode(dilate(body, W, H, 1), W, H, 1), W, H)
+    # 闭运算会吃掉孤立的眼白小岛，最后把原始 seed 并回来——mask 必须覆盖每一颗眼白/虹膜
+    closed = fill_holes(erode(dilate(body, W, H, 1), W, H, 1), W, H)
+    body = [[closed[y][x] or seed[y][x] for x in range(W)] for y in range(H)]
 
+    # 生长：从本体出发沿「暗 + 暖色弧」漫延，并把来源分组 id 一起带出去
+    gid = [[-1] * W for _ in range(H)]
+    for bi, cells in enumerate(bodies):
+        for (x, y) in cells:
+            gid[y][x] = gid_of[bi]
     allowed = [[(ink[y][x] or warm[y][x] or hull[x, y] > 127) and lim[x, y] > 127 for x in range(W)] for y in range(H)]
     grow = [row[:] for row in body]
-    q = deque([(x, y) for y in range(H) for x in range(W) if body[y][x]])
+    q = deque()
+    for y in range(H):
+        for x in range(W):
+            if body[y][x]:
+                q.append((x, y))
+                # 没有分组 id 的本体像素（孤立小岛）不硬塞给某一组，交给竖直范围不裁它：
+                # 它本来就在 poly 上限里、又是眼白/虹膜，必须擦掉。
     while q:
         ax, ay = q.popleft()
         for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
             bx, by = ax + dx, ay + dy
             if 0 <= bx < W and 0 <= by < H and allowed[by][bx] and not grow[by][bx]:
-                grow[by][bx] = True; q.append((bx, by))
+                grow[by][bx] = True
+                gid[by][bx] = gid[ay][ax]
+                q.append((bx, by))
 
+    # 生长时没有分组 id 的像素（孤立小岛）就近继承邻居的组，这样竖直范围也能管到它们；
+    # 否则它们会不受上/下缘约束、把上眼皮上方一大条一起擦掉（实测多擦 1.8k px）。
+    for _ in range(8):
+        filled = 0
+        for y in range(H):
+            for x in range(W):
+                if not grow[y][x] or gid[y][x] >= 0:
+                    continue
+                for dy in (-1, 0, 1):
+                    for dx in (-1, 0, 1):
+                        bx, by = x + dx, y + dy
+                        if 0 <= bx < W and 0 <= by < H and gid[by][bx] >= 0:
+                            gid[y][x] = gid[by][bx]
+                            filled += 1
+                            break
+                    if gid[y][x] >= 0:
+                        break
+        if not filled:
+            break
+
+    # 眉毛：b-r>=3 且不在生长结果里
     brows = [[browc[y][x] and not grow[y][x] for x in range(W)] for y in range(H)]
     merged = [[grow[y][x] and not brows[y][x] for x in range(W)] for y in range(H)]
 
+    # 竖直范围：按「所属那只眼」的上缘 -8 / 下缘 +2 裁，跨中线的块不会被切
     for y in range(H):
         for x in range(W):
             if not merged[y][x]:
                 continue
-            for (top, bot, xmin, xmax) in spans:
-                if xmin - 8 <= x <= xmax + 8 and (y < top - UPPER_MARGIN_PX or y > bot + LOWER_MARGIN_PX):
-                    merged[y][x] = False
-                    break
+            g = band_of(x)
+            if g in gtop and (y < gtop[g] - UPPER_MARGIN_PX or y > gbot[g] + LOWER_MARGIN_PX):
+                merged[y][x] = False
+    # 暖色眼皮弧：上沿 -8..本体上缘之间、r-b>=22 的像素并入（限 poly，取邻近像素的分组）
     for y in range(H):
         for x in range(W):
             if merged[y][x] or not warm[y][x] or lim[x, y] < 128:
                 continue
-            for (top, bot, xmin, xmax) in spans:
-                if xmin - 8 <= x <= xmax + 8 and top - UPPER_MARGIN_PX <= y <= top:
-                    merged[y][x] = True
-                    break
+            g = band_of(x)
+            if g in gtop and gtop[g] - UPPER_MARGIN_PX <= y <= gtop[g]:
+                merged[y][x] = True
 
     limbool = [[lim[x, y] > 127 for x in range(W)] for y in range(H)]
     final = dilate(merged, W, H, GROW_PX, limbool)
@@ -303,9 +381,29 @@ def build_mask(page_img: Image.Image, face_name: str, face: dict, atlas: dict, e
                 mp[x, y] = 255
                 n += 1
     m = m.filter(ImageFilter.GaussianBlur(FEATHER_PX))
+
+    # 自检：擦完以后每只眼残留的「眼白/虹膜」像素必须 < LEFTOVER_LIMIT，否则报错（不静默输出）
+    leftover = {}
+    for g in sorted(gtop):
+        leftover[g] = sum(1 for y in range(H) for x in range(W)
+                          if seed[y][x] and not final[y][x] and band_of(x) == g)
+    # 没有分组 id 的 seed 像素（理论上不该有）也算进最近的一组
+    orphan = sum(1 for y in range(H) for x in range(W) if seed[y][x] and not final[y][x] and gid[y][x] < 0)
+    if any(v >= LEFTOVER_LIMIT for v in leftover.values()) or orphan >= LEFTOVER_LIMIT:
+        dbg = {}
+        for g in sorted(gtop):
+            cells = [(x, y) for y in range(H) for x in range(W) if seed[y][x] and not final[y][x] and gid[y][x] == g]
+            if cells:
+                xs2 = [c[0] for c in cells]
+                ys2 = [c[1] for c in cells]
+                dbg[g] = {"n": len(cells), "bbox": [min(xs2), min(ys2), max(xs2), max(ys2)],
+                          "range": [gtop[g], gbot[g]], "inMerged": sum(1 for (x, y) in cells if merged[y][x]),
+                          "inGrow": sum(1 for (x, y) in cells if grow[y][x]), "inBody": sum(1 for (x, y) in cells if body[y][x])}
+        raise SystemExit(f"脸 {face_name}: 擦后仍有眼白/虹膜残留 {leftover} orphan={orphan}（上限 {LEFTOVER_LIMIT}），{dbg}")
     stats = {"maskPx": n, "maskPctOfFace": round(100 * n / (rw * rh), 1),
              "browsPx": sum(1 for y in range(H) for x in range(W) if brows[y][x]),
-             "bodyPx": sum(1 for y in range(H) for x in range(W) if body[y][x])}
+             "bodyPx": sum(1 for y in range(H) for x in range(W) if body[y][x]),
+             "leftover": leftover, "groups": len(gtop)}
     return m, (x0, y0, W, H), stats
 
 
@@ -316,7 +414,11 @@ def main():
     ap.add_argument("--out", default=str(DEFAULT_MODELS / "albion-eye-masks"))
     ap.add_argument("--sheets-dir", default=str(DEFAULT_SHEETS))
     ap.add_argument("--faces", nargs="*", default=ERASABLE)
+    ap.add_argument("--poly-extra", type=int, default=None, help="上限多边形额外外扩 px（默认 6）")
     args = ap.parse_args()
+    global POLY_PAD_EXTRA
+    if args.poly_extra is not None:
+        POLY_PAD_EXTRA = args.poly_extra
 
     zpath = Path(args.zip)
     geom = json.loads(Path(args.geometry).read_text(encoding="utf-8"))
