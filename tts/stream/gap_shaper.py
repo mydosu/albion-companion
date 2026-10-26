@@ -6,6 +6,11 @@
 `LEAD_S`、把尾静音**定长**成由单元末尾标点决定的值（可用环境变量调），壳那 0.10s 照旧叠在后面。
 
 只处理 16-bit PCM WAV；别的格式/解析失败一律原样返回（宁可不整形，也不能弄坏音频）。
+
+2026-10-26 句尾截断修复：裁剪「哪里算说完」原来用 -40dB 判据，句尾清化音（です/ます 的 す）落在
+-45～-60dB，会被当成静音掐掉（生产实测 6/32 句裁掉 27–59ms 的可听尾音），且裁点硬拼数字零没有淡出
+（最大 -46dB 的台阶）。现在尾判据放到峰值 -55dB / 绝对 -65dBFS（把整段自然衰减留住），
+裁点前 30ms 做线性淡出；首判据与各种气口长度都不变。
 """
 import io
 import os
@@ -29,6 +34,14 @@ _COMMA = "，、；：,;:"
 VOICED_DB = 40.0          # 有声判据：比全段峰值低不到 40dB
 FLOOR_DB = -55.0          # 且高于 -55dBFS（编码器底噪不算有声）
 TAIL_KEEP_S = 0.03        # 有声结束后保留的自然衰减
+# 句尾的真正「可听结束」比 -40dB 低得多：日语句尾的清化音（です/ます 的 す、つ、く、し）和气声收尾
+# 通常落在峰值下 45–60dB。2026-10-26 生产 :9889 实测 32 句：按 VOICED_DB 定尾时，裁点前 30ms 的包络
+# 还有 -40～-57dB（还在出声中就切），6 句因此丢掉 5–29ms 高于 -60dBFS 的尾音，而且裁点硬拼数字零。
+# 所以尾静音用**更低的**判据找，把整段自然衰减留住；起始判据（VOICED_DB/FLOOR_DB）保持不变。
+TAIL_DB = 55.0            # 尾判据：比全段峰值低不到 55dB
+TAIL_FLOOR_DB = -65.0     # 且高于 -65dBFS（低于此是编码器/水印底噪，留住只是噪声）
+FADE_S = 0.03             # 裁点前的淡出：硬拼零会有台阶（实测裁点前 30ms 还有 -40dB），淡出后无台阶
+FADE_GATE_DB = 30.0       # 只在裁点前 30ms 已低于峰值 30dB 时淡出；还在大声时就别淡（那会变成新的「压尾」）
 
 
 def tail_kind(text: str, reason: str = "") -> str:
@@ -43,6 +56,22 @@ def tail_kind(text: str, reason: str = "") -> str:
     if reason in ("force", "idle"):
         return "cut"
     return "sentence"       # finish/hard 且无标点：一整段的收尾，按句末处理
+
+
+def _fade_out(body, peak, sr):
+    """把 `body` 末尾 FADE_S 线性降到 0（原地改）。
+
+    只在**已经安静**时做：裁点前 30ms 仍高于「峰值 -FADE_GATE_DB」就说明上游把话截在了响处，
+    这时淡出等于替它压尾，反而更像被掐断 —— 不动，硬边留给上游修（本模块不猜）。
+    """
+    n = min(int(FADE_S * sr), len(body))
+    if n <= 0 or peak <= 0:
+        return
+    seg = body[-n:]
+    if float(np.abs(seg).max()) / 32768.0 > peak * 10 ** (-FADE_GATE_DB / 20.0):
+        return
+    ramp = np.linspace(1.0, 0.0, n, dtype="float32")[:, None]
+    body[-n:] = np.rint(seg.astype("float32") * ramp).astype("<i2")
 
 
 def shape(wav: bytes, kind: str) -> bytes:
@@ -74,11 +103,17 @@ def shape(wav: bytes, kind: str) -> bytes:
             return wav
         onset = int(idx[0]) * win
         lead = int(LEAD_S * sr)
-        end = min(len(pcm), (int(idx[-1]) + 1) * win + int(TAIL_KEEP_S * sr))
+        # 尾判定用**更低**的判据：句尾清化音/气声衰减比 -40dB 低得多，按 VOICED_DB 判会把它掐掉
+        tail_thr = max(peak * 10 ** (-TAIL_DB / 20.0), 10 ** (TAIL_FLOOR_DB / 20.0))
+        tail_loud = mono[:frames * win].reshape(frames, win).max(axis=1) > tail_thr
+        tail_idx = np.flatnonzero(tail_loud)
+        last_voiced = int(tail_idx[-1]) if len(tail_idx) else int(idx[-1])
+        end = min(len(pcm), (last_voiced + 1) * win + int(TAIL_KEEP_S * sr))
         # 首静音定长：多了裁掉，不够（有声从第 0 个样本就起，句首会显得被咬掉）补齐
         head = np.zeros((max(0, lead - onset), ch), dtype="<i2")
         body = np.concatenate([head, pcm[max(0, onset - lead):end]])
         tail = np.zeros((int(tail_s * sr), ch), dtype="<i2")
+        _fade_out(body, peak, sr)
         out = io.BytesIO()
         with wave.open(out, "wb") as w:
             w.setparams(params)

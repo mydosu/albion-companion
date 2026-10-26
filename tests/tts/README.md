@@ -16,6 +16,13 @@
 `test_stream_rhythm.py` 覆盖流式节奏（离线）：切单元策略（首单元软切、后续只在句末、爬坡、退到最近逗号）、
 半句译文以「、」收尾、气口整形的 wav 单测（首静音定长、按末尾标点定尾静音、立体声、不适用输入原样返回）、
 `……` 符号段并回上一句、`Config` 的环境变量。
+`test_gap_shaper_tail.py` 只管句尾不被掐（2026-10-26）：-20→-70dB 的噪声收尾要留住（高于 -60dB 的样本
+不许丢）、裁点前 30ms 线性淡出到 0（不留硬台阶）、还在大声时**不**淡出、气口长度与首静音不变。
+`probes/tts_tail_probe.py --out <tests/output 下目录> --shape-dir shape-before [--from-raw] [--texts-file x.json]`
+直接问生产 :9889 渲染一批日语短句（只读），存**整形前原始 wav** 与 `GS.shape` 之后的 wav，逐句量：末 50ms 还有没有声
+（判断模型有没有截）、裁点前 30ms 的电平、被切掉的高于 -60dBFS 的尾音时长；`--report` 从 `shape-before.json` /
+`shape-after.json`（同一批 raw 过修前/修后两版 gap_shaper）生成前后对比 README。修后实测见
+`tests/output/tts-tail-20261026/`（裁点前 30ms 从 -40dB 降到 ≤-56dB，丢尾音 6/32 句 → 0/32 句）。
 `probes/stream_rhythm_probe.py --out <tests/output 下目录> --tag X --text "…" [--ws ws://127.0.0.1:19885/api/v1/audio/speech/ws]`
 经真实 :9885（或备用口）发一段文本，逐单元落 wav，量首/尾静音、末 200ms 电平、首音延迟，并按壳的播放规则
 （首段 +0.05s、段间 +0.10s、渲染不及就欠载）模拟出 `X-sim.wav` 与可听间隔；会花少量翻译额度，只读。
