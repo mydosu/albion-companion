@@ -42,6 +42,27 @@ export const FACE_OVERLAY_MIN_ALPHA = 0.72
 export const FACE_OVERLAY_PERIOD_MS = 3300
 
 /**
+ * Stage 的口型循环这一帧要不要推电平。
+ *
+ * 作者语音（`playVoice`）也在自己的 rAF 里写同一个电平，两个循环同时写会让嘴在 0 和实测值
+ * 之间来回跳。所以只在真出声时推；刚停下那一帧推一次 0 收口，之后就不再推，
+ * 静音由 Model 侧的 250ms 看门狗兜底。
+ */
+export type MouthPush = 'level' | 'silence' | 'none'
+
+/**
+ * @example
+ * mouthPushFor(true, false)  // => 'level'
+ * mouthPushFor(false, true)  // => 'silence'（说话刚停的那一帧）
+ * mouthPushFor(false, false) // => 'none'（交给看门狗，别再和作者语音抢写）
+ */
+export function mouthPushFor(speaking: boolean, wasSpeaking: boolean): MouthPush {
+  if (speaking)
+    return 'level'
+  return wasSpeaking ? 'silence' : 'none'
+}
+
+/**
  * 音频 RMS → 口型电平（0..1）：过噪声门后线性放大，到 1 截顶。
  *
  * @example

@@ -19,7 +19,7 @@ import { wlipsyncProfile } from '@proj-airi/model-driver-lipsync/shared/wlipsync
 import { createPlaybackManager, createSpeechPipeline, createTtsSegmentStream, normalizeActPayload } from '@proj-airi/pipelines-audio'
 import { defaultLive2DMotionControlDynamics, Live2DScene, useLive2DMotionControl, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
 import { MMDScene } from '@proj-airi/stage-ui-mmd'
-import { mouthLevelFromRms, Spine38Scene, SpineScene } from '@proj-airi/stage-ui-spine'
+import { mouthLevelFromRms, mouthPushFor, Spine38Scene, SpineScene } from '@proj-airi/stage-ui-spine'
 import { TachieScene } from '@proj-airi/stage-ui-tachie'
 import { ThreeScene } from '@proj-airi/stage-ui-three'
 import { animations } from '@proj-airi/stage-ui-three/assets/vrm'
@@ -920,13 +920,18 @@ function syncLipSyncLoop() {
  */
 let spineMouthBuf = new Uint8Array(0)
 let spineMouthLoopId: number | undefined
+let spineMouthWasSpeaking = false
 
 function startSpineMouthLoop() {
   if (spineMouthLoopId)
     return
   const tick = () => {
-    // 只有真的在出声才给电平；段间空档和说完都由 0 收口（Model 侧 120ms 内闭嘴）
-    spine38SceneRef.value?.setMouthLevel(nowSpeaking.value ? readSpineMouthLevel() : 0)
+    // 作者语音（摸头/点身体时的 wav）也在自己的 rAF 里写同一个电平：这里只在真的说话时推，
+    // 停下那一帧推一次 0 收口，之后不再推，静音交给 Model 的 250ms 看门狗。
+    const push = mouthPushFor(nowSpeaking.value, spineMouthWasSpeaking)
+    if (push !== 'none')
+      spine38SceneRef.value?.setMouthLevel(push === 'level' ? readSpineMouthLevel() : 0)
+    spineMouthWasSpeaking = nowSpeaking.value
     spineMouthLoopId = requestAnimationFrame(tick)
   }
   spineMouthLoopId = requestAnimationFrame(tick)
@@ -937,6 +942,7 @@ function stopSpineMouthLoop() {
     cancelAnimationFrame(spineMouthLoopId)
     spineMouthLoopId = undefined
   }
+  spineMouthWasSpeaking = false
   spine38SceneRef.value?.setMouthLevel(0)
 }
 

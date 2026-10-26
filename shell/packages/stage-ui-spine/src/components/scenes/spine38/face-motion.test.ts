@@ -12,6 +12,7 @@ import {
   MOUTH_OPEN_SCALE,
   MOUTH_RELEASE_MS,
   mouthLevelFromRms,
+  mouthPushFor,
   mouthScaleFor,
   smoothMouth,
   stepFaceAlpha,
@@ -102,5 +103,20 @@ describe('face micro motion', () => {
       expect(a).toBeLessThanOrEqual(1)
     }
     expect(faceOverlayAlpha(825)).toBeCloseTo(1, 6)
+  })
+})
+
+describe('mouthPushFor', () => {
+  it('only makes the Stage loop push the level it measured while speaking', () => {
+    expect(mouthPushFor(true, false)).toBe('level')
+    expect(mouthPushFor(true, true)).toBe('level')
+  })
+
+  it('pushes one zero on the frame speech stops, then goes quiet', () => {
+    // ROOT CAUSE: 之前不说话时每帧都推 0，作者语音（摸头/点身体）自己的 rAF 每帧推实测值，
+    // 两个循环抢着写同一个电平 → 作者语音期间嘴在 0 和实测值之间跳。
+    // 现在停下的那一帧推 0 收口，之后交给 Model 的 250ms 看门狗。
+    expect(mouthPushFor(false, true)).toBe('silence')
+    expect(mouthPushFor(false, false)).toBe('none')
   })
 })
