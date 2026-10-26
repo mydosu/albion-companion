@@ -25,6 +25,7 @@ import re
 import shutil
 import tempfile
 import time
+import unicodedata
 import uuid
 
 import scene_plan as SP          # family/caption/cfg 的标准表就在这里（纯 CPU，无副作用）
@@ -351,8 +352,10 @@ class RenderQueue:
             self.stats["started"] += 1
             _uid = job.unit.get("unit_id") or "-"
             _t_run = time.monotonic()
-            print("[render_queue] %s unit=%s queue_ms=%d"
-                  % (job.session_id, _uid, int((_t_run - job.queued_at) * 1000)), flush=True)
+            _mode = caption_mode_of(job.unit)      # free 实验单元在日志里一眼能看出来
+            print("[render_queue] %s unit=%s queue_ms=%d%s"
+                  % (job.session_id, _uid, int((_t_run - job.queued_at) * 1000),
+                     " caption_mode=%s" % _mode if _mode else ""), flush=True)
             try:
                 res = await asyncio.to_thread(self._render_one, job)
             except Exception as e:
@@ -511,6 +514,37 @@ def _mount(app, path, endpoint, methods):
 
 TOKEN_COUNT = None       # 由服务进程注入真 tokenizer 计数（见 irodori_serve._token_count）；None = 不检查
 
+# ---- 实验用自由描述（caption_mode="free"）----------------------------------------
+# 生产为什么要白名单：**为音质**，不是为安全（后端只听 127.0.0.1，网关也不会发这个字段）。
+# 训练集外的 caption 是分布外条件，模型只能"猜"—— 所以默认路径必须继续只认 7 条训练锚。
+# 但"能不能听懂"这件事本身要能量：这个 opt-in 模式只为评测台开关，不进任何生产路径。
+CAPTION_MODES = ("free",)
+FREE_CAPTION_MAX = 120          # 自由描述上限（字）。底模 caption 预算 512 token，120 字远在以内。
+FREE_CFG_MIN, FREE_CFG_MAX = 1.5, 7.0
+
+
+def caption_mode_of(u):
+    """单元上的实验模式：None = 生产码本路径；"free" = 自由描述实验路径。"""
+    mode = (u or {}).get("caption_mode")
+    return mode if isinstance(mode, str) and mode in CAPTION_MODES else None
+
+
+def _codebook_version_for(plan_version):
+    """该计划版本该用哪个码本号（v4 起是 v2 码本）。"""
+    return (CB.CODEBOOK_VERSION_V2 if plan_version >= SP.PLAN_VERSION_V4
+            else CB.CODEBOOK_VERSION)
+
+
+def free_caption_error(caption):
+    """自由描述能不能进推理：非空、≤120 字、无控制字符（Cc/Cf/Cs）。返回原因或 None。"""
+    if not isinstance(caption, str) or not caption.strip():
+        return "必须是非空字符串"
+    if len(caption) > FREE_CAPTION_MAX:
+        return "过长（%d 字 > %d），先压短再送" % (len(caption), FREE_CAPTION_MAX)
+    if any(unicodedata.category(ch) in ("Cc", "Cf", "Cs") for ch in caption):
+        return "含控制字符（换行/制表/零宽/代理）：只收可见字符"
+    return None
+
 
 def _finite_number(x):
     """合法数值：非 bool、可转 float、有限。"""
@@ -532,6 +566,11 @@ def _check_unit(u, i, plan_version=2):
     v3（2026-09-28）：族与 caption 不再一一对应（同族有弱/强两条训练锚），所以改成
     **白名单校验** —— (family, caption) 必须是 `emotion_codebook` 里训过的组合，cfg 必须等于
     该族的规定值。v2 走下面原样不变的老路径（回归逐字节不变）。
+
+    v2 码本之后（2026-10-26）：带 `caption_mode: "free"` 的单元走**实验路径** —— 放行任意
+    自由描述（≤120 字、无控制字符）与 1.5–7.0 的任意 cfg，只为让评测台量"现有 LoRA 能不能
+    听懂训练集外的描述"。**不带这个字段时行为逐条不变**（生产网关从不发它）；family 仍须合法，
+    codebook_version 若给出仍要与计划版本对得上。
     """
     for k in ("unit_id", "text", "caption", "family"):
         if not isinstance(u.get(k), str) or not u[k].strip():
@@ -561,9 +600,27 @@ def _check_unit(u, i, plan_version=2):
     cfg = _finite_number(u.get("cfg"))
     if cfg is None or cfg <= 0 or cfg > 20:
         return "unit[%d] cfg 非法：%r" % (i, u.get("cfg"))
+    mode = u.get("caption_mode")
+    if mode is not None:
+        if not isinstance(mode, str) or mode not in CAPTION_MODES:
+            return ("unit[%d] caption_mode 非法：%r（只认 %s；缺省=生产码本路径）"
+                    % (i, mode, "/".join(CAPTION_MODES)))
+        why = free_caption_error(u["caption"])
+        if why:
+            return "unit[%d] free 模式 caption %s" % (i, why)
+        if not FREE_CFG_MIN <= cfg <= FREE_CFG_MAX:
+            return ("unit[%d] free 模式 cfg 越界：%s（允许 %.1f–%.1f；生产锚才锁族值）"
+                    % (i, u.get("cfg"), FREE_CFG_MIN, FREE_CFG_MAX))
+        if u.get("scene_id") is not None and _finite_number(u["scene_id"]) is None:
+            return "unit[%d] scene_id 非法：%r" % (i, u.get("scene_id"))
+        if u.get("codebook_version") is not None:
+            cb_ver = _codebook_version_for(plan_version)
+            if u["codebook_version"] != cb_ver:
+                return ("unit[%d] codebook_version 与 plan_version 不匹配：%r 应为 %r"
+                        % (i, u["codebook_version"], cb_ver))
+        return None
     if plan_version >= SP.PLAN_VERSION_V3:
-        cb_ver = (CB.CODEBOOK_VERSION_V2 if plan_version >= SP.PLAN_VERSION_V4
-                  else CB.CODEBOOK_VERSION)
+        cb_ver = _codebook_version_for(plan_version)
         if u.get("codebook_version") is not None and u["codebook_version"] != cb_ver:
             return ("unit[%d] codebook_version 与 plan_version 不匹配：%r 应为 %r"
                     % (i, u.get("codebook_version"), cb_ver))

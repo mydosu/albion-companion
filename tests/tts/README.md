@@ -1,7 +1,7 @@
 # TTS 验证
 
 离线：`python -B -m unittest discover -s tests/tts -p 'test_*.py'`（要 numpy/httpx，
-系统 python 缺依赖，用 `D:\AI\Wife\tts\irodori\.venv\Scripts\python.exe`；当前 375 项）。
+系统 python 缺依赖，用 `D:\AI\Wife\tts\irodori\.venv\Scripts\python.exe`；当前 406 项）。
 `test_first_packet_and_logs.py` 覆盖源句并发上限、顺序、异常排空、首单元预取及取消、日志脱敏与轮转。
 `test_longline_prepare.py` 覆盖 60s 准备预算、客户端超时/HTTP 断开后释放会话名额、重复等待者与重试去重，
 以及默认 Command Code 路由、显式 API 情绪翻译路由、凭据来源优先级和启动器覆盖；不联网、不读取真实密钥。
@@ -21,6 +21,16 @@
 说话人相似度这一列跳过：本机没有能从任意 wav 提说话人向量的编码器（`speaker_inversion` 是训练出来的
 嵌入目标，不是编码器；resemblyzer/speechbrain/pyannote 都没装，不为它装新依赖）。
 实测见 `tests/output/tts-emoji-pos-20261026/`（README 是自动表，REPORT.md 是结论与建议规则）。
+
+`test_render_free_caption.py` 锁后端的**自由描述 opt-in**（阶段 2，`caption_mode: "free"`）：
+`(family, caption, cfg)` 白名单之外，free 单元放行任意非空、≤120 字、无控制字符的描述和 1.5–7.0 的
+任意 cfg（family 仍须合法；codebook_version 若给出仍须与计划版本一致）；**不带这个字段时行为逐条不变**
+（码本外 caption 仍 400）；free 单元的 caption/cfg 原样进合成腿，队列日志带 `caption_mode=free`。
+固定矩阵 `data/emotion_free_20261026.json` 是这一步要跑的实验：15 条自编自由描述（害羞/忍笑/撒娇/困倦/
+快哭/生气/担心/惊讶/温柔安慰/得意/无奈/紧张结巴/低落/兴奋/耳语，各 10–30 字）× 2 句 × 3 seed，外加
+7 条码本锚基线（各自相对 `neutral_quiet`）与同一描述换 cfg 2/4/6，共 150 条；
+`--matrix emotion_free_20261026` 即可（名字会自动去 `tests/tts/data/` 找）。
+**前置**：后端已带 free 支持——旧后端会把自由描述按码本外 400 拒掉，别把 400 当成实验结论。
 
 `probes/benchmark_prepare.py --baseline-file <旧版 bridge_v2.py> --out <tests/output 下 JSON>`
 用固定延迟离线比较两版准备阶段，不调用翻译或 GPU，不能代替真实首音频 p50。
@@ -73,4 +83,5 @@ JSON 中的人工项保留 UNVERIFIED/REQUIRES_REVIEW，须另附真实壳、播
 实际停启由维护窗口按端口和脚本身份核对后执行，启动命令须使用绝对 bat 路径；
 Deploy/Rollback 会等监听端口释放，仍有监听则拒绝，不会自行停止进程。
 	est_session_text_chunking.py 验证同一段文本整段/逐字/固定 seed 随机块送入 SessionText 切出的单元序列一致；	est_emotion_degraded_health.py 验证 /v2/health 的 motion_degraded 随翻译 key 可用性变化。
+
 

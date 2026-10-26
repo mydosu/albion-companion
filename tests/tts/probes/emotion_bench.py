@@ -6,6 +6,11 @@
 条件矩阵可以从 JSON 读，也可以直接用内置的 emoji 位置实验（默认）。
 结果写 `--out`（必须是 tests/output/ 下），自动生成一页 README（表格 + 「先听这几条」）。
 
+条件可以带 `caption` / `cfg` / `caption_mode: "free"`（阶段 2）：自由描述是训练集外的 caption，
+**只有带 `caption_mode=free` 时后端才放过码本白名单**（`render_queue._check_unit` 的实验路径）。
+free 条件直接打 `/v2/render`，不走 `/v2/plan`（规划层仍然只认码本内的锚）。
+固定矩阵见 `tests/tts/data/emotion_free_20261026.json`：`--matrix emotion_free_20261026` 就能跑。
+
 命令行（前置：:9889 在跑；用 irodori 的 venv，脚本只用 httpx/numpy）：
 
     python -B tests/tts/probes/emotion_bench.py --out tests/output/emoji-pos-20261026
@@ -418,9 +423,25 @@ def normalize_matrix(raw):
             raise BenchError("条件 %s 有 emoji 但 pos=none" % cid)
         if not c.get("emoji") and pos != "none":
             raise BenchError("条件 %s 的 pos=%s 但没有 emoji" % (cid, pos))
+        if c.get("caption") is not None:
+            if not isinstance(c["caption"], str) or not c["caption"].strip():
+                raise BenchError("条件 %s 的 caption 必须是非空字符串" % cid)
+        if c.get("cfg") is not None:
+            if isinstance(c["cfg"], bool) or not isinstance(c["cfg"], (int, float)):
+                raise BenchError("条件 %s 的 cfg 必须是数值：%r" % (cid, c["cfg"]))
+        mode = c.get("caption_mode")
+        if mode is not None and mode != "free":
+            raise BenchError("条件 %s 的 caption_mode 只支持 \"free\"：%r" % (cid, mode))
+        if mode == "free" and c.get("caption") is None:
+            raise BenchError("条件 %s 是 free 模式但没有给 caption" % cid)
+        base_anchor = c.get("baseline_anchor")
+        if base_anchor is not None and base_anchor not in anchors:
+            raise BenchError("条件 %s 的 baseline_anchor 未知：%r" % (cid, base_anchor))
         conds.append(dict(c, anchor=anchor, repeat=int(c.get("repeat", 1)), pos=pos))
     if not conds:
         raise BenchError("矩阵没有 conditions")
+    if raw.get("noise_reference") is not None and raw["noise_reference"] not in anchors:
+        raise BenchError("noise_reference 未知：%r" % (raw["noise_reference"],))
     raw.update(anchors=anchors, conditions=conds, seeds=list(raw.get("seeds") or DEFAULT_SEEDS))
     return raw, texts
 
@@ -430,13 +451,32 @@ def condition_text(cond, texts):
                         cond.get("pos", "none"), cond.get("repeat", 1))
 
 
+def unit_spec(cond, anchors):
+    """条件 → 送进 `/v2/render` 的单元条件（锚 + 每个条件的覆盖）。
+
+    覆盖键：`caption`（自由描述）、`cfg`、`tier`、`caption_mode`（"free" 才让后端放过码本白名单）。
+    换了 caption 的条件不再带锚的 `tier`（那是码本档位，自由描述没有档位，别往日志里写假信息）。
+    """
+    a = dict(anchors[cond.get("anchor", "quiet")])
+    for k in ("caption", "cfg", "tier", "caption_mode"):
+        if cond.get(k) is not None:
+            a[k] = cond[k]
+    if cond.get("caption") is not None:
+        a.pop("tier", None)
+    return a
+
+
 # ---- 指标比较 ----------------------------------------------------------------
 
-def noise_floor(rows):
-    """同一句同一锚换 seed 的 spread（取各句最大），作为「噪声」上限。"""
+def noise_floor(rows, reference=None):
+    """同一句**同一锚**换 seed 的 spread（取各句最大），作为「噪声」上限。
+
+    只算参考锚（默认 `quiet`）的行：多锚矩阵里别的锚是**被测对象**，混进去会把噪声底撑爆。
+    """
+    reference = reference or "quiet"
     per = {}
     for r in rows:
-        if r.get("group") != "base":
+        if r.get("group") != "base" or r.get("anchor") != reference:
             continue
         b = per.setdefault(r["sentence"], dict(dur=[], f0=[], dyn=[], rate=[]))
         b["dur"].append(r["dur"])
@@ -445,6 +485,11 @@ def noise_floor(rows):
         b["dyn"].append(r["dyn_db"])
         if r.get("rate_cps") is not None:
             b["rate"].append(r["rate_cps"])
+    if not per:
+        # 参考锚没对上（自定义矩阵没设 noise_reference）：退回第一条 base 行用的锚，别静默出空表
+        for r in rows:
+            if r.get("group") == "base":
+                return noise_floor(rows, r.get("anchor"))
     floor, detail = {}, {}
     for key, b in per.items():
         d = dict(dur=round(max(b["dur"]) - min(b["dur"]), 3),
@@ -515,7 +560,11 @@ def load_wav(path):
 
 
 async def render_unit(client, backend, text, anchor, seed, voice=VOICE):
-    """一次 /v2/render（单 unit）。返回 (wav bytes, None) 或 (None, 错误文本)。"""
+    """一次 /v2/render（单 unit）。返回 (wav bytes, None) 或 (None, 错误文本)。
+
+    `anchor` 是**解析后**的单元条件（见 `unit_spec`）：family/caption/cfg/tier，可带
+    `caption_mode="free"` —— 那是后端的实验开关（训练集外的 caption 要它才放行）。
+    """
     opened = (await client.post(backend + "/v2/render/open", json={"voice": voice})).json()
     addr = {"session_id": opened["session_id"], "generation": opened["generation"]}
     unit = dict(unit_id="u0", sub_index=0, text=text, family=anchor["family"],
@@ -523,6 +572,8 @@ async def render_unit(client, backend, text, anchor, seed, voice=VOICE):
                 codebook_version=CODEBOOK_VERSION)
     if anchor.get("tier"):
         unit["tier"] = anchor["tier"]
+    if anchor.get("caption_mode"):
+        unit["caption_mode"] = anchor["caption_mode"]
     if seed is not None:
         unit["seed"] = int(seed)
     body = dict(addr, plan_version=PLAN_VERSION, voice=voice, format="wav", units=[unit])
@@ -552,6 +603,20 @@ async def render_unit(client, backend, text, anchor, seed, voice=VOICE):
     if not done or not blob:
         return None, "render incomplete: %r" % (err,)
     return blob, None
+
+
+DATA_DIR = ROOT / "tests" / "tts" / "data"
+
+
+def resolve_matrix_path(name):
+    """`--matrix` 的解析：先按给的路径，再按 `tests/tts/data/<名字>[_可选 .json]`（固定材料放那儿）。"""
+    given = pathlib.Path(name)
+    if given.exists():
+        return given
+    for cand in (DATA_DIR / given.name, DATA_DIR / (given.name + ".json")):
+        if cand.exists():
+            return cand
+    raise BenchError("矩阵文件找不到：%s（也试过 %s）" % (name, DATA_DIR))
 
 
 def backend_health(backend):
@@ -633,7 +698,10 @@ def render_readme(run_name, matrix, rows, failures, floor, floor_detail, has_spe
     bad_rows = [r for r in rows if r.get("bad")]
     seeds = sorted({r["seed"] for r in rows})
     anchors = matrix.get("anchors") or ANCHORS
-    a0 = anchors["quiet"] if "quiet" in anchors else list(anchors.values())[0]
+    ref_anchor = matrix.get("noise_reference") or "quiet"
+    if not any(r.get("anchor") == ref_anchor for r in rows):
+        # 矩阵没声明参考锚：跟 noise_floor 一样退回第一条 base 行的锚
+        ref_anchor = next((r["anchor"] for r in rows if r.get("group") == "base"), ref_anchor)
 
     def fl_for(sid):
         """同句换 seed 的 spread（每句自己的）；没有就退回全局上限（保守）。"""
@@ -646,11 +714,24 @@ def render_readme(run_name, matrix, rows, failures, floor, floor_detail, has_spe
     add("由 `tests/tts/probes/emotion_bench.py` 自动生成。共 **%d** 条 wav，**%d** 条坏音，失败 **%d** 条。"
         % (len(rows), len(bad_rows), len(failures)))
     add("")
-    add("后端 `%s`（`/v2/render`，voice=%s，plan_version=%s，码本 v%s）；caption 统一中性锚"
-        "「%s」（family=%s, cfg=%s, tier=%s）——只让正文 emoji 一个变量动。seed=%s。"
+    add("后端 `%s`（`/v2/render`，voice=%s，plan_version=%s，码本 v%s）。seed=%s。"
         % (matrix.get("backend", DEFAULT_BACKEND), matrix.get("voice", VOICE),
            matrix.get("plan_version", PLAN_VERSION), matrix.get("codebook_version", CODEBOOK_VERSION),
-           a0["caption"], a0["family"], a0["cfg"], a0.get("tier"), ", ".join(str(s) for s in seeds)))
+           ", ".join(str(s) for s in seeds)))
+    add("")
+    add("锚：" + "；".join("`%s`=%s／%s／cfg %s" % (aid, a.get("family"), a.get("caption"), a.get("cfg"))
+                          for aid, a in anchors.items()) + "。")
+    n_free = len({c["id"] for c in matrix["conditions"] if c.get("caption_mode") == "free"})
+    if n_free:
+        n_sweep = len({c["id"] for c in matrix["conditions"] if c.get("group") == "free_cfg"})
+        add("")
+        add("其中 **%d 条条件**（%d 条自由描述%s）走 `caption_mode=free`：caption 是训练集外的"
+            "日语描述，刻意绕过码本白名单（只为量现有 LoRA 能不能听懂；生产网关不带这个字段）。"
+            % (n_free, n_free - n_sweep,
+               " + %d 条同描述换 cfg" % n_sweep if n_sweep else ""))
+    elif len(anchors) == 1:
+        add("")
+        add("caption 固定为上面的锚，**只让正文 emoji 一个变量动**。")
     add("")
     add("句集：" + "；".join("%s「%s」" % (s["id"], s["text"]) for s in matrix["sentences"]
                           if s["id"] != "pair"))
@@ -664,9 +745,13 @@ def render_readme(run_name, matrix, rows, failures, floor, floor_detail, has_spe
                                 MIN_DELTA["rate"]))
     add("")
     add("两条读表须知：**(1)** Δ时长 是确定性的（同文本同 seed 不换、跟 seed 无关），可以当真；"
-        "Δ发声 / Δ首静音 会受「某条渲染开头很低、低于峰值−40 dB」影响，±0.9 s 内别当结论。"
-        "**(2)** 字速 = 字数 ÷ 发声时长，emoji 多出来的非语言声会算进分母，所以句末/非语言类的"
-        "负 Δ字速 **不代表念得更慢**；要判主体语速只看句首/句中的 Δ字速。")
+        "Δ发声 / Δ首静音 会受「某条渲染开头很低、低于峰值−40 dB」影响，±0.9 s 内别当结论。")
+    if any(r.get("emoji") for r in rows):
+        add("**(2)** 字速 = 字数 ÷ 发声时长，emoji 多出来的非语言声会算进分母，所以句末/非语言类的"
+            "负 Δ字速 **不代表念得更慢**；要判主体语速只看句首/句中的 Δ字速。")
+    else:
+        add("**(2)** 字速 = 字数 ÷ 发声时长：同一条文本里，时长变长而字数不变，字速必然一起降，"
+            "两个指标不要当两条独立证据读。")
     add("")
     if floor_detail:
         add("| 句 | seed 数 | 时长范围 s | F0 范围 Hz | 动态范围 dB | 字速范围 |")
@@ -682,6 +767,106 @@ def render_readme(run_name, matrix, rows, failures, floor, floor_detail, has_spe
         add("")
         add("噪声上限：时长 ±%.2f s、F0 ±%.0f Hz、动态 ±%.1f dB、字速 ±%.2f。"
             % (floor.get("dur", 0), floor.get("f0", 0), floor.get("dyn", 0), floor.get("rate", 0)))
+        add("")
+
+    # --- 码本锚基线（相对参考锚）---
+    base_rows = [r for r in rows if r.get("group") == "base" and r.get("anchor") != ref_anchor]
+    if base_rows:
+        add("## 码本锚基线（各自相对参考锚 `%s`）" % ref_anchor)
+        add("")
+        add("| 锚 | family | caption | cfg | 句 | Δ时长 s | ΔF0 Hz | Δ动态 dB | Δ字速 | 块数 |")
+        add("|---|---|---|---|---|---|---|---|---|---|")
+        for aid, anc in anchors.items():
+            if aid == ref_anchor:
+                continue
+            for sid in sorted({r["sentence"] for r in base_rows if r["anchor"] == aid}):
+                sel = [r for r in base_rows if r["anchor"] == aid and r["sentence"] == sid]
+                if not sel:
+                    continue
+                fl = fl_for(sid)
+                g = lambda k: [(r.get("delta") or {}).get(k) for r in sel]
+                dm, dok = judge(g("dur"), fl, "dur")
+                fm, fok = judge(g("f0"), fl, "f0")
+                ym, yok = judge(g("dyn"), fl, "dyn")
+                rm, rok = judge(g("rate"), fl, "rate")
+                add("| `%s` | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
+                    aid, anc.get("family"), anc.get("caption"), anc.get("cfg"), sid,
+                    _cell(dm, dok), _cell(fm, fok, "%+.1f"), _cell(ym, yok, "%+.1f"),
+                    _cell(rm, rok, "%+.2f"), _blocks_note(sel)))
+        add("")
+
+    # --- 自由描述（caption_mode=free）---
+    free = [r for r in rows if r.get("group") == "free" and r["pos"] == "none"]
+    if free:
+        add("## 自由描述（`caption_mode=free`）相对参考锚 `%s`" % ref_anchor)
+        add("")
+        add("训练集外的描述，逐条比同句同 seed 的参考锚。可测标记同前（超过该句 spread 与最小可辨阈值、"
+            "各 seed 同号）——**没有 `*` 就是「听不出差别」**，不是「更好」也不是「更差」。")
+        add("")
+        add("| 描述 | cfg | 句 | Δ时长 s | ΔF0 Hz | Δ动态 dB | Δ字速 | 块数 | 坏音 |")
+        add("|---|---|---|---|---|---|---|---|---|")
+        marks = dict(dur=0, f0=0, dyn=0, rate=0, n=0)
+        seen = []
+        for r in free:
+            key = (r.get("caption"), r.get("cfg"))
+            if key in seen:
+                continue
+            seen.append(key)
+            for sid in sorted({x["sentence"] for x in free
+                               if (x.get("caption"), x.get("cfg")) == key}):
+                sel = [x for x in free if (x.get("caption"), x.get("cfg")) == key
+                       and x["sentence"] == sid]
+                fl = fl_for(sid)
+                g = lambda k: [(x.get("delta") or {}).get(k) for x in sel]
+                dm, dok = judge(g("dur"), fl, "dur")
+                fm, fok = judge(g("f0"), fl, "f0")
+                ym, yok = judge(g("dyn"), fl, "dyn")
+                rm, rok = judge(g("rate"), fl, "rate")
+                marks["n"] += 1
+                for k, ok in (("dur", dok), ("f0", fok), ("dyn", yok), ("rate", rok)):
+                    marks[k] += int(bool(ok))
+                add("| %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
+                    key[0], key[1], sid, _cell(dm, dok), _cell(fm, fok, "%+.1f"),
+                    _cell(ym, yok, "%+.1f"), _cell(rm, rok, "%+.2f"), _blocks_note(sel),
+                    _bad_note(sel)))
+        add("")
+        if marks["n"]:
+            add("合计 %d 个（描述 × 句）单元里：时长可测 **%d**、F0 可测 **%d**、动态可测 **%d**、"
+                "字速可测 **%d** —— 自由描述能不能真的推动声音，看这几个数。"
+                % (marks["n"], marks["dur"], marks["f0"], marks["dyn"], marks["rate"]))
+            add("")
+
+    # --- 同一描述换 cfg ---
+    sweep = [r for r in rows if r.get("group") == "free_cfg" and r["pos"] == "none"]
+    if sweep:
+        add("## 同一描述换 cfg（2 / 4 / 6）：强度能不能连续调")
+        add("")
+        add("| 描述 | cfg | 句 | Δ时长 s | ΔF0 Hz | Δ动态 dB | Δ字速 | 可测(时长/F0/动态/字速) |")
+        add("|---|---|---|---|---|---|---|---|")
+        cfgs = sorted({r.get("cfg") for r in sweep if r.get("cfg") is not None})
+        caps = []
+        for r in sweep:
+            if r.get("caption") not in caps:
+                caps.append(r.get("caption"))
+        for cap in caps:
+            for cfg in cfgs:
+                for sid in sorted({x["sentence"] for x in sweep
+                                   if x.get("caption") == cap and x.get("cfg") == cfg}):
+                    sel = [r for r in sweep if r.get("caption") == cap
+                           and r.get("cfg") == cfg and r["sentence"] == sid]
+                    if not sel:
+                        continue
+                    fl = fl_for(sid)
+                    g = lambda k: [(x.get("delta") or {}).get(k) for x in sel]
+                    dm, dok = judge(g("dur"), fl, "dur")
+                    fm, fok = judge(g("f0"), fl, "f0")
+                    ym, yok = judge(g("dyn"), fl, "dyn")
+                    rm, rok = judge(g("rate"), fl, "rate")
+                    add("| %s | %s | %s | %s | %s | %s | %s | %s/%s/%s/%s |" % (
+                        cap, cfg, sid, _cell(dm, dok), _cell(fm, fok, "%+.1f"),
+                        _cell(ym, yok, "%+.1f"), _cell(rm, rok, "%+.2f"),
+                        "Y" if dok else "n", "Y" if fok else "n", "Y" if yok else "n",
+                        "Y" if rok else "n"))
         add("")
 
     # --- 风格类 ---
@@ -899,11 +1084,16 @@ def render_readme(run_name, matrix, rows, failures, floor, floor_detail, has_spe
 # ---- 主流程 ------------------------------------------------------------------
 
 def attach_baselines(rows):
-    """给每条条件挂同句同 seed 的基线指标与差值，并算坏音 / 多出的尾块。"""
-    bases = {(r["sentence"], r["seed"]): r for r in rows
+    """给每条条件挂基线指标与差值，并算坏音 / 多出的尾块。
+
+    基线 = 同句、同 seed、**同锚**的那条 base 行；条件可用 `baseline_anchor` 指向别的锚
+    （7 锚基线就是「各自相对 neutral/quiet」）。自由描述条件默认跟自己用的锚比。
+    """
+    bases = {(r["sentence"], r["seed"], r["anchor"]): r for r in rows
              if r.get("group") in ("base", "pair-base") and not r.get("emoji")}
     for r in rows:
-        base = bases.get((r["sentence"], r["seed"]))
+        want = r.get("baseline_anchor") or r["anchor"]
+        base = bases.get((r["sentence"], r["seed"], want))
         r["base_id"] = base["id"] if base else None
         r["base_blocks"] = base["n_blocks"] if base else None
         r["delta"] = deltas(r, base) if (base and base is not r) else None
@@ -936,7 +1126,8 @@ async def run(matrix, texts, out, backend, only=None, reuse=False, log=print):
             if blob is None:
                 for _attempt in (0, 1):
                     blob, err = await render_unit(client, backend, text,
-                                                  matrix["anchors"][cond["anchor"]], cond.get("seed"),
+                                                  unit_spec(cond, matrix["anchors"]),
+                                                  cond.get("seed"),
                                                   voice=matrix.get("voice", VOICE))
                     if blob or "HTTP 4" in (err or ""):
                         break
@@ -949,11 +1140,14 @@ async def run(matrix, texts, out, backend, only=None, reuse=False, log=print):
                 continue
             sr, a = decode_wav(blob)
             m = analyze(a, sr, text)
+            spec = unit_spec(cond, matrix["anchors"])
             m.update(id=cond["id"], sentence=cond["sentence"], seed=cond.get("seed"),
                      emoji=cond.get("emoji", ""), emoji_id=cond.get("emoji_id", ""),
                      pos=cond.get("pos", "none"), repeat=cond.get("repeat", 1),
                      group=cond.get("group", "base"), anchor=cond["anchor"], text=text,
-                     bytes=len(blob))
+                     family=spec.get("family"), caption=spec.get("caption"),
+                     cfg=spec.get("cfg"), tier=spec.get("tier"),
+                     caption_mode=spec.get("caption_mode"), bytes=len(blob))
             rows.append(m)
             log("[%3d/%3d] %-34s dur=%5.2fs f0=%6s dyn=%5.1f rate=%5s blocks=%d %s"
                 % (i, len(conds), cond["id"], m["dur"], fmt(m["f0_mean"], "%.0f"), m["dyn_db"],
@@ -965,7 +1159,7 @@ async def run(matrix, texts, out, backend, only=None, reuse=False, log=print):
 
 def write_outputs(out, run_name, matrix, rows, failures):
     rows = attach_baselines(rows)
-    floor, floor_detail = noise_floor(rows)
+    floor, floor_detail = noise_floor(rows, matrix.get("noise_reference") or "quiet")
     payload = dict(run=run_name, created=time.strftime("%Y-%m-%dT%H:%M:%S"), matrix=matrix,
                    noise=dict(floor=floor, detail=floor_detail), rows=rows, failures=failures)
     (out / "metrics.json").write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf8")
@@ -980,7 +1174,8 @@ def main(argv=None):
     p.add_argument("--out", help="输出目录（必须在 tests/output/ 下；默认 tests/output/emotion-bench-<时间>）")
     p.add_argument("--name", help="运行名（默认取 --out 的目录名）")
     p.add_argument("--backend", default=DEFAULT_BACKEND)
-    p.add_argument("--matrix", help="条件矩阵 JSON（默认内置 emoji 位置实验）")
+    p.add_argument("--matrix", help="条件矩阵 JSON（默认内置 emoji 位置实验；"
+                                    "可只给 tests/tts/data 下的名字，如 emotion_free_20261026）")
     p.add_argument("--seeds", help="逗号分隔，覆盖矩阵里的 seed")
     p.add_argument("--only", action="append", default=[], help="只跑 id 含该子串的条件（可多次）")
     p.add_argument("--reuse", action="store_true", help="已有 wav 就复用，只重算指标")
@@ -989,7 +1184,8 @@ def main(argv=None):
     p.add_argument("--skip-health", action="store_true", help="不先探 /health")
     a = p.parse_args(argv)
 
-    raw = json.loads(pathlib.Path(a.matrix).read_text(encoding="utf8")) if a.matrix else build_matrix()
+    raw = json.loads(resolve_matrix_path(a.matrix).read_text(encoding="utf8")) if a.matrix \
+        else build_matrix()
     if a.seeds:
         raw["seeds"] = [int(s) for s in a.seeds.split(",") if s.strip()]
     matrix, texts = normalize_matrix(raw)
