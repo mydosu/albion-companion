@@ -119,6 +119,39 @@ export function stepFaceAlpha(current: number, target: number, dtMs: number): nu
   return target > current ? Math.min(target, current + step) : Math.max(target, current - step)
 }
 
+export interface FaceFadeState {
+  alpha: number
+  target: number
+  /** 正在淡出：这张脸还挂在 0 轨上，等 alpha 到 0 才真的切回 normal。 */
+  fadingOut: boolean
+}
+
+export interface FaceFadeStep {
+  alpha: number
+  /** 淡出已经走完：调用方要把 `表情` 归零、syncIdle，并把 alpha/target 复位成 1。 */
+  completed: boolean
+}
+
+/**
+ * 换脸不透明度的状态机（一帧）。完成判断**不能**放在「alpha 还没到 target」的分支里：
+ *
+ * ROOT CAUSE（2026-10-26 真机复现）：
+ * 换脸那一帧 alpha 刚被置 0（淡入还没开始），同一帧又 setFace('normal') → target 也是 0，
+ * `alpha !== target` 不成立 → 完成分支永远进不去，脸图隐形挂在 0 轨上、眼槽又是 None，结果没有眼睛。
+ *
+ * 所以这里先推进 alpha，再独立判断「fadingOut 且 alpha === 0」。
+ *
+ * @example
+ * faceFadeStep({ alpha: 1, target: 0, fadingOut: true }, 200) // => { alpha: 1, completed: false }（先到 0）
+ * faceFadeStep({ alpha: 0, target: 0, fadingOut: true }, 16)  // => { alpha: 1, completed: true }
+ */
+export function faceFadeStep(state: FaceFadeState, dtMs: number): FaceFadeStep {
+  const alpha = state.alpha === state.target ? state.alpha : stepFaceAlpha(state.alpha, state.target, dtMs)
+  if (state.fadingOut && alpha === 0)
+    return { alpha: 1, completed: true }
+  return { alpha, completed: false }
+}
+
 /** 脸图在场时的头部微晃角度（度）。 */
 export function faceSwayDeg(elapsedMs: number): number {
   const t = Number.isFinite(elapsedMs) ? elapsedMs : 0

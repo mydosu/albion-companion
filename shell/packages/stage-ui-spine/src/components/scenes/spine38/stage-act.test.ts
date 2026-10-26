@@ -9,7 +9,11 @@ describe('resolveFace', () => {
     expect(resolveFace({ face: 'bashful' })).toBe('5')
     expect(resolveFace({ face: 'fluster' })).toBe('6')
     expect(resolveFace({ face: 'gentle' })).toBe('7')
-    expect(new Set(Object.values(FACE_ANIMATION)).size).toBe(12)
+    // 12 个名字里 shy 和 bashful 都指向脸 5（都是「害羞」的普通眼脸），所以实际只有 11 张脸；
+    // 脸 9（漩涡眼）没有表情映射了，只留作手动/调试。
+    expect(new Set(Object.values(FACE_ANIMATION)).size).toBe(11)
+    expect(resolveFace({ face: 'shy' })).toBe('5')
+    expect(Object.values(FACE_ANIMATION)).not.toContain('9')
   })
 
   it('falls back to the emotion default when face is missing or not a semantic name', () => {

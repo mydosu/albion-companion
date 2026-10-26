@@ -2,6 +2,7 @@
 import type { IApplicationOptions } from '@pixi/app'
 import type { BaseTexture } from '@pixi/core'
 
+import type { EyeMaskManifest } from './face-eye-mask'
 import type { HeadMotion, SpineStageAct } from './stage-act'
 
 import { settings as spineSettings } from '@pixi-spine/base'
@@ -32,7 +33,8 @@ import costumeAUrl from '../../../assets/author-models/albion-spine-38-costume-a
 
 import { loadSpineZip } from '../../../utils/spine-zip-loader'
 import { AuthorState, parseCommand, selfTest } from './author-engine'
-import { faceOverlayAlpha, faceSwayDeg, MOUTH_CLOSED_SCALE, MOUTH_LEVEL_TIMEOUT_MS, mouthLevelFromRms, mouthScaleFor, smoothMouth, stepFaceAlpha } from './face-motion'
+import { erasableFacesIn, eraseMaskedPixels, EYE_SLOT_NAMES, stripSlotTimelines } from './face-eye-mask'
+import { faceFadeStep, faceOverlayAlpha, faceSwayDeg, MOUTH_CLOSED_SCALE, MOUTH_LEVEL_TIMEOUT_MS, mouthLevelFromRms, mouthScaleFor, smoothMouth } from './face-motion'
 import { asHeadMotion, FaceHoldTimer, headMotionOffset, parseHold, resolveFace } from './stage-act'
 
 import '@pixi/loaders'
@@ -371,6 +373,7 @@ async function setup() {
   installControllers()
   applyStartLocks() // 作者的"锁"（如 model1 的去除衬衫）在加载时就要生效
   snapshotExpressionSlots() // 记住"没有表情"时脸/眼槽的样子，供表情结束后恢复
+  void applyEyeMasks()
   componentState.value = 'mounted'
 }
 
@@ -405,6 +408,109 @@ interface BoneLike {
  * 骨骼 mod 的时机：动画每帧会把骨骼写回去，所以只能在动画 apply 之后叠加，
  * 再补一次 updateWorldTransform 让世界矩阵跟上（多一次遍历，代价可接受）。
  */
+/**
+ * 脸图擦眼：把脸上画出来的眼睛(睫毛/眼线/眼白/虹膜/高光)从贴图上抠掉，底下的真眼槽就露出来了
+ * —— 会眨、会看人。mask 是 `pet/tools/spine_face_eye_masks.py` 离线生成的本地文件，放在
+ * `stage-ui/src/assets/spine/models/albion-eye-masks/`（不入库）。
+ *
+ * 用 `import.meta.glob` 而不是 fetch：目录不存在时 glob 是空对象，打包不会失败；存在时 Vite 会把
+ * mask 一起打进产物。**擦除只用 getImageData/putImageData 逐像素改 alpha**——canvas 的
+ * `filter + destination-out` 会把整张 4096² 页的 alpha 一起压掉（2026-10-26 实测腮红当场消失）。
+ * 没有 mask 文件时什么都不做，行为与以前一致。
+ */
+const eyeMaskPngs = import.meta.glob('../../../../../stage-ui/src/assets/spine/models/albion-eye-masks/*.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>
+const eyeMaskManifestLoaders = import.meta.glob('../../../../../stage-ui/src/assets/spine/models/albion-eye-masks/manifest.json')
+
+interface StripTimeline {
+  slotIndex?: number | null
+  constructor: { name: string }
+}
+
+async function applyEyeMasks() {
+  const spine = model
+  const loadManifest = Object.values(eyeMaskManifestLoaders)[0]
+  if (!spine || !loadManifest)
+    return
+  let manifest: EyeMaskManifest
+  try {
+    manifest = ((await loadManifest()) as { default: EyeMaskManifest }).default
+  }
+  catch {
+    return
+  }
+  const faces = erasableFacesIn(manifest)
+  if (!faces.length)
+    return
+
+  const data = spine.spineData
+  const faceSlotIdx = data.slots.findIndex(s => String(s.name) === '1')
+  const bag = data.skins[0]?.attachments?.[faceSlotIdx] as Record<string, { region?: { texture?: { baseTexture?: BaseTexture } } }> | undefined
+  if (!bag)
+    return
+
+  // 一张 atlas 页常被多张脸共用，所以按 baseTexture 攒 canvas，最后统一 update 一次
+  const pages = new Map<BaseTexture, { canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D }>()
+  let erasedPx = 0
+  for (const face of faces) {
+    const entry = manifest.faces[face]
+    const bt = bag[face]?.region?.texture?.baseTexture
+    if (!entry || !bt)
+      continue
+    let page = pages.get(bt)
+    if (!page) {
+      const canvas = document.createElement('canvas')
+      canvas.width = bt.width
+      canvas.height = bt.height
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })
+      if (!ctx)
+        continue
+      // @pixi/core 的 Resource 类型没暴露 source（运行时是 ImageResource 的 Image / 我们换上的 canvas）
+      ctx.drawImage((bt.resource as unknown as { source: CanvasImageSource }).source, 0, 0)
+      page = { canvas, ctx }
+      pages.set(bt, page)
+    }
+    const maskUrl = Object.entries(eyeMaskPngs).find(([path]) => path.endsWith(`/${entry.file}`))?.[1]
+    if (!maskUrl)
+      continue
+    const [mx, my, mw, mh] = entry.rect
+    try {
+      const img = new Image()
+      img.src = maskUrl
+      await img.decode()
+      const mcv = document.createElement('canvas')
+      mcv.width = mw
+      mcv.height = mh
+      const mctx = mcv.getContext('2d', { willReadFrequently: true })
+      if (!mctx)
+        continue
+      mctx.drawImage(img, 0, 0)
+      const mask = mctx.getImageData(0, 0, mw, mh).data
+      const id = page.ctx.getImageData(mx, my, mw, mh)
+      erasedPx += eraseMaskedPixels(id.data, mask)
+      page.ctx.putImageData(id, mx, my)
+    }
+    catch (err) {
+      console.warn(`[spine38] 擦眼失败（脸 ${face}）`, err)
+    }
+  }
+  for (const [bt, page] of pages) {
+    ;(bt.resource as unknown as { source: CanvasImageSource }).source = page.canvas
+    bt.update()
+  }
+
+  // 擦过眼的脸：动画里眼槽的 AttachmentTimeline 要去掉，否则每次换脸 spine 又会把眼槽置 None，
+  // 真眼只在换脸的同一帧里露一下。
+  const eyeIdx = new Set(EYE_SLOT_NAMES.map(n => data.slots.findIndex(s => String(s.name) === n)))
+  for (const anim of data.animations as Array<{ name: string, timelines: StripTimeline[] }>) {
+    if (!faces.includes(anim.name))
+      continue
+    anim.timelines = stripSlotTimelines(anim.timelines, tl =>
+      tl.slotIndex != null && eyeIdx.has(tl.slotIndex) && tl.constructor?.name === 'AttachmentTimeline')
+  }
+  if (import.meta.env.DEV)
+    console.info(`[spine38] 擦眼：${pages.size} 张页面、${faces.length} 张脸、${erasedPx} 个像素`)
+}
+
 function installControllers() {
   const spine = model
   if (!spine || !spine.skeleton)
@@ -564,18 +670,19 @@ function installControllers() {
       }
       // 换脸淡入淡出。淡出时**先不切动画**：切的那一帧 spine 会把槽 `1` 的附件清掉，
       // 硬切就是"闪一下"。等 alpha 到 0 再切，然后把不透明度还给下一次。
-      if (faceAlpha !== faceAlphaTarget) {
-        faceAlpha = stepFaceAlpha(faceAlpha, faceAlphaTarget, (dt || 0.016) * 1000)
-        if (faceFadeOut && faceAlpha === 0) {
-          faceFadeOut = false
-          const st = author.value
-          if (st) {
-            st.vars['表情'] = 0
-            syncIdle()
-          }
-          faceAlpha = 1
-          faceAlphaTarget = 1
+      // 完成判断放在状态机里（不能塞进「alpha 还没到 target」的分支，见 faceFadeStep 的注释）：
+      // 换脸那一帧 alpha 刚被置 0、同一帧又 setFace('normal') 时，旧写法会永远收不掉。
+      const fade = faceFadeStep({ alpha: faceAlpha, target: faceAlphaTarget, fadingOut: faceFadeOut }, (dt || 0.016) * 1000)
+      faceAlpha = fade.alpha
+      if (fade.completed) {
+        faceFadeOut = false
+        const st = author.value
+        if (st) {
+          st.vars['表情'] = 0
+          syncIdle()
         }
+        faceAlpha = 1
+        faceAlphaTarget = 1
       }
       // 颜色不参与骨架变换，不用为它再跑一次 updateWorldTransform。
       if (faceSlot)

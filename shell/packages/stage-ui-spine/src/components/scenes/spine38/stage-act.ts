@@ -31,7 +31,9 @@ export const FACE_ANIMATION: Readonly<Record<string, string>> = Object.freeze({
   fluster: '6',
   gentle: '7',
   happy: '8',
-  shy: '9',
+  // 害羞用带脸红的普通眼脸（脸 5）：脸 9 是漩涡眼，脸上的眼睛被画死了，眨不了也看不了人。
+  // 9 现在没有情绪映射，只留作手动/调试用。
+  shy: '5',
   dizzy: '10',
   pout: '11',
 })
@@ -45,7 +47,7 @@ const FACE_OF_EMOTION: Readonly<Record<string, string>> = Object.freeze({
   sad: '11',
   angry: '10',
   surprised: '1',
-  awkward: '9',
+  awkward: '5',
   question: '3',
   think: '2',
   curious: '3',

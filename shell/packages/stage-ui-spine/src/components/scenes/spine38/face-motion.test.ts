@@ -5,6 +5,7 @@ import {
   FACE_OVERLAY_MIN_ALPHA,
   FACE_SWAY_DEG,
   FACE_SWAY_PERIOD_MS,
+  faceFadeStep,
   faceOverlayAlpha,
   faceSwayDeg,
   MOUTH_ATTACK_MS,
@@ -118,5 +119,32 @@ describe('mouthPushFor', () => {
     // 现在停下的那一帧推 0 收口，之后交给 Model 的 250ms 看门狗。
     expect(mouthPushFor(false, true)).toBe('silence')
     expect(mouthPushFor(false, false)).toBe('none')
+  })
+})
+
+describe('faceFadeStep', () => {
+  it('walks alpha toward the target and only reports completion after it hits 0', () => {
+    const mid = faceFadeStep({ alpha: 1, target: 0, fadingOut: true }, FACE_FADE_MS / 2)
+    expect(mid.alpha).toBeCloseTo(0.5, 6)
+    expect(mid.completed).toBe(false)
+    const end = faceFadeStep({ alpha: 0.5, target: 0, fadingOut: true }, FACE_FADE_MS)
+    expect(end).toEqual({ alpha: 1, completed: true })
+  })
+
+  // ROOT CAUSE:
+  // 换脸那一帧 alpha 被置 0（淡入还没开始），同一帧又 setFace('normal') → target 也是 0。
+  // 旧写法把完成判断塞在 `if (alpha !== target)` 里，这个状态永远进不去：脸图隐形挂在 0 轨上、
+  // 眼槽又是 None，结果整张脸没有眼睛。
+  it('completes a fade-out that starts already at alpha === target === 0', () => {
+    expect(faceFadeStep({ alpha: 0, target: 0, fadingOut: true }, 16)).toEqual({ alpha: 1, completed: true })
+  })
+
+  it('does nothing when not fading and already at the target', () => {
+    expect(faceFadeStep({ alpha: 1, target: 1, fadingOut: false }, 16)).toEqual({ alpha: 1, completed: false })
+    expect(faceFadeStep({ alpha: 0.3, target: 0.3, fadingOut: false }, 16)).toEqual({ alpha: 0.3, completed: false })
+  })
+
+  it('never reports completion while only fading in', () => {
+    expect(faceFadeStep({ alpha: 0, target: 1, fadingOut: false }, FACE_FADE_MS)).toEqual({ alpha: 1, completed: false })
   })
 })
