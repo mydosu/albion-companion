@@ -19,7 +19,7 @@ import { wlipsyncProfile } from '@proj-airi/model-driver-lipsync/shared/wlipsync
 import { createPlaybackManager, createSpeechPipeline, createTtsSegmentStream, normalizeActPayload } from '@proj-airi/pipelines-audio'
 import { defaultLive2DMotionControlDynamics, Live2DScene, useLive2DMotionControl, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
 import { MMDScene } from '@proj-airi/stage-ui-mmd'
-import { Spine38Scene, SpineScene } from '@proj-airi/stage-ui-spine'
+import { mouthLevelFromRms, Spine38Scene, SpineScene } from '@proj-airi/stage-ui-spine'
 import { TachieScene } from '@proj-airi/stage-ui-tachie'
 import { ThreeScene } from '@proj-airi/stage-ui-three'
 import { animations } from '@proj-airi/stage-ui-three/assets/vrm'
@@ -914,6 +914,55 @@ function syncLipSyncLoop() {
   stopLipSyncLoop()
 }
 
+/**
+ * spine38 的口型：它没有 wlipsync，直接读 `audioAnalyser` —— 这个分析器一直挂在每段音频的
+ * 输出上（`connectPlaybackSource`），以前没人读。电平只在这里算，平滑和骨缩放归 Model.vue。
+ */
+let spineMouthBuf = new Uint8Array(0)
+let spineMouthLoopId: number | undefined
+
+function startSpineMouthLoop() {
+  if (spineMouthLoopId)
+    return
+  const tick = () => {
+    // 只有真的在出声才给电平；段间空档和说完都由 0 收口（Model 侧 120ms 内闭嘴）
+    spine38SceneRef.value?.setMouthLevel(nowSpeaking.value ? readSpineMouthLevel() : 0)
+    spineMouthLoopId = requestAnimationFrame(tick)
+  }
+  spineMouthLoopId = requestAnimationFrame(tick)
+}
+
+function stopSpineMouthLoop() {
+  if (spineMouthLoopId) {
+    cancelAnimationFrame(spineMouthLoopId)
+    spineMouthLoopId = undefined
+  }
+  spine38SceneRef.value?.setMouthLevel(0)
+}
+
+function readSpineMouthLevel(): number {
+  const analyser = audioAnalyser.value
+  if (!analyser)
+    return 0
+  if (spineMouthBuf.length !== analyser.fftSize)
+    spineMouthBuf = new Uint8Array(analyser.fftSize)
+  const buf = spineMouthBuf
+  analyser.getByteTimeDomainData(buf)
+  let sum = 0
+  for (const v of buf) {
+    const d = (v - 128) / 128
+    sum += d * d
+  }
+  return mouthLevelFromRms(Math.sqrt(sum / buf.length))
+}
+
+function syncSpineMouthLoop() {
+  if (stageModelRenderer.value === 'spine38' && !props.paused)
+    startSpineMouthLoop()
+  else
+    stopSpineMouthLoop()
+}
+
 async function setupLipSync() {
   if (stageModelRenderer.value !== 'live2d') {
     resetLive2dLipSync()
@@ -1328,6 +1377,7 @@ watch([stageModelRenderer, () => props.paused], ([renderer]) => {
     componentState.value = 'mounted'
   }
 
+  syncSpineMouthLoop()
   if (renderer !== 'live2d') {
     resetLive2dLipSync()
     return
@@ -1430,6 +1480,7 @@ async function captureFrame() {
 onUnmounted(() => {
   disposePlaybackStateHandler()
   resetLive2dLipSync()
+  stopSpineMouthLoop()
   chatHookCleanups.forEach(dispose => dispose?.())
   viewUpdateCleanups.forEach(dispose => dispose?.())
   // Tear down any in-flight TTS session (segmenter or streaming) and

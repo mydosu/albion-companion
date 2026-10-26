@@ -137,10 +137,33 @@ export function parseHold(value: unknown): FaceHold {
 const SPEECH_TAIL_MS = 1500
 /** 这一轮没出声（静音、只给 ACT 的静默回合）时脸留多久。 */
 const NO_SPEECH_MS = 6000
-/** 说话中的安全上限，和 Stage 整轮播放门闩的 180s 超时对齐。 */
-const SPEECH_MAX_MS = 180_000
+/**
+ * 默认 hold 的上限：脸图在场时眨眼和视线都被盖住（眼睛是画进图里的），
+ * 所以一张脸最多留 6s，到点先回 `normal` 让眼睛活过来，后面的句子用 emotion 再换。
+ */
+const SPEECH_MAX_MS = 6_000
 /** keep 的安全上限：下一个 ACT 会先替换它，万一一直没有新回复，2 分钟后也回到 normal。 */
 const KEEP_MAX_MS = 120_000
+
+/**
+ * 这张脸接下来留多久（毫秒）。`seconds` 与 `keep` 听调用方的；默认 `speech` 的规则：
+ * 正在出声 → 最多 `SPEECH_MAX_MS`（脸图期间眼睛不会动，宁短勿长）；说完 → 补 `SPEECH_TAIL_MS`；
+ * 直到超时都没出过声 → `NO_SPEECH_MS`。
+ *
+ * @example
+ * holdDurationMs({ kind: 'speech' }, true, true)   // => 6000（说话中，6s 后先收脸）
+ * holdDurationMs({ kind: 'speech' }, false, true)  // => 1500（说完的尾巴）
+ * holdDurationMs({ kind: 'seconds', seconds: 8 }, true, true) // => 8000
+ */
+export function holdDurationMs(hold: FaceHold, speaking: boolean, heardSpeech: boolean): number {
+  if (hold.kind === 'seconds')
+    return hold.seconds * 1000
+  if (hold.kind === 'keep')
+    return KEEP_MAX_MS
+  if (speaking)
+    return SPEECH_MAX_MS
+  return heardSpeech ? SPEECH_TAIL_MS : NO_SPEECH_MS
+}
 
 /**
  * 脸什么时候退回 normal。
@@ -186,15 +209,7 @@ export class FaceHoldTimer {
     const hold = this.hold
     if (!hold)
       return
-    let ms: number
-    if (hold.kind === 'seconds')
-      ms = hold.seconds * 1000
-    else if (hold.kind === 'keep')
-      ms = KEEP_MAX_MS
-    else if (this.speaking)
-      ms = SPEECH_MAX_MS
-    else
-      ms = this.heardSpeech ? SPEECH_TAIL_MS : NO_SPEECH_MS
+    const ms = holdDurationMs(hold, this.speaking, this.heardSpeech)
     this.timer = setTimeout(() => {
       this.timer = undefined
       this.hold = undefined

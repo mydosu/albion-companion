@@ -32,6 +32,7 @@ import costumeAUrl from '../../../assets/author-models/albion-spine-38-costume-a
 
 import { loadSpineZip } from '../../../utils/spine-zip-loader'
 import { AuthorState, parseCommand, selfTest } from './author-engine'
+import { faceOverlayAlpha, faceSwayDeg, MOUTH_CLOSED_SCALE, MOUTH_LEVEL_TIMEOUT_MS, mouthLevelFromRms, mouthScaleFor, smoothMouth, stepFaceAlpha } from './face-motion'
 import { asHeadMotion, FaceHoldTimer, headMotionOffset, parseHold, resolveFace } from './stage-act'
 
 import '@pixi/loaders'
@@ -94,6 +95,11 @@ let poseTrack = 1
 
 /** 她换上的脸什么时候收回 normal（ACT 的 hold，见 stage-act.ts）。 */
 const faceHold = new FaceHoldTimer(() => setFace('normal'))
+/** 脸图槽，和 9/10/11 那张叠层槽（SURVEY.md §1.2）。淡入淡出和叠层呼吸都改它们的 color.a。 */
+const FACE_SLOT = '1'
+const FACE_OVERLAY_SLOT = '1-2'
+/** 只有 9/10/11 的动画会给 `1-2` 挂叠层；换到别的脸必须显式清掉，否则旧叠层会浮在新脸上。 */
+const FACES_WITH_OVERLAY = new Set(['9', '10', '11'])
 /** 正在播的头部小动作；update 钩子按它算偏移，播完置空。 */
 let headMotion: { kind: HeadMotion, startedAt: number } | undefined
 const author = shallowRef<AuthorState>()
@@ -106,11 +112,21 @@ let disposeControllers: (() => void) | undefined
 const activeSrc = ref('')
 /** 作者 modelN.json 的文件名 → 资源 URL（change_cos 的值就是这些文件名）。 */
 
+/**
+ * 口型电平（0..1）。两个来源共用：作者 wav 的实时分析，和 Stage 每帧推进来的 TTS 音量
+ * （`setMouthLevel`）。规则见 face-motion.ts。
+ */
 const mouthLevelRef = ref(0)
-// 嘴型只在"正在播语音"时驱动：待机动画自己会用 zui/zuiB 换嘴形，
-// 平时压着 scaleX=0.55 等于让嘴一直缩着（实测静音时恒定 0.55，很明显）。
-let voiceActive = false
-let mouthNow = 1
+/** 最后一次收到电平的时刻。超过 MOUTH_LEVEL_TIMEOUT_MS 没新值就当静音，嘴一定闭合。 */
+let mouthLevelAt = 0
+/** 嘴骨当前 scaleX。初值就是闭嘴值：原画静止态是张开的嘴，用户报过"嘴一直张着"。 */
+let mouthNow = MOUTH_CLOSED_SCALE
+
+/** 脸图（槽 `1`）的不透明度。换脸是附件硬切，做 180ms 淡入淡出，免得闪一下。 */
+let faceAlpha = 1
+let faceAlphaTarget = 1
+/** 淡出中：这张脸还挂在 track 0 上（附件还在），等 alpha 到 0 再真的切回 normal。 */
+let faceFadeOut = false
 
 // 作者的 `sound` 字段 → 同名 wav。语音是第三方资产，放在 gitignore 的本地目录里，
 // 由 vite 作为资源提供（避免 file:// 与 dev server 的跨源限制）。
@@ -143,7 +159,6 @@ function playVoice(name: string) {
     node.connect(analyser)
     analyser.connect(audioCtx.destination)
     const buf = new Uint8Array(analyser.fftSize)
-    const gain = (spec.controllers?.lip_sync as { gain?: number } | undefined)?.gain ?? 1
     const tick = () => {
       if (!analyser)
         return
@@ -153,10 +168,9 @@ function playVoice(name: string) {
         const d = (v - 128) / 128
         sum += d * d
       }
-      // 噪声门 + 线性映射：之前直接 ×gain×3 会一路顶到饱和（实测 66% 的帧贴在最大值，
-      // 表现就是"嘴一直张着"）。先把底噪（约 -45dB，实测 RMS≈0.02）压成 0，再按 gain 放大。
-      const rms = Math.sqrt(sum / buf.length)
-      setMouthLevel(rms < 0.02 ? 0 : Math.min(1, (rms - 0.02) * (gain / 5) * 6))
+      // 噪声门和斜率在 mouthLevelFromRms 里，TTS 那条路用的是同一份：spec 的 lip_sync.gain=5
+      // 正是当初校出斜率 6 的那个值，所以这里不再乘 gain。
+      setMouthLevel(mouthLevelFromRms(Math.sqrt(sum / buf.length)))
       lipRaf = requestAnimationFrame(tick)
     }
     tick()
@@ -164,13 +178,11 @@ function playVoice(name: string) {
   catch (e) {
     console.warn('[spine38] 口型分析不可用（语音照常播放）', e)
   }
-  voiceActive = true
   audioEl.onended = () => stopVoice()
   void audioEl.play().catch(e => console.warn('[spine38] 语音播放被拒（需要一次用户点击）', e))
 }
 
 function stopVoice() {
-  voiceActive = false
   cancelAnimationFrame(lipRaf)
   lipRaf = 0
   analyser = undefined
@@ -467,6 +479,7 @@ function installControllers() {
     return { dx: t.x - o.x, dy: t.y - o.y }
   }
   let gestureWasLive = false
+  let swayWas = false
 
   const hasTrack = !!trackBone && !!mtCfg
   const hasLip = !!zui
@@ -502,17 +515,28 @@ function installControllers() {
       modState.set(b, rec)
     }
 
+    const faceSlot = skeleton.slots.find(s => String(s.data.name) === FACE_SLOT)
+    const faceOverlaySlot = skeleton.slots.find(s => String(s.data.name) === FACE_OVERLAY_SLOT)
+
     const origUpdate = (spine as unknown as { update: (dt: number) => void }).update.bind(spine)
     ;(spine as unknown as { update: (dt: number) => void }).update = (dt: number) => {
       origUpdate(dt)
+      const now = performance.now()
+      // 脸图在场时眼睛是画进图里的，给一点几乎看不见的头部晃动（±0.8°），整张脸才不会僵死。
+      // 幅度比 nod 小一个量级，叠在 nod/tilt 上只是让它们更柔和。
+      const faceOn = !!faceSlot?.getAttachment()
+      const sway = faceOn ? faceSwayDeg(now) : 0
       let touched = false
-      const live = headMotion ? headMotionOffset(headMotion.kind, (performance.now() - headMotion.startedAt) / 1000) : undefined
+      const live = headMotion ? headMotionOffset(headMotion.kind, (now - headMotion.startedAt) / 1000) : undefined
       if (!live)
         headMotion = undefined
-      const gesture = live ? { rot: live.rot, ...headLocalOffset(live.down, live.right) } : { rot: 0, dx: 0, dy: 0 }
-      // 播完那一帧再写一次 0，把位移和旋转还给原位
-      const gestureFrame = !!headBone && (!!live || gestureWasLive)
+      const gesture = live
+        ? { rot: live.rot + sway, ...headLocalOffset(live.down, live.right) }
+        : { rot: sway, dx: 0, dy: 0 }
+      // 播完那一帧再写一次 0，把位移和旋转还给原位（晃动结束时也一样）
+      const gestureFrame = !!headBone && (!!live || gestureWasLive || sway !== 0 || swayWas)
       gestureWasLive = !!live
+      swayWas = sway !== 0
       if (hasTrack && trackBone) {
         const k = Math.min(1, (dt || 0.016) / smoothT)
         curRot += (targetRot - curRot) * k
@@ -527,17 +551,38 @@ function installControllers() {
         touched = true
       }
       if (hasLip && zui) {
-        // 姿势播放中（轨道 1 有动画）不驱动嘴：
-        // 作者的姿势动画是用**整张脸图**表达表情的（此时嘴槽是空的），
-        // 再缩 zui 骨会把脸图拉变形 —— 实测脸图在时缩嘴骨仍有 44.5 万像素变化，
-        // 表现就是"脸红时脸部突然闪一下"。
+        // 姿势播放中（轨道 2 有动画）不驱动嘴：作者的姿势是用整张脸图表达表情的，
+        // 再缩 zui 骨会把脸图拉变形（实测脸图在时缩嘴骨仍有 44.5 万像素变化）。
         const posing = !!model?.state.getCurrent(poseTrack)?.animation
-        // 闭嘴 scaleX=0.55（嘴高约 6px），满幅 2.2（约 35px）；一阶平滑 τ=0.12s
-        const want = (voiceActive && !posing) ? 0.55 + 1.65 * Math.min(1, Math.max(0, mouthLevelRef.value)) : 1
-        mouthNow += (want - mouthNow) * Math.min(1, (dt || 0.016) / 0.12)
+        // 电平有看门狗：TTS 会话断开或 Stage 的循环停掉时，超过 250ms 没新值就当静音，
+        // 保证说完/打断/静音后一定回到闭嘴，不会停在张开。
+        const level = now - mouthLevelAt > MOUTH_LEVEL_TIMEOUT_MS ? 0 : mouthLevelRef.value
+        const want = posing ? 1 : mouthScaleFor(level, faceOn)
+        mouthNow = smoothMouth(mouthNow, want, (dt || 0.016) * 1000)
         zui.scaleX = mouthNow
         touched = true
       }
+      // 换脸淡入淡出。淡出时**先不切动画**：切的那一帧 spine 会把槽 `1` 的附件清掉，
+      // 硬切就是"闪一下"。等 alpha 到 0 再切，然后把不透明度还给下一次。
+      if (faceAlpha !== faceAlphaTarget) {
+        faceAlpha = stepFaceAlpha(faceAlpha, faceAlphaTarget, (dt || 0.016) * 1000)
+        if (faceFadeOut && faceAlpha === 0) {
+          faceFadeOut = false
+          const st = author.value
+          if (st) {
+            st.vars['表情'] = 0
+            syncIdle()
+          }
+          faceAlpha = 1
+          faceAlphaTarget = 1
+        }
+      }
+      // 颜色不参与骨架变换，不用为它再跑一次 updateWorldTransform。
+      if (faceSlot)
+        faceSlot.color.a = faceAlpha
+      // 9/10/11 的叠层（槽 `1-2`）画在脸图之上，是脸图期间唯一还能动的部件：慢呼吸 0.72..1.0。
+      if (faceOverlaySlot)
+        faceOverlaySlot.color.a = faceOverlaySlot.getAttachment() ? faceAlpha * faceOverlayAlpha(now) : faceAlpha
       if (touched)
         skeleton.updateWorldTransform()
     }
@@ -582,7 +627,8 @@ function applyStartLocks() {
 
 /** lip_sync：由音频侧按当前音量调用（0..1）。 */
 function setMouthLevel(level: number) {
-  mouthLevelRef.value = Math.min(1, Math.max(0, level))
+  mouthLevelRef.value = Math.min(1, Math.max(0, Number.isFinite(level) ? level : 0))
+  mouthLevelAt = performance.now()
 }
 
 /** slot_opacity：按作者的 items 分组调 slot.color.a（对 Mesh 与 Sprite 都有效，已实测）。 */
@@ -687,7 +733,7 @@ function installAuthorInteractions() {
  * AttachmentTimeline），所以不自己恢复的话，一次触摸之后脸就永远定格在那个表情上
  * （用户实测："脸红之后一直静止了"）。作者的本意是表情只持续 motion_duration。
  */
-const EXPR_SLOT_RE = /^(?:1|1-2|(?:you|zuo)yan-\d)$/
+const EXPR_SLOT_RE = /^(?:1|1-2|zui|han|lianhong1|(?:you|zuo)yan-\d)$/
 let exprSnapshot: Map<number, unknown> | undefined
 
 function snapshotExpressionSlots() {
@@ -853,6 +899,13 @@ function teardownModel() {
   clearTimeout(playTimer)
   faceHold.cancel()
   headMotion = undefined
+  // 换装扮会重建模型：嘴和脸的瞬时状态跟着旧骨架走，别把半截淡出/张嘴带到新骨架上
+  mouthLevelRef.value = 0
+  mouthLevelAt = 0
+  mouthNow = MOUTH_CLOSED_SCALE
+  faceAlpha = 1
+  faceAlphaTarget = 1
+  faceFadeOut = false
   bubble.value = ''
   menu.value = undefined
   disposeControls?.()
@@ -993,8 +1046,28 @@ function setFace(anim: string) {
   const st = author.value
   if (!st)
     return false
-  st.vars['表情'] = anim === 'normal' ? 0 : Number(anim)
+  if (anim === 'normal') {
+    if (st.vars['表情'] === 0) {
+      faceFadeOut = false
+      faceAlphaTarget = 1
+      return true
+    }
+    // 淡出：这张脸先留着，alpha 到 0 时再由 update 钩子真的切回 normal
+    faceFadeOut = true
+    faceAlphaTarget = 0
+    return true
+  }
+  const wasFace = st.vars['表情'] !== 0
+  st.vars['表情'] = Number(anim)
   syncIdle()
+  if (!FACES_WITH_OVERLAY.has(anim)) {
+    const overlay = model?.skeleton.slots.find(s => String(s.data.name) === FACE_OVERLAY_SLOT)
+    overlay?.setAttachment(null as never)
+  }
+  if (!wasFace)
+    faceAlpha = 0
+  faceFadeOut = false
+  faceAlphaTarget = 1
   return true
 }
 

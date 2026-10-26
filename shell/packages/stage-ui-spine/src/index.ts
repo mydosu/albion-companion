@@ -1,5 +1,6 @@
 export { SpineCanvas, SpineModel } from './components/scenes/spine'
 export { default as Spine38Scene } from './components/scenes/Spine38.vue'
+export * from './components/scenes/spine38/face-motion'
 export { default as SpineScene } from './components/scenes/Spine.vue'
 export * from './composables/spine'
 export * from './constants/emotions'
