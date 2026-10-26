@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 808 378" width="808" height="378" font-family="system-ui,-apple-system,'Segoe UI','Microsoft YaHei',sans-serif">
+<style>
+:root{--bg:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--grid:#e4e3df;--band:#eeede9;--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a}
+@media (prefers-color-scheme:dark){:root{--bg:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--grid:#353532;--band:#262624;--s1:#3987e5;--s2:#d95926;--s3:#199e70}}
+.t{fill:var(--ink)}.t2{fill:var(--ink2)}
+</style>
+<rect width="100%" height="100%" fill="var(--bg)"/>
+<text x="64" y="28" class="t" font-size="16" font-weight="600">她一周里每次醒来的时刻</text>
+<text x="64" y="48" class="t2" font-size="12">10-20 至 10-26，按门铃响的时间画；横轴是一天 24 小时</text>
+<rect x="79.0" y="70" width="255.0" height="238" fill="var(--band)"/>
+<text x="206.5" y="189.0" class="t2" font-size="12" text-anchor="middle">00:30–09:00 不主动开口</text>
+<line x1="64.0" x2="64.0" y1="70" y2="308" stroke="var(--grid)" stroke-width="1"/>
+<text x="64.0" y="326" class="t2" font-size="11" text-anchor="middle">00:00</text>
+<line x1="154.0" x2="154.0" y1="70" y2="308" stroke="var(--grid)" stroke-width="1"/>
+<text x="154.0" y="326" class="t2" font-size="11" text-anchor="middle">03:00</text>
+<line x1="244.0" x2="244.0" y1="70" y2="308" stroke="var(--grid)" stroke-width="1"/>
+<text x="244.0" y="326" class="t2" font-size="11" text-anchor="middle">06:00</text>
+<line x1="334.0" x2="334.0" y1="70" y2="308" stroke="var(--grid)" stroke-width="1"/>
+<text x="334.0" y="326" class="t2" font-size="11" text-anchor="middle">09:00</text>
+<line x1="424.0" x2="424.0" y1="70" y2="308" stroke="var(--grid)" stroke-width="1"/>
+<text x="424.0" y="326" class="t2" font-size="11" text-anchor="middle">12:00</text>
+<line x1="514.0" x2="514.0" y1="70" y2="308" stroke="var(--grid)" stroke-width="1"/>
+<text x="514.0" y="326" class="t2" font-size="11" text-anchor="middle">15:00</text>
+<line x1="604.0" x2="604.0" y1="70" y2="308" stroke="var(--grid)" stroke-width="1"/>
+<text x="604.0" y="326" class="t2" font-size="11" text-anchor="middle">18:00</text>
+<line x1="694.0" x2="694.0" y1="70" y2="308" stroke="var(--grid)" stroke-width="1"/>
+<text x="694.0" y="326" class="t2" font-size="11" text-anchor="middle">21:00</text>
+<line x1="784.0" x2="784.0" y1="70" y2="308" stroke="var(--grid)" stroke-width="1"/>
+<text x="784.0" y="326" class="t2" font-size="11" text-anchor="middle">24:00</text>
+<text x="54" y="91.0" class="t2" font-size="12" text-anchor="end">10-20</text>
+<text x="54" y="125.0" class="t2" font-size="12" text-anchor="end">10-21</text>
+<text x="54" y="159.0" class="t2" font-size="12" text-anchor="end">10-22</text>
+<text x="54" y="193.0" class="t2" font-size="12" text-anchor="end">10-23</text>
+<text x="54" y="227.0" class="t2" font-size="12" text-anchor="end">10-24</text>
+<text x="54" y="261.0" class="t2" font-size="12" text-anchor="end">10-25</text>
+<text x="54" y="295.0" class="t2" font-size="12" text-anchor="end">10-26</text>
+<circle cx="631.1" cy="87.0" r="5.5" fill="var(--s1)" stroke="var(--bg)" stroke-width="2"/>
+<circle cx="697.4" cy="87.0" r="4.5" fill="var(--bg)" stroke="var(--s3)" stroke-width="2"/>
+<circle cx="724.1" cy="87.0" r="5.5" fill="var(--s1)" stroke="var(--bg)" stroke-width="2"/>
+<circle cx="744.7" cy="87.0" r="4.5" fill="var(--bg)" stroke="var(--s3)" stroke-width="2"/>
+<circle cx="777.4" cy="87.0" r="4.5" fill="var(--bg)" stroke="var(--s3)" stroke-width="2"/>
+<circle cx="334.1" cy="121.0" r="5.5" fill="var(--s1)" stroke="var(--bg)" stroke-width="2"/>
+<circle cx="361.7" cy="121.0" r="4.5" fill="var(--bg)" stroke="var(--s3)" stroke-width="2"/>
+<path d="M420.6 117.0L428.6 125.0M428.6 117.0L420.6 125.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M480.7 117.0L488.7 125.0M488.7 117.0L480.7 125.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M540.7 117.0L548.7 125.0M548.7 117.0L540.7 125.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<circle cx="604.0" cy="121.0" r="5.5" fill="var(--s1)" stroke="var(--bg)" stroke-width="2"/>
+<path d="M630.3 117.0L638.3 125.0M638.3 117.0L630.3 125.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<circle cx="688.6" cy="121.0" r="4.5" fill="var(--bg)" stroke="var(--s3)" stroke-width="2"/>
+<path d="M707.4 117.0L715.4 125.0M715.4 117.0L707.4 125.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M330.0 151.0L338.0 159.0M338.0 151.0L330.0 159.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M408.0 151.0L416.0 159.0M416.0 151.0L408.0 159.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M433.1 151.0L441.1 159.0M441.1 151.0L433.1 159.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M524.9 151.0L532.9 159.0M532.9 151.0L524.9 159.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M616.9 151.0L624.9 159.0M624.9 151.0L616.9 159.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M632.1 151.0L640.1 159.0M640.1 151.0L632.1 159.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M647.1 151.0L655.1 159.0M655.1 151.0L647.1 159.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M662.2 151.0L670.2 159.0M670.2 151.0L662.2 159.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M677.2 151.0L685.2 159.0M685.2 151.0L677.2 159.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M692.3 151.0L700.3 159.0M700.3 151.0L692.3 159.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M707.3 151.0L715.3 159.0M715.3 151.0L707.3 159.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M722.4 151.0L730.4 159.0M730.4 151.0L722.4 159.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M737.4 151.0L745.4 159.0M745.4 151.0L737.4 159.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M752.5 151.0L760.5 159.0M760.5 151.0L752.5 159.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M767.5 151.0L775.5 159.0M775.5 151.0L767.5 159.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M62.6 185.0L70.6 193.0M70.6 185.0L62.6 193.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M330.2 185.0L338.2 193.0M338.2 185.0L330.2 193.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M345.2 185.0L353.2 193.0M353.2 185.0L345.2 193.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M360.2 185.0L368.2 193.0M368.2 185.0L360.2 193.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M375.3 185.0L383.3 193.0M383.3 185.0L375.3 193.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<circle cx="394.3" cy="189.0" r="4.5" fill="var(--bg)" stroke="var(--s3)" stroke-width="2"/>
+<circle cx="424.8" cy="189.0" r="4.5" fill="var(--bg)" stroke="var(--s3)" stroke-width="2"/>
+<circle cx="470.2" cy="189.0" r="5.5" fill="var(--s1)" stroke="var(--bg)" stroke-width="2"/>
+<circle cx="500.4" cy="189.0" r="4.5" fill="var(--bg)" stroke="var(--s3)" stroke-width="2"/>
+<circle cx="564.5" cy="189.0" r="5.5" fill="var(--s1)" stroke="var(--bg)" stroke-width="2"/>
+<circle cx="676.6" cy="223.0" r="5.5" fill="var(--s1)" stroke="var(--bg)" stroke-width="2"/>
+<circle cx="706.8" cy="223.0" r="4.5" fill="var(--bg)" stroke="var(--s3)" stroke-width="2"/>
+<circle cx="769.6" cy="223.0" r="5.5" fill="var(--s1)" stroke="var(--bg)" stroke-width="2"/>
+<circle cx="334.1" cy="257.0" r="5.5" fill="var(--s1)" stroke="var(--bg)" stroke-width="2"/>
+<circle cx="369.7" cy="257.0" r="4.5" fill="var(--bg)" stroke="var(--s3)" stroke-width="2"/>
+<circle cx="427.5" cy="257.0" r="5.5" fill="var(--s1)" stroke="var(--bg)" stroke-width="2"/>
+<circle cx="475.1" cy="257.0" r="4.5" fill="var(--bg)" stroke="var(--s3)" stroke-width="2"/>
+<path d="M498.3 253.0L506.3 261.0M506.3 253.0L498.3 261.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M515.0 253.0L523.0 261.0M523.0 253.0L515.0 261.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<path d="M527.0 253.0L535.0 261.0M535.0 253.0L527.0 261.0" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/>
+<circle cx="550.3" cy="257.0" r="4.5" fill="var(--bg)" stroke="var(--s3)" stroke-width="2"/>
+<circle cx="610.8" cy="257.0" r="5.5" fill="var(--s1)" stroke="var(--bg)" stroke-width="2"/>
+<circle cx="670.9" cy="257.0" r="4.5" fill="var(--bg)" stroke="var(--s3)" stroke-width="2"/>
+<circle cx="701.3" cy="257.0" r="5.5" fill="var(--s1)" stroke="var(--bg)" stroke-width="2"/>
+<circle cx="334.0" cy="291.0" r="5.5" fill="var(--s1)" stroke="var(--bg)" stroke-width="2"/>
+<circle cx="70" cy="352" r="5.5" fill="var(--s1)"/><text x="82" y="356" class="t" font-size="12">醒了，说了话（13）</text>
+<circle cx="250" cy="352" r="4.5" fill="var(--bg)" stroke="var(--s3)" stroke-width="2"/><text x="262" y="356" class="t" font-size="12">醒了，决定不说（13）</text>
+<path d="M426 348L434 356M434 348L426 356" stroke="var(--s2)" stroke-width="2" stroke-linecap="round"/><text x="442" y="356" class="t" font-size="12">门铃没送到：模型 502 或脑没起来（28）</text>
+</svg>
