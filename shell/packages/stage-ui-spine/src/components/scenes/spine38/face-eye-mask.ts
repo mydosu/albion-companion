@@ -2,8 +2,8 @@
  * 脸图「擦眼」：把脸上画出来的眼睛从贴图里抠掉，让底下真正的眼槽（会眨、会看人）从洞里透出来。
  *
  * 静态数据（mask）由 `pet/tools/spine_face_eye_masks.py` 离线生成，放在模型素材目录旁边的
- * `albion-eye-masks/`（本地文件、不入库）。运行时只做一件事：在 mask 矩形内逐像素
- * `a = round(a*(255-m)/255)`。**不要用 canvas 的 filter / 合成模式**——2026-10-26 实测
+ * `albion-eye-masks/`（本地文件、不入库）。运行时只做一件事：在 mask 矩形内逐像素把预乘的
+ * RGBA 四个通道都乘 `(255-m)/255`。**不要用 canvas 的 filter / 合成模式**——2026-10-26 实测
  * `ctx.filter + destination-out` 会把整张 4096² 画布的 alpha 一起压掉，软腮红当场消失。
  *
  * 脸 9（漩涡眼）和 10（一睁一闭）是表情眼，不擦。
@@ -67,21 +67,24 @@ export function maskedAlpha(alpha: number, mask: number): number {
 }
 
 /**
- * 就地把 mask 应用到一块 RGBA 像素上，返回被改动的像素数。
+ * 就地把 mask 应用到一块**预乘** RGBA 像素上，返回被改动的像素数。
+ * RGB 和 A 同比例缩：只缩 A 会让 RGB > A，按 PMA 混合时那圈半擦的像素会发亮。
  *
  * 两个数组长度必须一致（同一个矩形）；不做任何边界猜测，越界的 mask 视为 0。
  */
-export function eraseMaskedPixels(rgba: Uint8ClampedArray | number[], mask: Uint8ClampedArray | number[], alphaOffset = 3): number {
+export function eraseMaskedPixels(rgba: Uint8Array | Uint8ClampedArray | number[], mask: Uint8ClampedArray | number[]): number {
   let changed = 0
   const n = Math.min(rgba.length, mask.length)
   for (let i = 0; i < n; i += 4) {
     const m = mask[i]
     if (!m)
       continue
-    const a0 = rgba[i + alphaOffset]
+    const a0 = rgba[i + 3]
     const a1 = maskedAlpha(a0, m)
     if (a1 !== a0) {
-      rgba[i + alphaOffset] = a1
+      for (let c = 0; c < 3; c++)
+        rgba[i + c] = maskedAlpha(rgba[i + c], m)
+      rgba[i + 3] = a1
       changed++
     }
   }

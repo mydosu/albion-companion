@@ -9,7 +9,7 @@ import { settings as spineSettings } from '@pixi-spine/base'
 import { AtlasAttachmentLoader, SkeletonBinary, SkeletonJson, Spine } from '@pixi-spine/runtime-3.8'
 import { Application } from '@pixi/app'
 import { ALPHA_MODES } from '@pixi/constants'
-import { BatchRenderer, Renderer, Texture } from '@pixi/core'
+import { BatchRenderer, BufferResource, Renderer, Texture } from '@pixi/core'
 // 壳用的是模块化 Pixi（@pixi/*），渲染插件必须显式注册，否则：
 //   - 没有 TickerPlugin → Application 没有 ticker（实测 hasTicker: false）
 //   - 没有 BatchRenderer → Renderer.render() 里 this.batch 是 undefined，直接抛
@@ -414,12 +414,41 @@ interface BoneLike {
  * `stage-ui/src/assets/spine/models/albion-eye-masks/`（不入库）。
  *
  * 用 `import.meta.glob` 而不是 fetch：目录不存在时 glob 是空对象，打包不会失败；存在时 Vite 会把
- * mask 一起打进产物。**擦除只用 getImageData/putImageData 逐像素改 alpha**——canvas 的
- * `filter + destination-out` 会把整张 4096² 页的 alpha 一起压掉（2026-10-26 实测腮红当场消失）。
+ * mask 一起打进产物。**页像素用 ImageDecoder 无损解出来、改完以 BufferResource 原样上传，不经过 2D canvas**：
+ * 这份素材是预乘 alpha 的，canvas 内部再预乘一次，低 alpha 像素读回来会被量化变亮，全身半透明边都发亮；
+ * 擦除也必须 RGB 和 A 同比例缩，只缩 A 会让 RGB > A，按 PMA 混合就是眼周一圈亮光（2026-10-26 实测）。
  * 没有 mask 文件时什么都不做，行为与以前一致。
  */
 const eyeMaskPngs = import.meta.glob('../../../../../stage-ui/src/assets/spine/models/albion-eye-masks/*.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>
 const eyeMaskManifestLoaders = import.meta.glob('../../../../../stage-ui/src/assets/spine/models/albion-eye-masks/manifest.json')
+
+/** atlas 页的原始 RGBA（预乘，不做色彩转换），和 PNG 文件里的字节逐位一致 */
+async function decodePagePixels(url: string) {
+  const blob = await (await fetch(url)).blob()
+  // zip 解出来的 blob 没有 MIME（是 text/plain），类型只能写死；这份素材的页都是 png
+  // NOTICE:
+  // premultiplyAlpha is in the WebCodecs spec and Chromium honors it, but TS lib.dom's ImageDecoderInit lacks it.
+  // Remove the intersection once lib.dom adds the field.
+  const init: ImageDecoderInit & { premultiplyAlpha: PremultiplyAlpha } = { data: blob.stream(), type: 'image/png', premultiplyAlpha: 'none', colorSpaceConversion: 'none' }
+  const decoder = new ImageDecoder(init)
+  const { image } = await decoder.decode()
+  try {
+    const rgba = new Uint8Array(image.allocationSize())
+    await image.copyTo(rgba)
+    if (image.format?.startsWith('BGR')) {
+      for (let i = 0; i < rgba.length; i += 4) {
+        const b = rgba[i]
+        rgba[i] = rgba[i + 2]
+        rgba[i + 2] = b
+      }
+    }
+    return { rgba, width: image.codedWidth, height: image.codedHeight }
+  }
+  finally {
+    image.close()
+    decoder.close()
+  }
+}
 
 interface StripTimeline {
   slotIndex?: number | null
@@ -448,8 +477,8 @@ async function applyEyeMasks() {
   if (!bag)
     return
 
-  // 一张 atlas 页常被多张脸共用，所以按 baseTexture 攒 canvas，最后统一 update 一次
-  const pages = new Map<BaseTexture, { canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D }>()
+  // 一张 atlas 页常被多张脸共用，所以按 baseTexture 攒像素，最后统一换一次资源
+  const pages = new Map<BaseTexture, Awaited<ReturnType<typeof decodePagePixels>>>()
   /** 真正擦成功的脸：mask 缺失或解码失败的脸不能去动它的 timeline（否则每次换脸眼槽又会被置 None）。 */
   const applied: string[] = []
   let erasedPx = 0
@@ -458,24 +487,17 @@ async function applyEyeMasks() {
     const bt = bag[face]?.region?.texture?.baseTexture
     if (!entry || !bt)
       continue
-    let page = pages.get(bt)
-    if (!page) {
-      const canvas = document.createElement('canvas')
-      canvas.width = bt.width
-      canvas.height = bt.height
-      const ctx = canvas.getContext('2d', { willReadFrequently: true })
-      if (!ctx)
-        continue
-      // @pixi/core 的 Resource 类型没暴露 source（运行时是 ImageResource 的 Image / 我们换上的 canvas）
-      ctx.drawImage((bt.resource as unknown as { source: CanvasImageSource }).source, 0, 0)
-      page = { canvas, ctx }
-      pages.set(bt, page)
-    }
     const maskUrl = Object.entries(eyeMaskPngs).find(([path]) => path.endsWith(`/${entry.file}`))?.[1]
     if (!maskUrl)
       continue
     const [mx, my, mw, mh] = entry.rect
     try {
+      let page = pages.get(bt)
+      if (!page) {
+        // 页的 cacheId 就是 textureResolver 交给 Texture.from 的 zip blob url
+        page = await decodePagePixels(bt.textureCacheIds[0])
+        pages.set(bt, page)
+      }
       const img = new Image()
       img.src = maskUrl
       await img.decode()
@@ -486,10 +508,13 @@ async function applyEyeMasks() {
       if (!mctx)
         continue
       mctx.drawImage(img, 0, 0)
+      // mask 是不透明灰度图，走 canvas 读回没有预乘损失
       const mask = mctx.getImageData(0, 0, mw, mh).data
-      const id = page.ctx.getImageData(mx, my, mw, mh)
-      const changed = eraseMaskedPixels(id.data, mask)
-      page.ctx.putImageData(id, mx, my)
+      let changed = 0
+      for (let y = 0; y < mh; y++) {
+        const row = ((my + y) * page.width + mx) * 4
+        changed += eraseMaskedPixels(page.rgba.subarray(row, row + mw * 4), mask.subarray(y * mw * 4, (y + 1) * mw * 4))
+      }
       erasedPx += changed
       if (changed > 0)
         applied.push(face)
@@ -501,7 +526,10 @@ async function applyEyeMasks() {
   if (!applied.length)
     return
   for (const [bt, page] of pages) {
-    ;(bt.resource as unknown as { source: CanvasImageSource }).source = page.canvas
+    // setResource 只认空位 ⇒ 先把原 ImageResource 解绑；alphaMode 仍是 PMA，BufferResource 按原字节上传
+    bt.resource.unbind(bt)
+    ;(bt as { resource: unknown }).resource = null
+    bt.setResource(new BufferResource(page.rgba, { width: page.width, height: page.height }))
     bt.update()
   }
 

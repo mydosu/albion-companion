@@ -20,12 +20,25 @@ describe('maskedAlpha', () => {
 })
 
 describe('eraseMaskedPixels', () => {
-  it('only rewrites alpha, and only where the mask is non-zero', () => {
+  it('only rewrites pixels where the mask is non-zero', () => {
     const rgba = new Uint8ClampedArray([10, 20, 30, 255, 40, 50, 60, 200, 70, 80, 90, 100])
     const mask = new Uint8ClampedArray([0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0])
     const changed = eraseMaskedPixels(rgba, mask)
     expect(changed).toBe(1)
-    expect(Array.from(rgba)).toEqual([10, 20, 30, 255, 40, 50, 60, 0, 70, 80, 90, 100])
+    expect(Array.from(rgba)).toEqual([10, 20, 30, 255, 0, 0, 0, 0, 70, 80, 90, 100])
+  })
+
+  // ROOT CAUSE:
+  //
+  // The atlas is premultiplied. Scaling only alpha left RGB > A on half-erased pixels,
+  // and PMA blending drew them as a bright ring around the eyes.
+  //
+  // We fixed this by scaling RGB by the same factor as A, so RGB <= A still holds.
+  it('keeps premultiplied pixels valid on a partial erase', () => {
+    const rgba = new Uint8Array([200, 100, 50, 200])
+    eraseMaskedPixels(rgba, [128, 0, 0, 0])
+    expect(Array.from(rgba)).toEqual([100, 50, 25, 100])
+    expect(Math.max(rgba[0], rgba[1], rgba[2])).toBeLessThanOrEqual(rgba[3])
   })
 
   it('treats a short mask as zeros past its end', () => {
