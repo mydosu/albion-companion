@@ -88,7 +88,7 @@ bash /root/pi-brain-probe/probe_flow.sh --only T1,T7    # 只挑几轮
 | `host_reload_probe.py` | 经宿主（8650）验"改扩展/`APPEND_SYSTEM.md` 会换身子"：只动 mtime，看子进程 pid 变没变、`brain.log` 有没有重载记录 |
 | `host_chat_probe.py` | 经宿主（8650）发一条闲聊：记回复、子进程、`brain.log` 新行（验"新会话自动用上新代码"和壳路径上的真实发言） |
 | `repeat_lockdown_probe.py` | 逼出"同一条命令复读到第 8 次 → 停用工具"那一档，看她还能不能用文字收尾 |
-| `voice_style_probe.py` | 量口癖/像不像人：10 句真会说的话各开一个新会话（`albion-voice-probe-<标签>-<序号>`，绝不碰 `albion-desktop`），数「把他的话当东西收」、先引后评、「不是 A 是 B」、破折号、括号心声、正文长度；`--selftest` 不联网验计数器 |
+| `voice_style_probe.py` | 量口癖/像不像人：10 句真会说的话各开一个新会话（`albion-voice-probe-<标签>-<序号>`，绝不碰 `albion-desktop`），数「把他的话当东西收」、先引后评、「不是 A 是 B」、破折号、括号心声、正文长度、「点的」次数、「主人」次数（区分被要求/没被要求）；`--prompts <json>` 用自造脚本替换多轮 6 句（`asks_zhuren` 标记这一轮是否要求换称呼），`--session-suffix` 让同一标签跑出两个独立会话；`--selftest` 不联网验计数器与参数解析 |
 | `fixtures/event_tap.ts` | 只记事件、不注册工具的探针扩展，给上面那条用 |
 | `test_shell_tools.py` | 壳插件工具桥离线单测：清单解析与逐件校验、注销后拒调用、tool_calls 往返、并发调用、超时、新一轮作废旧调用、晚到结果；真 `server.Brain` 走本机回环 HTTP，不起 Pi（Windows 需 `pip install tzdata`；批次回归 `pi-brain-shell-tools`） |
 | `check_shell_tools_ext.ts` | `agent/shell-tools-bridge.ts` 的代理工具同步：注册 / 不变不重注册 / 更新 / 撤下 hidden / 恢复 / 重名改 `shell_<名>` / 取不到清单全撤（假 Pi 工具表，纯 TS；批次回归 `pi-brain-shell-tools-ext`） |

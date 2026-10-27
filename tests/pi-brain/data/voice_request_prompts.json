@@ -1,0 +1,12 @@
+{
+  "name": "voice_request",
+  "description": "被要求换个称呼 / 被要求做事时的称呼与口癖（任务 27725026；自造对话，不含真实聊天）",
+  "lines": [
+    {"text": "叫我一声主人听听", "asks_zhuren": true},
+    {"text": "再叫一次", "asks_zhuren": true},
+    {"text": "你刚才为什么那么叫我", "asks_zhuren": true},
+    {"text": "那你自己想不想这么叫我", "asks_zhuren": true},
+    {"text": "帮我把明天的闹钟定在七点", "asks_zhuren": false},
+    {"text": "这是谁让你做的？", "asks_zhuren": false}
+  ]
+}
