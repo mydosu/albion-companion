@@ -148,7 +148,7 @@ class TestSobIsRealCry(unittest.TestCase):
     def test_explicit_sob_cues(self):
         zh_cases = ["（哭）对不起……", "（大哭）不要走", "（哭出声）我忍不住了",
                     "（抽泣）……嗯。", "（啜泣着）没事的", "（哭着说）别丢下我",
-                    "呜哇——", "哇————", "呜呜哇，好难过"]
+                    "呜哇——", "呜呜哇，好难过", "哇哇大哭，停不下来"]
         for zh in zh_cases:
             self.assertTrue(VC.sob_of(zh, ""), zh)
             self.assertEqual(VC.scene_of({}, "", zh), "sob", zh)
@@ -229,6 +229,60 @@ class TestSobIsRealCry(unittest.TestCase):
         self.assertEqual(VC.pick_emoji("ふふ、そうなんだ", "", "ふふ", sob=False), "🤭")
         self.assertEqual(VC.pick_emoji("ふふ", "", "ふふ", sob=True), "😭")       # 真哭压过笑
         self.assertIn("😭", VC.EMOJI_WHITELIST)
+
+
+class TestCueBoundaries(unittest.TestCase):
+    """2026-10-26 审出来的三处误判：惊叹「哇——」、括号里的「快哭」修饰、单独的「哭/眼泪/眼眶」。"""
+
+    def test_wow_is_not_crying(self):
+        """「哇——好漂亮」这类惊叹不是哭（原来只看「哇——」会判真哭、句末加 😭）。"""
+        for zh in ["哇——好漂亮！", "哇~~~太棒了", "哇——！", "哇，你看那个"]:
+            self.assertFalse(VC.sob_of(zh, ""), zh)
+            self.assertNotEqual(VC.scene_of({}, "", zh), "sob", zh)
+            self.assertEqual(VC.pick_emoji(zh, ""), "", zh)
+        # 明确的哭声仍然是真哭、仍然带 😭
+        for zh in ["呜哇——", "呜呜哇", "哇哇大哭，停不下来"]:
+            self.assertTrue(VC.sob_of(zh, ""), zh)
+            self.assertEqual(VC.scene_of({}, "", zh), "sob", zh)
+            self.assertEqual(VC.pick_emoji(zh, ""), "😭", zh)
+
+    def test_paren_soft_cry_is_cry_not_sob(self):
+        """括号里带「快/要/想/差点」「强忍/忍着/忍住」→ 快哭（cry），不是真哭。"""
+        soft = ["（快哭了）", "（要哭了）", "（想哭）", "（差点哭出来）",
+                "（眼眶红红的，快要哭出来）", "（强忍着不哭）", "（忍着眼泪）"]
+        for zh in soft:
+            self.assertFalse(VC.sob_of(zh, ""), zh)
+            self.assertEqual(VC.paren_cry(zh), "cry", zh)
+            self.assertEqual(VC.scene_of({}, "", zh), "cry", zh)
+            self.assertNotEqual(VC.pick_emoji(zh, ""), "😭", zh)
+        # 无修饰的括号动作仍是真哭、也仍然带 😭（「要」离哭泣词远时不算修饰）
+        hard = ["（哭）", "（大哭）", "（哭出声）", "（抽泣）", "（啜泣）", "（哭着说）",
+                "（哭着说要抱抱）"]
+        for zh in hard:
+            self.assertTrue(VC.sob_of(zh, ""), zh)
+            self.assertEqual(VC.paren_cry(zh), "sob", zh)
+            self.assertEqual(VC.scene_of({}, "", zh), "sob", zh)
+            self.assertEqual(VC.pick_emoji(zh, ""), "😭", zh)
+        # 否定还是「没在哭」，成语也不算
+        for zh in ["（别哭）我没事", "（不要哭）", "（哭笑不得）"]:
+            self.assertIsNone(VC.paren_cry(zh), zh)
+            self.assertFalse(VC.sob_of(zh, ""), zh)
+            self.assertNotEqual(VC.scene_of({}, "", zh), "cry", zh)
+            self.assertNotEqual(VC.scene_of({}, "", zh), "sob", zh)
+
+    def test_standalone_cry_words_do_not_grab_cry(self):
+        """单独的「哭 / 眼泪 / 眼眶」不再是 cry 判据（笑、看电影之类不抢 cry）。"""
+        for zh in ["笑出眼泪", "哭笑不得", "你哭什么呀，笑一个", "看电影哭了", "眼眶有点干"]:
+            self.assertFalse(VC.cry_cue(zh), zh)
+            self.assertNotEqual(VC.scene_of({}, "", zh), "cry", zh)
+            self.assertNotEqual(VC.scene_of({}, "", zh), "sob", zh)
+        # 「快要哭」的说法照旧
+        for zh in ["委屈", "想哭", "快哭", "要哭", "哽咽", "哭腔", "眼眶红", "眼圈红",
+                   "含泪", "呜呜", "泪汪汪"]:
+            self.assertTrue(VC.cry_cue(zh), zh)
+            self.assertEqual(VC.scene_of({}, "", zh), "cry", zh)
+        # 成语被剥掉后，句子里真的委屈仍然算 cry
+        self.assertTrue(VC.cry_cue("哭笑不得，但好委屈"))
 
 
 class TestBridgeOutput(unittest.TestCase):

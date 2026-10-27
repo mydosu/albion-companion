@@ -33,13 +33,15 @@
 **前置**：后端已带 free 支持——旧后端会把自由描述按码本外 400 拒掉，别把 400 当成实验结论。
 
 真哭（`sob`，2026-10-26）措辞扫描：`--matrix emotion_sob_20261026`（固定矩阵
-`data/emotion_sob_20261026.json`）——5 条候选真哭描述 × 3 句真的在哭的日语台词 × 2 seed，
-每条各跑「无句末 😭 / 有句末 😭」两组，外加 `cry` 现有描述与 `neutral_quiet` 基线各一组，共 72 条；
-按时长 / F0 均值 / f0_std / 能量动态 / 坏音挑一条写进 `voice_caption.MANNER["sob"]`。
+`data/emotion_sob_20261026.json`）——7 条候选真哭描述 × 3 句真的在哭的日语台词 × 2 seed，
+每条各跑「无句末 😭 / 有句末 😭」两组，外加 `cry` 现有描述与 `neutral_quiet` 基线各一组，共 96 条；
+按时长 / F0 均值 / f0_std / 能量动态 / 坏音挑一条写进 `voice_caption.FIXED_CAPTIONS["sob"]`。
 结论见 `tests/output/tts-sob-20261026/REPORT.md`。
-`test_voice_caption.py` 锁快哭与真哭的分界：`sob` 只认明示线索（中文括号动作、拟声 呜哇/哇——、
-日语 しくしく…），否定排除，标量不产出 sob，`cry` 认委屈类中文，「呜呜」/「要哭了」只算 cry，
-😭 只跟 sob 走，且哭泣判定优先于 `phonation`。
+`test_voice_caption.py` 锁快哭与真哭的分界：`sob` 只认明示线索（中文**无修饰**的括号动作、
+明确的哭声拟声 呜哇/呜呜哇/哇哇大哭、日语 しくしく…），括号里带「快/要/想/差点/忍住」的只算 cry，
+「哇——」这类惊叹不算哭，否定排除，标量不产出 sob；`cry` 只认委屈/想哭/快哭/哽咽/眼眶红/含泪/
+泪汪汪这类「快要哭」的说法（单独的「哭/眼泪/眼眶」不再算，「哭笑不得」显式排除）；
+「呜呜」「要哭了」只算 cry，😭 只跟 sob 走，且哭泣判定优先于 `phonation`。
 
 `probes/benchmark_prepare.py --baseline-file <旧版 bridge_v2.py> --out <tests/output 下 JSON>`
 用固定延迟离线比较两版准备阶段，不调用翻译或 GPU，不能代替真实首音频 p50。
