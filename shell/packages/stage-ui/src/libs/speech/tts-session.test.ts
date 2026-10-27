@@ -285,6 +285,34 @@ describe('createStreamingTtsSession (adapter)', () => {
     expect(onSpecial).toHaveBeenCalledTimes(2)
     expect(onSpecial).toHaveBeenNthCalledWith(1, 'emotion:angry')
     expect(onSpecial).toHaveBeenNthCalledWith(2, 'delay:500')
+    // 没有 `specialToText`（其它 provider）→ 一个字节也不往文字流里加
+    expect(pipe.calls.appendText).toEqual([])
+  })
+
+  it('specialToText 转发的标记：先交给舞台，再原样进文字流（阿尔比恩 ACT 先验）', () => {
+    const pipe = makePipelineStub()
+    const onSpecial = vi.fn()
+    const act = '<|ACT:{"emotion":"sad"}|>'
+    const session = createStreamingTtsSession({
+      intentId: 'stream-act',
+      snapshot: makeStreamingSnapshot({
+        onImmediateSpecial: onSpecial,
+        // 只放行 ACT，别的（emotion:/delay:）照旧只给舞台
+        specialToText: special => special === act ? special : null,
+      }),
+      audioContext: dummyAudioContext,
+      playbackManager: makePlaybackManagerStub(),
+      pipelineFactory: pipe.factory as any,
+    })
+
+    session.appendText('你好')
+    session.appendSpecial(act)
+    session.appendSpecial('delay:500')
+    session.appendText('呀')
+
+    expect(onSpecial).toHaveBeenCalledTimes(2)
+    // 顺序：ACT 原串夹在两段文字中间（9885 靠位置算 source_prefix）
+    expect(pipe.calls.appendText).toEqual(['你好', act, '呀'])
   })
 
   it('cancel sends pipeline cancel AND stops playback by intent', () => {

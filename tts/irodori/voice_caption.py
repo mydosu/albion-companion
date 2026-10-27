@@ -65,8 +65,21 @@ neutral 占 83%，而 7 条锚彼此差异很小（`tests/output/tts-emotion-sur
   * 最后 2 句里有真哭（`sob_of`）→ 本句 `cry` / level normal；只有快哭
     （`paren_cry=="cry"` 或 `cry_cue`）→ 本句 `cry` / level weak。
   * 延续**永远不产出 sob、不加 😭**：😭 只给带明示真哭线索的那一句。
+
+ACT 情绪先验（`ALBION_VOICE_ACT`，默认开）
+------------------------------------------
+脑的回复开头带 `<|ACT:{"emotion":"sad"}|>`，壳从 2026-10-27 起把它原样送进 9885 的文字流
+（服务端只当 `control` 块：不进 speech_text、不出字幕），于是桥能在 `source_prefix` / 中文原文里
+看到它。本句**自己**判不出情绪时，用最后一条 ACT 的 emotion 当场景：
+
+  * 优先级：本句自己的证据（哭/明示线索/phonation/非中性标量）> 哭腔延续 > ACT 先验 > neutral；
+  * 映射：happy→`gen`（intensity≥0.7 → `exc`）、surprised→`exc`、sad→`sad`、angry→`ang`、
+    awkward/shy→`shy`；neutral/think/question/curious 和没见过的名字**不给先验**；
+  * 强度仍走 `level_of(cues)`；ACT 先验**不产出 sob/cry、不加 emoji**；
+  * `ALBION_VOICE_ACT=0` 关掉后与加它之前逐字节一致。
 """  # noqa: E501 - 说明性长行
 
+import json
 import os
 import re
 
@@ -74,6 +87,7 @@ import re
 VOICE_CAPTION_ENV = "ALBION_VOICE_CAPTION"
 VOICE_EMOJI_ENV = "ALBION_VOICE_EMOJI"
 VOICE_CARRY_ENV = "ALBION_VOICE_CARRY"
+VOICE_ACT_ENV = "ALBION_VOICE_ACT"
 
 # 自由描述单元的 cfg。评测台（阶段 2b）测过：cfg 2/3/4/6 对同一描述时长完全相同，
 # 不是强度旋钮，所以这里固定 3.0（= 原 neutral_quiet 的 cfg），只让 caption 一个变量动。
@@ -111,6 +125,11 @@ def voice_emoji_on():
 def voice_carry_on():
     """哭腔延续开关（**默认开**；`ALBION_VOICE_CARRY=0` 关掉后行为与加它之前逐字节一致）。"""
     return _switch(VOICE_CARRY_ENV, default=True)
+
+
+def voice_act_on():
+    """ACT 情绪先验开关（**默认开**；`ALBION_VOICE_ACT=0` 关掉后与加它之前逐字节一致）。"""
+    return _switch(VOICE_ACT_ENV, default=True)
 
 
 # ---- 词表 ---------------------------------------------------------------------
@@ -530,18 +549,103 @@ def carry_cry(scene, cues, prefix):
     return None
 
 
+# ---- ACT 情绪先验（`ALBION_VOICE_ACT`，2026-10-27 任务 #23，默认开） -------------
+# 脑的回复开头带 `<|ACT:{"emotion":"sad"}|>`（壳送进 9885 的文字流 → 服务端当 control 块 →
+# `source_prefix` / 中文原文里看得到）。本句自己判不出情绪时用它补位：脸在哭、声音却平淡
+# 就是两边各判各的。正则与壳的 `ALBION_ACT_RE` 同形（JSON 里嵌套花括号也能整段吃到）。
+_ACT_RE = re.compile(r"<\|ACT\s*(?::\s*)?(\{[\s\S]*?\}\s*)\|>", re.IGNORECASE)
+
+# ACT 的 emotion → 场景。**只收映射得动的**：neutral/think/question/curious 不在这里，
+# 没见过的名字也不在这里（宁可不给先验，也不凭名字瞎猜）。
+_ACT_SCENE = {
+    "happy": "gen",        # intensity ≥ 0.7 时升到 exc（见 act_scene_of）
+    "surprised": "exc",
+    "sad": "sad",
+    "angry": "ang",
+    "awkward": "shy",      # 害羞 ≈ awkward（Live2D 的姿态表也是这么合的）
+    "shy": "shy",          # 不在 AIRI 那 9 个里，但脑偶尔会这么写
+}
+_ACT_STRONG = 0.7
+
+
+def last_act_emotion(text):
+    """源文本里**最后一条** ACT 的 `(emotion, intensity)`；没有 / JSON 坏 → None。
+
+    emotion 两种写法都认：字符串 `"sad"`、或 `{"name":"sad","intensity":0.8}`（壳侧解析
+    也是这么处理的，见 albion-pet.ts）。**最后一条**才算：一条回复里她可能先笑后哭，
+    后面那句的 ACT 才是现在的语气。
+    """
+    if not isinstance(text, str) or not text:
+        return None
+    last = None
+    for m in _ACT_RE.finditer(text):
+        last = m
+    if last is None:
+        return None
+    try:
+        payload = json.loads(last.group(1))
+    except (ValueError, TypeError):
+        return None                       # JSON 坏 = 当没有（不退回更早那条，口径是"最后一条"）
+    if not isinstance(payload, dict):
+        return None
+    emo, intensity = payload.get("emotion"), None
+    if isinstance(emo, dict):
+        intensity = _num(emo.get("intensity"))
+        emo = emo.get("name")
+    if not isinstance(emo, str):
+        return None
+    name = emo.strip().lower()
+    return (name, intensity) if name else None
+
+
+def act_scene_of(text):
+
+    """`prefix + 中文原文` 里最后一条 ACT → 场景先验；给不出（缺失/不认识的 neutral 族）→ None。
+
+    不产出 sob/cry（哭只认本句的明示线索），也不带 emoji —— 先验只管"说话方式"。
+    """
+    parsed = last_act_emotion(text)
+    if not parsed:
+        return None
+    name, intensity = parsed
+    scene = _ACT_SCENE.get(name)
+    if scene is None:
+        return None
+    if name == "happy" and intensity is not None and intensity >= _ACT_STRONG:
+        return "exc"                      # 很高兴：明るく弾んだ声（gen 是「優しく、ゆっくり」）
+    return scene
+
+
+def _strip_act(text):
+    """去掉 `<|ACT:{…}|>` 块（只给哭腔延续回看原文用；其余地方要保留 ACT 才能判先验）。"""
+    if not isinstance(text, str) or not text:
+        return text or ""
+    return _ACT_RE.sub("", text)
+
+
 def caption_for(cues, ja_text="", zh_text="", fallback="neutral", prefix=""):
     """桥的入口：情绪提示 + 日语译文 + 中文原文 → 一条通过校验的描述（没把握就返回 ""）。
 
     `zh_text` 是**中文原文**（桥里传 `req.raw_text`）：真哭/快哭的判据在中文一侧
     （括号动作、委屈类说法），日语译文里看不到。
-    `prefix` 是本单元**之前**的中文原文（桥里传 `req.source_prefix`）：只用来做哭腔延续。
-    开关 `ALBION_VOICE_CARRY=0` 或 `prefix` 为空时行为与加这个参数之前逐字节一致。
+    `prefix` 是本单元**之前**的中文原文（桥里传 `req.source_prefix`）：做哭腔延续，也用来
+    回看 `<|ACT:{…}|>` 情绪先验。
+    开关 `ALBION_VOICE_CARRY=0` 或 `prefix` 为空时行为与加这个参数之前逐字节一致；
+    `ALBION_VOICE_ACT=0` 时同样逐字节一致（ACT 块不参与判场景）。
+
+    优先级：**本句自己的证据**（哭/明示线索/phonation/非中性标量）> 哭腔延续 > ACT 先验 > fallback。
+    所以 ACT 只当 `scene_of` 判不出（`fallback=None`）时的补位，而哭腔延续是用**本句自己的**证据
+    判的（`basis`）—— 前一句在哭、这条 ACT 写着 happy 时仍延续哭腔（任务 #23）。
     """
-    scene = scene_of(cues, ja_text, zh_text=zh_text, fallback=fallback)
+    own = scene_of(cues, ja_text, zh_text=zh_text, fallback=None)   # None = 本句自己判不出
+    act = act_scene_of("%s%s" % (prefix or "", zh_text or "")) if voice_act_on() else None
+    basis = own if own is not None else fallback    # 延续判据只看本句（与加 ACT 之前同一口径）
+    scene = own or act or fallback
     level = level_of(cues)
     if prefix and voice_carry_on():
-        carried = carry_cry(scene, cues, prefix)
+        # 回看哭腔时先把 ACT 块剥掉（与开关无关：它只是元数据）：留着会把「最后一句」
+        # 变成 `<|ACT…|>`，让 `_tone_switched` 看不到真正的上一句已经换了语气。
+        carried = carry_cry(basis, cues, _strip_act(prefix))
         if carried:
             scene, level = carried
     caption = compose_caption(scene, level)
@@ -696,6 +800,29 @@ def _selftest():
         os.environ.pop(VOICE_CARRY_ENV, None)
         if _keep is not None:
             os.environ[VOICE_CARRY_ENV] = _keep
+    # ACT 先验（默认开）：本句判不出 → 用 ACT；本句自己有证据 → 自己的。
+    _keep = os.environ.pop(VOICE_ACT_ENV, None)
+    try:
+        _sad = '<|ACT:{"emotion":"sad"}|>'
+        assert act_scene_of(_sad) == "sad"
+        assert act_scene_of('<|ACT:{"emotion":{"name":"happy","intensity":0.9}}|>') == "exc"
+        assert act_scene_of('<|ACT:{"emotion":"neutral"}|>') is None    # 中性族：不给先验
+        assert act_scene_of('<|ACT:{"emotion":}|>') is None             # JSON 坏：当没有
+        assert act_scene_of(_sad + '<|ACT:{"emotion":"angry"}|>') == "ang"   # 最后一条算数
+        assert caption_for({}, "そう、ですか。", "嗯。", prefix=_sad) == compose_caption("sad")
+        assert caption_for({}, "そう、ですか。", prefix=_sad,
+                           zh_text='<|ACT:{"emotion":"sad"}|>嗯。') == compose_caption("sad")
+        assert caption_for({"valence": 0.6, "arousal": 0.7, "intensity": 0.5},
+                           "やった！", "太好了！", prefix=_sad) == compose_caption("exc")
+        # 哭腔延续压过 ACT 先验
+        assert caption_for({}, "ごめんなさい。", "我先走了。", prefix="（快哭了）对不起。" + _sad) \
+            == compose_caption("cry", "weak")
+        os.environ[VOICE_ACT_ENV] = "0"
+        assert caption_for({}, "そう、ですか。", "嗯。", prefix=_sad) == compose_caption("neutral")
+    finally:
+        os.environ.pop(VOICE_ACT_ENV, None)
+        if _keep is not None:
+            os.environ[VOICE_ACT_ENV] = _keep
     print("voice_caption 自检通过：%d 场景 × %d 档 = %d 条描述"
           % (len(SCENES), len(LEVELS), len(SCENES) * len(LEVELS)))
 

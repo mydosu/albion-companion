@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ALBION_STREAM_TTS_BASE, ALBION_STREAM_TTS_MODEL, ALBION_STREAM_TTS_PROVIDER_ID, ALBION_TTS_MODEL } from './albion-defaults'
-import { bindAlbionStageEmotion, buildAlbionStreamingSnapshot, isAlbionActRenderer, isAlbionStreamTtsProvider } from './albion-stage-bridge'
+import { albionActToText, bindAlbionStageEmotion, buildAlbionStreamingSnapshot, isAlbionActRenderer, isAlbionStreamTtsProvider } from './albion-stage-bridge'
 
 type EmotionEntry = (name: string, intensity: number, act?: object) => boolean
 
@@ -32,6 +32,28 @@ describe('albion stage bridge', () => {
       token: 'albion-local',
     })
     expect(snapshot.onImmediateSpecial).toBe(onImmediateSpecial)
+  })
+
+  it('routes ACT markers into the text stream untouched (TTS emotion prior)', () => {
+    const snapshot = buildAlbionStreamingSnapshot({
+      voiceType: 'custom_configured',
+      ownerId: 'default',
+      onImmediateSpecial: vi.fn(),
+    })
+    const forward = snapshot.specialToText
+    expect(forward).toBe(albionActToText)
+
+    // 原串一个字符都不改：9885 整段当 control 块，桥从原文里读 JSON
+    for (const act of [
+      '<|ACT:{"emotion":"sad"}|>',
+      '<|ACT:{"emotion":{"name":"happy","intensity":0.9},"face":"smile"}|>',
+      '<|ACT {"emotion":"shy"}|>',
+    ])
+      expect(forward?.(act)).toBe(act)
+
+    // 其它 special（delay / emotion: / plugin CALL）不进文字流
+    for (const other of ['delay:500', 'emotion:happy', '<|CALL:{"name":"x"}|>', ''])
+      expect(forward?.(other)).toBeNull()
   })
 
   it('publishes the emotion entry on globalThis for albion-pet to call', () => {

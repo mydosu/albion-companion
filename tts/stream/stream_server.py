@@ -829,8 +829,12 @@ class Coordinator:
 
     @staticmethod
     def source_of(sess, unit):
-        """显示文本 = 源账本里这一段**原文**（含心声/标点，方案 §4.2：原消息始终完整）。"""
-        return sess.text.text[unit.start:unit.end]
+        """显示文本 = 源账本里这一段**原文**（含心声/标点，方案 §4.2：原消息始终完整）。
+
+        `control` 块（`<|ACT:{…}|>`，壳从 2026-10-27 起会真的送进来）除外：它是表演元数据，
+        进字幕/聊天正文就是乱码 —— 走 `SessionText.display_of_range` 剥掉（任务 #23）。
+        """
+        return sess.text.display_of_range(unit.start, unit.end)
 
     # ---------------- 会话 ----------------
     async def run(self, ws: WebSocket):

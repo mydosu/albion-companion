@@ -24,6 +24,7 @@ import asyncio
 import json
 import os
 import sys
+import types
 import unittest
 from unittest import mock
 
@@ -33,9 +34,11 @@ sys.path.insert(0, os.path.join(ROOT, "tts", "irodori"))
 sys.path.insert(0, os.path.join(ROOT, "tts", "stream"))
 
 import bridge_v2 as B2        # noqa: E402
+import cue_scope as CS       # noqa: E402
 import emotion_codebook as CB  # noqa: E402
 import render_queue as RQ     # noqa: E402
 import scene_plan as SP       # noqa: E402
+import session_text as ST     # noqa: E402
 import stream_server as SS    # noqa: E402
 import voice_caption as VC   # noqa: E402
 
@@ -626,6 +629,199 @@ class TestGatewayForwarding(unittest.TestCase):
         self.assertNotIn("voice_caption", self.plan_body(None)["units"][0])
         self.assertNotIn("voice_caption",
                          self.plan_body(VC.compose_caption("sad"), "legacy")["units"][0])
+
+
+ACT_SAD = '<|ACT:{"emotion":"sad"}|>'
+ACT_HAPPY = '<|ACT:{"emotion":"happy","intensity":0.3}|>'
+ACT_HAPPY_STRONG = '<|ACT:{"emotion":{"name":"happy","intensity":0.9}}|>'
+ACT_ANGRY = '<|ACT:{"emotion":"angry"}|>'
+ACT_BROKEN = '<|ACT:{"emotion":}|>'
+
+
+class TestActPrior(unittest.TestCase):
+    """任务 #23：ACT 情绪先验进 TTS（`ALBION_VOICE_ACT`，默认开，`=0` 关）。
+
+    口径：本句自己判出的场景 > 哭腔延续 > ACT 先验 > neutral。ACT 只补位，不抢戏：
+    不产出 sob/cry、不加 emoji，强度仍由 `level_of(cues)` 决定。
+    """
+
+    def cap(self, prefix="", zh="我先走了。", ja="ごめんなさい。", cues=None):
+        return VC.caption_for(cues if cues is not None else {}, ja, zh, prefix=prefix)
+
+    def test_mapping_table(self):
+        """happy→gen（强→exc）、surprised→exc、sad→sad、angry→ang、awkward/shy→shy。"""
+        cases = {
+            ACT_SAD: "sad",
+            ACT_HAPPY: "gen",
+            ACT_HAPPY_STRONG: "exc",
+            '<|ACT:{"emotion":"happy"}|>': "gen",              # 没给强度：gen
+            '<|ACT:{"emotion":"surprised"}|>': "exc",
+            ACT_ANGRY: "ang",
+            '<|ACT:{"emotion":"awkward"}|>': "shy",
+            '<|ACT:{"emotion":"shy"}|>': "shy",
+            '<|ACT:{"emotion":"SHY"}|>': "shy",                # 大小写都认
+            '<|ACT {"emotion":"sad"}|>': "sad",                # 冒号可省（与壳 ALBION_ACT_RE 同形）
+        }
+        for text, scene in cases.items():
+            self.assertEqual(VC.act_scene_of(text), scene, text)
+        # neutral 族 / 没见过的名字：不给先验（宁可不加戏）
+        for name in ("neutral", "think", "question", "curious", "smug", "love"):
+            self.assertIsNone(VC.act_scene_of('<|ACT:{"emotion":"%s"}|>' % name), name)
+        for text in ("", "没有标记的句子。", ACT_BROKEN,
+                     '<|ACT:{"emotion":"sad"',                 # 没闭合：整条不吃
+                     '<|ACT:{"emotion":123}|>'):
+            self.assertIsNone(VC.act_scene_of(text), text)
+
+    def test_act_only_fills_what_the_sentence_cannot_judge(self):
+        with _env_without(VC.VOICE_ACT_ENV):                   # 默认开
+            # 本句中性、没有线索 → 用 ACT
+            self.assertEqual(self.cap(prefix=ACT_SAD), VC.compose_caption("sad"))
+            # 第一个单元没有 prefix：ACT 落在中文原文里（raw_text 从 0 开始）
+            self.assertEqual(self.cap(zh=ACT_SAD + "嗯。"), VC.compose_caption("sad"))
+            # 本句自己判出 exc（标量）→ 用自己的，不被 ACT sad 覆盖
+            self.assertEqual(self.cap(prefix=ACT_SAD,
+                                      cues={"valence": 0.6, "arousal": 0.8, "intensity": 0.5}),
+                             VC.compose_caption("exc"))
+            # 本句有明示线索（兴奋）→ 自己的
+            self.assertEqual(self.cap(prefix=ACT_SAD, cues={"src": [{"kind": "excite"}]}),
+                             VC.compose_caption("exc"))
+            # 本句自己在哭 → sob，ACT 改不了
+            self.assertEqual(self.cap(prefix=ACT_SAD, zh="（大哭）不要走。"),
+                             VC.compose_caption("sob"))
+
+    def test_level_still_comes_from_cues(self):
+        """强度仍走 `level_of(cues)`（arousal 不会自己判出场景，正好单独验档位）。"""
+        with _env_without(VC.VOICE_ACT_ENV):
+            self.assertEqual(self.cap(prefix=ACT_SAD, cues={"arousal": 0.9}),
+                             VC.compose_caption("sad", "strong"))
+            self.assertEqual(self.cap(prefix=ACT_SAD, cues={"arousal": 0.1}),
+                             VC.compose_caption("sad", "weak"))
+
+    def test_carry_beats_act(self):
+        """前一句在哭，这条 ACT 说 happy → 仍延续哭腔（哭腔延续 > ACT 先验）。"""
+        with _env_without(VC.VOICE_ACT_ENV):
+            self.assertEqual(self.cap(prefix="（快哭了）我真的有点难受。" + ACT_HAPPY),
+                             VC.compose_caption("cry", "weak"))
+            self.assertEqual(self.cap(prefix="（大哭）对不起……" + ACT_HAPPY_STRONG),
+                             VC.compose_caption("cry", "normal"))
+            # 她换了语气（笑）→ 不延续；此时才轮到 ACT（sad），不是哭
+            self.assertEqual(self.cap(prefix="（大哭）对不起……哈哈，逗你的。" + ACT_SAD),
+                             VC.compose_caption("sad"))
+            # ACT 挂在最后也不会把「换语气」那句挡住（回看前先把 ACT 剥掉）
+            self.assertEqual(self.cap(prefix="（大哭）对不起……你小声一点。" + ACT_SAD),
+                             VC.compose_caption("sad"))
+
+    def test_last_act_wins(self):
+        with _env_without(VC.VOICE_ACT_ENV):
+            self.assertEqual(self.cap(prefix=ACT_ANGRY + ACT_SAD), VC.compose_caption("sad"))
+            self.assertEqual(self.cap(prefix=ACT_SAD + ACT_ANGRY), VC.compose_caption("ang"))
+            # prefix 里的是旧 ACT，中文原文里的是这条新的 → 新的算数
+            self.assertEqual(self.cap(prefix=ACT_SAD, zh=ACT_HAPPY + "嗯。"),
+                             VC.compose_caption("gen"))
+
+    def test_broken_json_is_no_prior(self):
+        with _env_without(VC.VOICE_ACT_ENV):
+            self.assertEqual(self.cap(prefix=ACT_BROKEN), VC.compose_caption("neutral"))
+            # 最后一条坏了 → 当没有（不退回更早那条）
+            self.assertEqual(self.cap(prefix=ACT_SAD + ACT_BROKEN), VC.compose_caption("neutral"))
+
+    def test_switch_off_is_old_behavior(self):
+        with mock.patch.dict(os.environ, {VC.VOICE_ACT_ENV: "0"}, clear=False):
+            self.assertEqual(self.cap(prefix=ACT_SAD), VC.compose_caption("neutral"))
+            self.assertEqual(self.cap(prefix=ACT_SAD, zh=ACT_SAD + "嗯。"),
+                             VC.compose_caption("neutral"))
+            self.assertEqual(self.cap(prefix=ACT_SAD + ACT_ANGRY), VC.compose_caption("neutral"))
+
+    def test_act_never_produces_sob_or_cry_and_no_emoji(self):
+        for name in ("happy", "surprised", "sad", "angry", "awkward", "shy"):
+            scene = VC.act_scene_of('<|ACT:{"emotion":"%s"}|>' % name)
+            self.assertNotIn(scene, (None, "sob", "cry"), name)
+        self.assertEqual(VC.pick_emoji(ACT_SAD + "我先走了。", "", "ごめんなさい。"), "")
+
+
+class TestBridgeActPrior(unittest.TestCase):
+    """桥接线：`source_prefix` / 中文原文里的 ACT 真的会变成 `voice_caption`。"""
+
+    def prepare_with(self, raw, prefix, emo=None):
+        env = dict(ON, **{VC.VOICE_ACT_ENV: "1"})
+        with mock.patch.dict(os.environ, env, clear=False):
+            service, _ = svc(ja="そう、ですか。",
+                             emo=emo if emo is not None else {"arousal": 0.4, "intensity": 0.4,
+                                                              "valence": 0.0})
+            return prepare(service, req(speech=raw, raw=raw, prefix=prefix))
+
+    def test_prefix_act_drives_caption(self):
+        seg = self.prepare_with("嗯。", ACT_SAD).ja_segments[0]
+        self.assertEqual(seg["voice_caption"], VC.compose_caption("sad"))
+        self.assertNotIn("😭", seg["text"])          # ACT 先验不加 emoji
+
+    def test_act_in_raw_text_drives_caption(self):
+        """第一个单元：ACT 在 unit.start=0 的原文里，不在 prefix 里。"""
+        seg = self.prepare_with(ACT_SAD + "嗯。", "").ja_segments[0]
+        self.assertEqual(seg["voice_caption"], VC.compose_caption("sad"))
+
+    def test_switch_off_in_bridge(self):
+        env = dict(ON, **{VC.VOICE_ACT_ENV: "0"})
+        with mock.patch.dict(os.environ, env, clear=False):
+            service, _ = svc(ja="そう、ですか。",
+                             emo={"arousal": 0.4, "intensity": 0.4, "valence": 0.0})
+            res = prepare(service, req(speech="嗯。", raw="嗯。", prefix=ACT_SAD))
+        self.assertEqual(res.ja_segments[0]["voice_caption"], VC.compose_caption("neutral"))
+
+
+class TestActControlBlockInStream(unittest.TestCase):
+    """9885：ACT 块进了会话原文，也不进 speech_text / 字幕，不改切句（任务 #23）。"""
+
+    TEXTS = {
+        "句首 ACT": (ACT_SAD + "指挥官，今天也辛苦了。要不要先休息一下？", "指挥官"),
+        "句中 ACT": ("哎？" + ACT_HAPPY + "真的吗！太好了，我还以为你不会来了呢，所以一直一个人在这里发呆。",
+                 "真的吗"),
+        "嵌套 JSON": ("（小声）其实我一直在等你回来……" + ACT_HAPPY_STRONG + "那个，不要误会！", "不要误会"),
+    }
+
+    @staticmethod
+    def feed(text):
+        st = ST.SessionText("act")
+        return st, st.feed(text, 0.0) + st.finish(1.0)
+
+    def test_control_block_is_not_spoken(self):
+        for name, (text, must) in self.TEXTS.items():
+            st, units = self.feed(text)
+            spoken = "".join(u.speech_text for u in units)
+            self.assertNotIn("<|", spoken, name)
+            self.assertNotIn("ACT", spoken, name)
+            self.assertIn(must, spoken, name)
+            self.assertEqual(units[-1].end, len(text), name)     # 原文覆盖到最后一个字
+            self.assertFalse(st.unclosed_aside, name)
+
+    def test_display_text_has_no_marker(self):
+        """`display.span` / `sentence.start` 的文本 = 原文去掉 control 块（心声/标点一字不少）。"""
+        for name, (text, _must) in self.TEXTS.items():
+            st, units = self.feed(text)
+            sess = types.SimpleNamespace(text=st)
+            shown = "".join(SS.Coordinator.source_of(sess, u) for u in units)
+            self.assertNotIn("<|", shown, name)
+            self.assertEqual(shown, VC._strip_act(text), name)
+            self.assertEqual(shown[-1], text[-1], name)          # 句末标点/感叹号原样留着
+
+    def test_chunking_unchanged_by_marker(self):
+        """把 ACT 块删掉：切出的可说单元序列（speech_text/kind/reason）必须逐项一样。"""
+        for name, (text, _must) in self.TEXTS.items():
+            _, with_act = self.feed(text)
+            _, without = self.feed(VC._strip_act(text))
+            self.assertEqual([(u.speech_text, u.kind, u.reason) for u in with_act],
+                             [(u.speech_text, u.kind, u.reason) for u in without], name)
+
+
+class TestActCuePrefix(unittest.TestCase):
+    """ACT JSON 里的括号/引号/花括号不许带偏跨句指令的重放（`active_directive(source_prefix)`）。"""
+
+    def test_directive_survives_act_json(self):
+        self.assertEqual(CS.active_directive(ACT_SAD + "接下来都小声说。"), "soft")
+        self.assertEqual(CS.active_directive("接下来都小声说。" + ACT_HAPPY_STRONG), "soft")
+        self.assertEqual(CS.active_directive(ACT_HAPPY_STRONG + "接下来都耳语说。"), "whisper")
+        self.assertIsNone(CS.active_directive("接下来都小声说。" + ACT_SAD + "可以正常说话了。"))
+        self.assertIsNone(CS.active_directive(ACT_SAD + "今天好累。"))
 
 
 try:

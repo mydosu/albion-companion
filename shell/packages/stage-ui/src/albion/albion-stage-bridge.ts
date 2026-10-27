@@ -1,5 +1,6 @@
 import type { StreamingSessionSnapshot } from '../libs/speech/tts-session'
 
+import { ALBION_ACT_RE } from './albion-act'
 import { ALBION_STREAM_TTS_BASE, ALBION_STREAM_TTS_MODEL, ALBION_STREAM_TTS_PROVIDER_ID, ALBION_TTS_MODEL } from './albion-defaults'
 
 /**
@@ -31,7 +32,21 @@ export function buildAlbionStreamingSnapshot(common: Pick<StreamingSessionSnapsh
     responseFormat: 'wav',
     serverUrl: ALBION_STREAM_TTS_BASE,
     token: 'albion-local',
+    // ACT 情绪先验（任务 #23）：舞台照演（onImmediateSpecial），同时把标记原样交给 9885 → 桥。
+    // 脸和声音读同一份情绪。
+    specialToText: albionActToText,
   }
+}
+
+/**
+ * `<|ACT:{…}|>` 要不要转进 9885 的文字流（任务 #23）。
+ *
+ * 只挂在阿尔比恩本机 provider 的会话上（{@link buildAlbionStreamingSnapshot}），其它
+ * provider 的 `appendSpecial` 还是原来的直通。返回**原串**、一个字符都不改：服务端把整段
+ * `<|…|>` 当 `control` 块吃掉（不进 speech_text、不出字幕），桥从源文本里读 JSON。
+ */
+export function albionActToText(special: string): string | null {
+  return ALBION_ACT_RE.test(special) ? special : null
 }
 
 /** ACT 里除 emotion 以外交给场景的表演字段（Spine 3.8 认 face / motion / hold，见 stage-act.ts）。 */

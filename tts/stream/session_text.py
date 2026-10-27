@@ -314,6 +314,15 @@ class SessionText:
     def speech_of_range(self, start: int, end: int) -> str:
         return "".join(self.text[i] for i in range(start, end) if self.kinds[i] == "speech")
 
+    def display_of_range(self, start: int, end: int) -> str:
+        """显示视图：range 内的原文，**去掉 control 类字符**。
+
+        `<|…|>` 是壳的表演元数据（ACT 情绪，2026-10-27 起壳会把它原样送进文字流），
+        不是她说的原文 —— 字幕/聊天正文里不许出现 `<|ACT:{…}|>`。其余字符（心声、标点）
+        原样保留：方案 §4.2「原消息始终完整」。没有 control 时与直接切片逐字节一致。
+        """
+        return "".join(self.text[i] for i in range(start, end) if self.kinds[i] != "control")
+
     def spans(self):
         """合并同 kind 的连续区间 —— 显示账本。"""
         out = []

@@ -113,6 +113,16 @@ export interface StreamingSessionSnapshot {
    * something like `playSpecialToken` (Stage.vue's existing helper).
    */
   onImmediateSpecial: (special: string) => void
+  /**
+   * 有些 special 标记不只是给舞台用的，还要让**上游切句/合成**看到（阿尔比恩的
+   * `<|ACT:{…}|>` 情绪先验：脸和声音得同一个情绪）。
+   *
+   * 给了这个字段时，`appendSpecial` 先照旧调 {@link onImmediateSpecial}，再问它要不要
+   * 把这一串**原样**塞进文字流（9885 把 `<|…|>` 当控制块：不进 speech_text、不出字幕）。
+   * 返回 `null` = 这一条不转发。**没给这个字段 = 一个字节也不往文字流里加**，其它
+   * provider 的行为与加它之前逐字节一致。
+   */
+  specialToText?: (special: string) => string | null
 }
 
 /**
@@ -334,7 +344,16 @@ export function createStreamingTtsSession<TAudio = AudioBuffer>(
     // queues. The perceptual mis-alignment vs audio is minor — codex
     // review and the segmenter parity comment in Stage.vue prior to the
     // refactor both accept it.
-    appendSpecial: snapshot.onImmediateSpecial,
+    //
+    // `specialToText`（阿尔比恩 ACT）在舞台之后再把原串喂进文字流：9885 只把它当
+    // 控制块（不进 speech_text、不出字幕），桥拿它当这句的情绪先验。没人给这个字段时
+    // 分毫不差地还是原来的 `onImmediateSpecial` 直通。
+    appendSpecial: (special: string) => {
+      snapshot.onImmediateSpecial(special)
+      const forwarded = snapshot.specialToText?.(special)
+      if (forwarded)
+        handle.appendText(forwarded)
+    },
     finishInput: handle.finish,
     feedback: handle.feedback,
     end: () => {
