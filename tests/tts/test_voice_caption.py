@@ -13,6 +13,11 @@
 认得它（`render_queue._check_unit` 返回 None）；网关 `/v2/plan` 请求体只在 v3 且桥真的写了
 描述时才带 `voice_caption` 字段。
 
+快哭 / 真哭（2026-10-26 用户口径）：`cry` 是快哭/委屈（描述不变，中文 委屈/想哭/快哭/哽咽/
+眼眶红 也算）；`sob` 只认明示线索（中文括号动作、拟声 呜哇/哇——、日语 しくしく/うわーん/
+えーん/泣きじゃくり/嗚咽），否定排除，标量永不产出 sob；😭 只跟真哭走。两者都优先于
+`phonation`（生产实测「呜呜…要哭了」被标 breathy 时曾拿到 coq 描述）。
+
 不联网、不用 GPU：翻译腿是替身，`/v2/plan` 用 httpx.MockTransport。
 """
 import asyncio
@@ -73,7 +78,7 @@ class TestVocab(unittest.TestCase):
                 # 后端自由描述那道闸也要过（≤120 字、无控制字符）
                 self.assertIsNone(RQ.free_caption_error(cap), cap)
                 n += 1
-        self.assertEqual(n, 27)
+        self.assertEqual(n, 30)              # 10 场景（含真哭 sob）× 3 档
 
     def test_no_abstract_emotion_words(self):
         """描述里不许出现抽象情绪词（评测台结论：那些模型没反应）。"""
@@ -137,6 +142,95 @@ class TestSceneOf(unittest.TestCase):
         self.assertEqual(VC.level_of({}), "normal")
 
 
+class TestSobIsRealCry(unittest.TestCase):
+    """真哭（sob）只认明示线索；快哭/委屈仍走 cry（2026-10-26 用户口径）。"""
+
+    def test_explicit_sob_cues(self):
+        zh_cases = ["（哭）对不起……", "（大哭）不要走", "（哭出声）我忍不住了",
+                    "（抽泣）……嗯。", "（啜泣着）没事的", "（哭着说）别丢下我",
+                    "呜哇——", "哇————", "呜呜哇，好难过"]
+        for zh in zh_cases:
+            self.assertTrue(VC.sob_of(zh, ""), zh)
+            self.assertEqual(VC.scene_of({}, "", zh), "sob", zh)
+        ja_cases = ["しくしく、ごめんなさい。", "うわーん、もう嫌。", "えーん、ひどいよ。",
+                    "泣きじゃくって、息ができない。", "嗚咽が止まらない。"]
+        for ja in ja_cases:
+            self.assertTrue(VC.sob_of("", ja), ja)
+            self.assertEqual(VC.scene_of({}, ja), "sob", ja)
+
+    def test_negation_is_not_sob(self):
+        """否定一律不算真哭（「我才没哭」「泣いてなんか、いません」最多算 cry）。"""
+        self.assertFalse(VC.sob_of("我才没哭呢", ""))
+        self.assertFalse(VC.sob_of("（别哭）我没事", ""))
+        self.assertFalse(VC.sob_of("", "泣いてなんか、いません。"))
+        self.assertFalse(VC.sob_of("", "しくしくしてないよ。"))
+        self.assertNotEqual(VC.scene_of({}, "", "我才没哭呢"), "sob")
+        self.assertNotEqual(VC.scene_of({}, "泣いてなんか、いません。"), "sob")
+
+    def test_wuwu_and_about_to_cry_are_only_cry(self):
+        """「呜呜」单独出现、「要哭了/快哭/想哭」→ cry，不是 sob（用户补充口径）。"""
+        zh_cases = ["呜呜……", "呜呜……我、我好像要哭了。对不起，指挥官……",
+                    "我快哭了", "想哭", "好委屈……", "眼眶红了"]
+        for zh in zh_cases:
+            self.assertFalse(VC.sob_of(zh, ""), zh)
+            self.assertTrue(VC.cry_cue(zh), zh)
+            self.assertEqual(VC.scene_of({}, "", zh), "cry", zh)
+
+    def test_cry_beats_phonation(self):
+        """生产实测：breathy + valence 负 的那句必须落 cry，不许落 coq。"""
+        zh = "呜呜……我、我好像要哭了。对不起，指挥官……"
+        ja = "ごめんなさい……っ、わたし、もう……"
+        cues = {"phonation": "breathy", "arousal": 0.3, "valence": -0.6, "intensity": 0.5}
+        self.assertEqual(VC.scene_of(cues, ja, zh), "cry")
+        self.assertEqual(VC.caption_for(cues, ja, zh), VC.compose_caption("cry", "normal"))
+        # 真哭同样压过 breathy
+        self.assertEqual(VC.scene_of(cues, "うわーん、もう。", "（大哭）"), "sob")
+        # 没哭的字面还是照旧：breathy 依然落 coq
+        self.assertEqual(VC.scene_of(cues, "そうなんだ。", "这样啊。"), "coq")
+
+    def test_scalars_never_produce_sob(self):
+        for cues in ({"valence": -0.9, "arousal": 0.1}, {"valence": -0.5, "arousal": 0.9},
+                     {"valence": -0.8, "arousal": 0.0, "intensity": 0.9}):
+            self.assertNotEqual(VC.scene_of(cues), "sob", cues)
+
+    def test_sob_caption_is_in_vocab_and_distinct(self):
+        cap = VC.compose_caption("sob", "normal")
+        self.assertIsNone(VC.validate_caption(cap))
+        self.assertNotEqual(cap, VC.compose_caption("cry", "normal"))
+        self.assertIn("sob", VC.SCENES)
+        self.assertEqual(VC.SCENE_FAMILY["sob"], "sad")
+        # 真哭措辞定死一条（实测只有这条三句 f0_std 都高过基线）：不分强度
+        self.assertEqual(cap, VC.compose_caption("sob", "weak"))
+        self.assertEqual(cap, VC.compose_caption("sob", "strong"))
+        self.assertEqual(cap, "とても声を震わせて、しゃくり上げて、言う。")
+        self.assertIn("しゃくり上げて", cap)
+
+    def test_caption_for_takes_chinese_text(self):
+        """caption_for 的新参数（中文原文）决定真哭/快哭。"""
+        cues = {"phonation": "breathy", "valence": -0.4}
+        self.assertEqual(VC.caption_for(cues, "そうなんだ。", "（大哭）"),
+                         VC.compose_caption("sob", "normal"))
+        self.assertEqual(VC.caption_for(cues, "そうなんだ。", "呜呜……"),
+                         VC.compose_caption("cry", "normal"))
+        self.assertEqual(VC.caption_for(cues, "そうなんだ。", ""),
+                         VC.compose_caption("coq", "normal"))
+        # 位置参数顺序：cues, ja_text, zh_text
+        self.assertEqual(VC.caption_for(cues, "うわーん", ""),
+                         VC.compose_caption("sob", "normal"))
+
+    def test_sob_emoji_only_for_real_cry(self):
+        self.assertEqual(VC.pick_emoji("（大哭）不要走", "", "ごめんなさい"), "😭")
+        self.assertEqual(VC.pick_emoji("", "", "うわーん、もう嫌。"), "😭")
+        self.assertEqual(VC.pick_emoji("呜呜……我好像要哭了", "", "泣きそう"), "")   # 快哭不加
+        self.assertEqual(VC.pick_emoji("好委屈……", "", "つらい"), "")
+        self.assertEqual(VC.pick_emoji("我才没哭", "", "泣いてない"), "")
+        # 显式 sob 参数（桥里和 caption 共用同一个判定）
+        self.assertEqual(VC.pick_emoji("はい。", "", "はい。", sob=True), "😭")
+        self.assertEqual(VC.pick_emoji("ふふ、そうなんだ", "", "ふふ", sob=False), "🤭")
+        self.assertEqual(VC.pick_emoji("ふふ", "", "ふふ", sob=True), "😭")       # 真哭压过笑
+        self.assertIn("😭", VC.EMOJI_WHITELIST)
+
+
 class TestBridgeOutput(unittest.TestCase):
     def test_switch_off_is_byte_identical(self):
         """开关关着：没有 voice_caption，emoji 原样保留（逐字符等于以前）。"""
@@ -191,6 +285,31 @@ class TestBridgeOutput(unittest.TestCase):
             service, _ = svc(ja="はい、わかりました。", emo={"valence": 0.0, "arousal": 0.3})
             res = prepare(service, req(speech="好的，我知道了。", raw="好的，我知道了。"))
         self.assertFalse(res.ja_segments[0]["text"].endswith(("🤭", "😮‍💨", "🥱", "😭")))  # 😭 也不在句末
+
+    def test_real_cry_gets_sob_caption_and_emoji(self):
+        """（大哭）→ 真哭：sob 描述 + 句末 😭（真哭是唯一会带 😭 的路径）。"""
+        with mock.patch.dict(os.environ, ON, clear=False):
+            service, _ = svc(ja="ごめんなさい……っ、わたし、もう……",
+                             emo={"phonation": "breathy", "arousal": 0.3,
+                                  "valence": -0.6, "intensity": 0.5})
+            res = prepare(service, req(speech="（大哭）对不起，我、我已经……",
+                                       raw="（大哭）对不起，我、我已经……"))
+        seg = res.ja_segments[0]
+        self.assertEqual(seg["voice_caption"], VC.compose_caption("sob", "normal"))
+        self.assertTrue(seg["text"].endswith("😭"), seg["text"])
+
+    def test_about_to_cry_is_cry_and_has_no_emoji(self):
+        """生产实测那句：breathy + 呜呜 + 要哭 → cry 描述（不是 coq），且不加 😭。"""
+        zh = "呜呜……我、我好像要哭了。对不起，指挥官……"
+        with mock.patch.dict(os.environ, ON, clear=False):
+            service, _ = svc(ja="ごめんなさい……っ、わたし、もう……",
+                             emo={"phonation": "breathy", "arousal": 0.3,
+                                  "valence": -0.6, "intensity": 0.5})
+            res = prepare(service, req(speech=zh, raw=zh))
+        seg = res.ja_segments[0]
+        self.assertEqual(seg["voice_caption"], VC.compose_caption("cry", "normal"))
+        self.assertNotEqual(seg["voice_caption"], VC.compose_caption("coq", "normal"))
+        self.assertFalse(seg["text"].endswith("😭"), seg["text"])
 
     def test_pick_emoji_table(self):
         self.assertEqual(VC.pick_emoji("ふふ、そうなんだ"), "🤭")

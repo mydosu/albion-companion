@@ -1,0 +1,1022 @@
+{
+ "voice": "albion",
+ "plan_version": 4,
+ "codebook_version": 2,
+ "anchors": {
+  "quiet": {
+   "family": "neutral",
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "tier": "weak"
+  }
+ },
+ "noise_reference": "quiet",
+ "seeds": [
+  12345,
+  777
+ ],
+ "notes": "真哭（sob）措辞扫描：7 个候选 × 3 句 × 2 seed × 有/无句末 😭，外加 cry 现有描述与 neutral_quiet 基线。",
+ "candidates": {
+  "c1": "泣きながら、しゃくり上げて、言う。",
+  "c2": "泣き声で、息を詰まらせて、言う。",
+  "c3": "とても声を震わせて、しゃくり上げて、言う。",
+  "c4": "嗚咽しながら、途切れがちに、言う。",
+  "c5": "泣きじゃくりながら、息を詰まらせて、言う。",
+  "c6": "声を震わせて、しゃくり上げて、言う。",
+  "c7": "とても泣きながら、しゃくり上げて、言う。"
+ },
+ "sentences": [
+  {
+   "id": "sob1",
+   "kind": "真哭",
+   "note": "短句、道歉、句末省略号",
+   "text": "ごめんなさい……っ、わたし、もう……"
+  },
+  {
+   "id": "sob2",
+   "kind": "真哭",
+   "note": "疑问+省略号、逗号在中",
+   "text": "どうして……、こんなことに……っ"
+  },
+  {
+   "id": "sob3",
+   "kind": "真哭",
+   "note": "抽泣拟声开头、逗号两处",
+   "text": "ひっく……、ひとりに、しないで……"
+  }
+ ],
+ "conditions": [
+  {
+   "id": "sob1-base-12345",
+   "sentence": "sob1",
+   "seed": 12345,
+   "group": "base"
+  },
+  {
+   "id": "sob1-cry-12345",
+   "sentence": "sob1",
+   "seed": 12345,
+   "group": "cry",
+   "caption": "声を震わせて、途切れがちに、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob1-c1-12345",
+   "sentence": "sob1",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob1-c1-end-12345",
+   "sentence": "sob1",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob1-c2-12345",
+   "sentence": "sob1",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "泣き声で、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob1-c2-end-12345",
+   "sentence": "sob1",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "泣き声で、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob1-c3-12345",
+   "sentence": "sob1",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "とても声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob1-c3-end-12345",
+   "sentence": "sob1",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "とても声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob1-c4-12345",
+   "sentence": "sob1",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "嗚咽しながら、途切れがちに、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob1-c4-end-12345",
+   "sentence": "sob1",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "嗚咽しながら、途切れがちに、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob1-c5-12345",
+   "sentence": "sob1",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "泣きじゃくりながら、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob1-c5-end-12345",
+   "sentence": "sob1",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "泣きじゃくりながら、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob1-c6-12345",
+   "sentence": "sob1",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob1-c6-end-12345",
+   "sentence": "sob1",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob1-c7-12345",
+   "sentence": "sob1",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "とても泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob1-c7-end-12345",
+   "sentence": "sob1",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "とても泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob1-base-777",
+   "sentence": "sob1",
+   "seed": 777,
+   "group": "base"
+  },
+  {
+   "id": "sob1-cry-777",
+   "sentence": "sob1",
+   "seed": 777,
+   "group": "cry",
+   "caption": "声を震わせて、途切れがちに、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob1-c1-777",
+   "sentence": "sob1",
+   "seed": 777,
+   "group": "sob",
+   "caption": "泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob1-c1-end-777",
+   "sentence": "sob1",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob1-c2-777",
+   "sentence": "sob1",
+   "seed": 777,
+   "group": "sob",
+   "caption": "泣き声で、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob1-c2-end-777",
+   "sentence": "sob1",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "泣き声で、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob1-c3-777",
+   "sentence": "sob1",
+   "seed": 777,
+   "group": "sob",
+   "caption": "とても声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob1-c3-end-777",
+   "sentence": "sob1",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "とても声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob1-c4-777",
+   "sentence": "sob1",
+   "seed": 777,
+   "group": "sob",
+   "caption": "嗚咽しながら、途切れがちに、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob1-c4-end-777",
+   "sentence": "sob1",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "嗚咽しながら、途切れがちに、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob1-c5-777",
+   "sentence": "sob1",
+   "seed": 777,
+   "group": "sob",
+   "caption": "泣きじゃくりながら、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob1-c5-end-777",
+   "sentence": "sob1",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "泣きじゃくりながら、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob1-c6-777",
+   "sentence": "sob1",
+   "seed": 777,
+   "group": "sob",
+   "caption": "声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob1-c6-end-777",
+   "sentence": "sob1",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob1-c7-777",
+   "sentence": "sob1",
+   "seed": 777,
+   "group": "sob",
+   "caption": "とても泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob1-c7-end-777",
+   "sentence": "sob1",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "とても泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob2-base-12345",
+   "sentence": "sob2",
+   "seed": 12345,
+   "group": "base"
+  },
+  {
+   "id": "sob2-cry-12345",
+   "sentence": "sob2",
+   "seed": 12345,
+   "group": "cry",
+   "caption": "声を震わせて、途切れがちに、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob2-c1-12345",
+   "sentence": "sob2",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob2-c1-end-12345",
+   "sentence": "sob2",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob2-c2-12345",
+   "sentence": "sob2",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "泣き声で、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob2-c2-end-12345",
+   "sentence": "sob2",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "泣き声で、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob2-c3-12345",
+   "sentence": "sob2",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "とても声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob2-c3-end-12345",
+   "sentence": "sob2",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "とても声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob2-c4-12345",
+   "sentence": "sob2",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "嗚咽しながら、途切れがちに、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob2-c4-end-12345",
+   "sentence": "sob2",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "嗚咽しながら、途切れがちに、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob2-c5-12345",
+   "sentence": "sob2",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "泣きじゃくりながら、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob2-c5-end-12345",
+   "sentence": "sob2",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "泣きじゃくりながら、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob2-c6-12345",
+   "sentence": "sob2",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob2-c6-end-12345",
+   "sentence": "sob2",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob2-c7-12345",
+   "sentence": "sob2",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "とても泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob2-c7-end-12345",
+   "sentence": "sob2",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "とても泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob2-base-777",
+   "sentence": "sob2",
+   "seed": 777,
+   "group": "base"
+  },
+  {
+   "id": "sob2-cry-777",
+   "sentence": "sob2",
+   "seed": 777,
+   "group": "cry",
+   "caption": "声を震わせて、途切れがちに、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob2-c1-777",
+   "sentence": "sob2",
+   "seed": 777,
+   "group": "sob",
+   "caption": "泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob2-c1-end-777",
+   "sentence": "sob2",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob2-c2-777",
+   "sentence": "sob2",
+   "seed": 777,
+   "group": "sob",
+   "caption": "泣き声で、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob2-c2-end-777",
+   "sentence": "sob2",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "泣き声で、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob2-c3-777",
+   "sentence": "sob2",
+   "seed": 777,
+   "group": "sob",
+   "caption": "とても声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob2-c3-end-777",
+   "sentence": "sob2",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "とても声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob2-c4-777",
+   "sentence": "sob2",
+   "seed": 777,
+   "group": "sob",
+   "caption": "嗚咽しながら、途切れがちに、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob2-c4-end-777",
+   "sentence": "sob2",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "嗚咽しながら、途切れがちに、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob2-c5-777",
+   "sentence": "sob2",
+   "seed": 777,
+   "group": "sob",
+   "caption": "泣きじゃくりながら、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob2-c5-end-777",
+   "sentence": "sob2",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "泣きじゃくりながら、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob2-c6-777",
+   "sentence": "sob2",
+   "seed": 777,
+   "group": "sob",
+   "caption": "声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob2-c6-end-777",
+   "sentence": "sob2",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob2-c7-777",
+   "sentence": "sob2",
+   "seed": 777,
+   "group": "sob",
+   "caption": "とても泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob2-c7-end-777",
+   "sentence": "sob2",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "とても泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob3-base-12345",
+   "sentence": "sob3",
+   "seed": 12345,
+   "group": "base"
+  },
+  {
+   "id": "sob3-cry-12345",
+   "sentence": "sob3",
+   "seed": 12345,
+   "group": "cry",
+   "caption": "声を震わせて、途切れがちに、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob3-c1-12345",
+   "sentence": "sob3",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob3-c1-end-12345",
+   "sentence": "sob3",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob3-c2-12345",
+   "sentence": "sob3",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "泣き声で、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob3-c2-end-12345",
+   "sentence": "sob3",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "泣き声で、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob3-c3-12345",
+   "sentence": "sob3",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "とても声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob3-c3-end-12345",
+   "sentence": "sob3",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "とても声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob3-c4-12345",
+   "sentence": "sob3",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "嗚咽しながら、途切れがちに、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob3-c4-end-12345",
+   "sentence": "sob3",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "嗚咽しながら、途切れがちに、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob3-c5-12345",
+   "sentence": "sob3",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "泣きじゃくりながら、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob3-c5-end-12345",
+   "sentence": "sob3",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "泣きじゃくりながら、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob3-c6-12345",
+   "sentence": "sob3",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob3-c6-end-12345",
+   "sentence": "sob3",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob3-c7-12345",
+   "sentence": "sob3",
+   "seed": 12345,
+   "group": "sob",
+   "caption": "とても泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob3-c7-end-12345",
+   "sentence": "sob3",
+   "seed": 12345,
+   "group": "sob-emoji",
+   "caption": "とても泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob3-base-777",
+   "sentence": "sob3",
+   "seed": 777,
+   "group": "base"
+  },
+  {
+   "id": "sob3-cry-777",
+   "sentence": "sob3",
+   "seed": 777,
+   "group": "cry",
+   "caption": "声を震わせて、途切れがちに、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob3-c1-777",
+   "sentence": "sob3",
+   "seed": 777,
+   "group": "sob",
+   "caption": "泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob3-c1-end-777",
+   "sentence": "sob3",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob3-c2-777",
+   "sentence": "sob3",
+   "seed": 777,
+   "group": "sob",
+   "caption": "泣き声で、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob3-c2-end-777",
+   "sentence": "sob3",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "泣き声で、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob3-c3-777",
+   "sentence": "sob3",
+   "seed": 777,
+   "group": "sob",
+   "caption": "とても声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob3-c3-end-777",
+   "sentence": "sob3",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "とても声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob3-c4-777",
+   "sentence": "sob3",
+   "seed": 777,
+   "group": "sob",
+   "caption": "嗚咽しながら、途切れがちに、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob3-c4-end-777",
+   "sentence": "sob3",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "嗚咽しながら、途切れがちに、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob3-c5-777",
+   "sentence": "sob3",
+   "seed": 777,
+   "group": "sob",
+   "caption": "泣きじゃくりながら、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob3-c5-end-777",
+   "sentence": "sob3",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "泣きじゃくりながら、息を詰まらせて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob3-c6-777",
+   "sentence": "sob3",
+   "seed": 777,
+   "group": "sob",
+   "caption": "声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob3-c6-end-777",
+   "sentence": "sob3",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "声を震わせて、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  },
+  {
+   "id": "sob3-c7-777",
+   "sentence": "sob3",
+   "seed": 777,
+   "group": "sob",
+   "caption": "とても泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0
+  },
+  {
+   "id": "sob3-c7-end-777",
+   "sentence": "sob3",
+   "seed": 777,
+   "group": "sob-emoji",
+   "caption": "とても泣きながら、しゃくり上げて、言う。",
+   "caption_mode": "free",
+   "cfg": 3.0,
+   "emoji": "😭",
+   "emoji_id": "cry",
+   "pos": "end"
+  }
+ ]
+}

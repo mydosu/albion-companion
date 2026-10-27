@@ -441,12 +441,16 @@ class PrepareService:
             没通过校验就**不加** —— 规划器看不到这个字段，自然回原来的码本锚路径；
           * emoji：先剥掉译文里**所有** emoji（模型自己写的位置/个数不受控），再按「每条回复
             最多 1 个」（`EmojiBudget` 按 session+generation 记账）追加一个白名单 emoji。
-            台词本身在笑/叹气/打哈欠/哭才算有，判据看中文原文 + 日语译文。
+            台词本身在笑/叹气/打哈欠/真哭才算有，判据看中文原文 + 日语译文；
+          * **真哭只判一次**：`sob_of(req.raw_text, ja_text)` 同时喂给 caption 与 emoji，
+            两边不会一个说真哭、一个说快哭（😭 只跟真哭走）。
         """
         caption_on = voice_caption.voice_caption_on()
         emoji_on = voice_caption.voice_emoji_on()
         if not caption_on and not emoji_on:
             return ja_text, None
+        zh_text = req.raw_text or req.speech_text
+        sob = voice_caption.sob_of(zh_text, ja_text)
         extra = {}
         text = ja_text
         if emoji_on:
@@ -454,12 +458,12 @@ class PrepareService:
             if stripped:
                 print("[voice] unit=%s 剥掉 %d 个不受控 emoji" % (req.unit_id, stripped),
                       flush=True)
-            pick = voice_caption.pick_emoji(req.raw_text, req.speech_text, ja_text)
+            pick = voice_caption.pick_emoji(req.raw_text, req.speech_text, ja_text, sob=sob)
             key = (req.session_id, req.generation)
             if pick and self._emoji_budget.take(key):
                 text = text.rstrip() + pick
         if caption_on:
-            caption = voice_caption.caption_for(emo, ja_text)
+            caption = voice_caption.caption_for(emo, ja_text, zh_text)
             if caption:
                 extra["voice_caption"] = caption
         return text, (extra or None)

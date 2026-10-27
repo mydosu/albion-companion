@@ -15,7 +15,23 @@ neutral 占 83%，而 7 条锚彼此差异很小（`tests/output/tts-emotion-sur
   * 强弱只用「少し / とても」前缀，和评测台的结论一致（强度靠措辞，不靠 cfg）；
   * 同一场景 + 同一强度 → **同一个字符串**（相邻句不会因为标点/字数小差别换来换去，
     只有族或强度真的变了才换描述 —— 这就是阶段 3d 要的「别跳太猛」，靠纯函数而不是跨句状态）；
-  * 8 个场景对上场景评测集 `tests/tts/data/emotion_scene_20261026.json` 的 8 类情绪。
+  * 9 个场景对上场景评测集 `tests/tts/data/emotion_scene_20261026.json` 的 8 类情绪，
+    外加 2026-10-26 用户要求拆出来的**真哭** `sob`（快哭/委屈仍走 `cry`，描述不变）。
+
+快哭（`cry`）与真哭（`sob`）怎么分
+---------------------------------
+用户口径：「快哭用快哭（和委屈差不多），真哭用真哭」。
+  * `cry`：现有描述不动。除了标量（valence<=-0.5 且 arousal<=0.45），中文原文里出现
+    委屈 / 想哭 / 快哭 / 要哭 / 哽咽 / 眼眶红 这类也走 `cry`（`cry_cue`）；「呜呜」单独出现
+    只是快哭，不算真哭。
+  * `sob`：**只认明示线索**，宁漏勿错 —— 中文原文括号里的哭泣动作（（哭）（大哭）（哭出声）
+    （抽泣）（啜泣）（哭着…））、拟声 `呜哇 / 哇——`、日语译文 `しくしく / うわーん / えーん /
+    泣きじゃくり / 嗚咽`；否定（「我才没哭」「泣いてなんか、いません」）一律排除。标量路径
+    永远不产出 `sob`。
+  * 两者都**优先于 `phonation`**：生产实测「呜呜……我、我好像要哭了」被情感抽取标成
+    `phonation=breathy`，旧顺序会拿到「鼻にかけて、柔らかく、甘える。」（coq）；
+    哭泣的明示证据应当压过发声方式（2026-10-26 修）。
+  * 😭 只在真哭时回句末（`pick_emoji(..., sob=True)`）；快哭/委屈不加任何 emoji。
 
 校验口径（`validate_caption`，桥与规划器共用同一把尺子）
 ------------------------------------------------------
@@ -78,6 +94,7 @@ MANNER = {
     "neutral": ("落ち着いた声で", "淡々と"),
     "sad": ("低い声で", "語尾を下げて"),
     "cry": ("声を震わせて", "途切れがちに"),
+    "sob": ("声を震わせて", "しゃくり上げて"),   # 真哭：措辞由 tests/output/tts-sob-20261026 实测选
     "whi": ("声を潜めて", "囁くように"),
     "shy": ("小さな声で", "語尾を消え入るように"),
     "coq": ("鼻にかけて", "柔らかく"),
@@ -91,6 +108,7 @@ FINAL_VERBS = {
     "neutral": "話す。",
     "sad": "呟く。",
     "cry": "言う。",
+    "sob": "言う。",
     "whi": "囁く。",
     "shy": "話す。",
     "coq": "甘える。",       # 只在这里出现（「甘える」实测没反应，但句末动词影响很小）
@@ -116,9 +134,19 @@ PREFIX_SET = frozenset(p for p in PREFIXES.values() if p)
 
 # 场景 → 桥的码本族（规划器还要按族做校验/渲染；描述本身不换族，只换 caption）。
 SCENE_FAMILY = {
-    "neutral": "neutral", "sad": "sad", "cry": "sad", "whi": "flirty",
+    "neutral": "neutral", "sad": "sad", "cry": "sad", "sob": "sad", "whi": "flirty",
     "shy": "neutral", "coq": "intimate", "exc": "bright", "ang": "bright",
     "gen": "flirty",
+}
+
+
+# 少数场景的措辞**定死一条**，不再套「少し/とても」前缀。
+# 真哭（sob）是唯一一个：3 句真哭台词 × 2 seed 实测（tests/output/tts-sob-20261026/REPORT.md），
+# 只有带「とても」的这一条让三句的 f0_std 全部高过基线（+1.3 / +2.1 / +7.9，均值 +3.8）
+# 且 ΔF0 +8 Hz；去掉前缀（声を震わせて、しゃくり上げて、言う。）只能 +1.2 / ±0，和快哭
+# （声を震わせて、途切れがちに、言う。）分不开。真哭不需要「弱一点的哭」，所以定死。
+FIXED_CAPTIONS = {
+    "sob": "とても声を震わせて、しゃくり上げて、言う。",
 }
 
 
@@ -126,13 +154,17 @@ def compose_caption(scene, level="normal"):
     """拼一条描述。`scene` 必须是 `SCENES` 之一，`level` 是 `LEVELS` 之一。
 
     纯函数：同一 (scene, level) 永远同一字符串 —— 相邻句只要情绪没变，描述就不会跳。
+    `FIXED_CAPTIONS` 里的场景不分强度（真哭只有一条实测有效的措辞）。
     """
     if scene not in MANNER:
         raise ValueError("未知场景：%r（合法：%s）" % (scene, ",".join(SCENES)))
     if level not in PREFIXES:
         raise ValueError("未知强度：%r（合法：%s）" % (level, ",".join(LEVELS)))
-    first, second = MANNER[scene]
-    caption = "%s%s、%s、%s" % (PREFIXES[level], first, second, FINAL_VERBS[scene])
+    if scene in FIXED_CAPTIONS:
+        caption = FIXED_CAPTIONS[scene]
+    else:
+        first, second = MANNER[scene]
+        caption = "%s%s、%s、%s" % (PREFIXES[level], first, second, FINAL_VERBS[scene])
     why = validate_caption(caption)
     if why:                                   # 词表自己拼坏了：宁可没有描述，也不送半句
         raise AssertionError("词表拼出的描述没通过自校验（%s）：%s" % (why, caption))
@@ -211,6 +243,73 @@ _JA_SCENE = (
     ("exc", re.compile(r"笑|くすくす|ふふ|やった|嬉し")),
 )
 
+# ---- 快哭（cry）与真哭（sob）的判据 ------------------------------------------
+# 中文原文里的**快哭/委屈**：委屈、想哭、快哭 都跟「眼泪在眼里」差不多，走 cry 的现有描述。
+# 只认字面，不做语义解读；否定（「我才没哭」）不算。
+_ZH_CRY_CUE = re.compile(r"委屈|想哭|快哭|要哭|哽咽|哭腔|眼眶红|眼圈红|眼眶|眼泪|掉泪|含泪|呜呜|哭")
+
+# 真哭只认**明示**动作：中文括号里的哭泣动作（（哭）（大哭）（哭出声）（抽泣）（啜泣）（哭着…））。
+# 括号外的一句「哭」不算 —— 宁漏勿错（「我才没哭」在括号外，本来也进不来）。
+_ZH_SOB_PAREN = re.compile(r"大哭|哭出声|哭起来|哭出来|哭了出来|抽泣|啜泣|哭泣|哭着|哭了|哭")
+
+# 拟声里只有「呜哇 / 哇——」是真哭；「呜呜」单独出现只算快哭（2026-10-26 用户口径）。
+_ZH_SOB_ONOMATOPOEIA = re.compile(r"呜哇|呜呜哇|哇[—\-－~～]{2,}")
+
+_PAREN_BODY = re.compile(r"[（(]([^）)\n]{1,24})[）)]")
+
+# 中文否定：紧挨着哭泣词前面 1–5 字（「我才没哭」「别哭了」「不会哭」）。
+_ZH_NEG_HEAD = re.compile(r"(?:没有|还没|才没|不要|不用|不许|不会|别|没|不|未|勿|莫)\s*$")
+
+# 日语译文的真哭词；紧跟着的否定（「泣きじゃくってない」「しくしくしてない」）才排除 ——
+# 只认贴着动词的 `(し)(て)(は)(なんか)(ない/ません)`，所以 `泣きじゃくって、息ができない。`
+# 的「できない」、`嗚咽が止まらない。` 的「止まらない」都不算否认在哭。
+_JA_SOB = re.compile(r"しくしく|うわーん|うわあん|えーん|ええん|泣きじゃく|嗚咽|むせび泣")
+_JA_NEG_TAIL = re.compile(r"^(?:し)?(?:て|って|で)?(?:は|も)?(?:なんか|なんて)?(?:ない|ません|いない|いません)")
+
+
+def _zh_hit(text, pattern):
+    """第一个**非否定**的匹配（否定看词前 1–5 字）；没有就返回 None。"""
+    t = text or ""
+    for m in pattern.finditer(t):
+        if _ZH_NEG_HEAD.search(t[max(0, m.start() - 5):m.start()]):
+            continue
+        return m
+    return None
+
+
+def _paren_sob_hit(text):
+    """中文括号动作里的哭泣（（哭）（大哭）（哭出声）（抽泣）（啜泣）（哭着…））。"""
+    for m in _PAREN_BODY.finditer(text or ""):
+        if _zh_hit(m.group(1), _ZH_SOB_PAREN):
+            return m
+    return None
+
+
+def _ja_sob_hit(text):
+    t = text or ""
+    for m in _JA_SOB.finditer(t):
+        if _JA_NEG_TAIL.match(t[m.end():m.end() + 10]):
+            continue
+        return m
+    return None
+
+
+def sob_of(zh_text="", ja_text=""):
+    """**真哭**判定（桥的 caption 与句末 emoji 共用这一个函数）。只认明示线索，宁漏勿错。
+
+    触发：中文括号里的哭泣动作 / 拟声「呜哇、哇——」/ 日语 `しくしく・うわーん・えーん・
+    泣きじゃくり・嗚咽`（非否定）。**标量永远不产出真哭**；「呜呜」单独出现、「要哭了 /
+    快哭 / 想哭」都只算快哭（见 `cry_cue`）。
+    """
+    if _paren_sob_hit(zh_text) or _ZH_SOB_ONOMATOPOEIA.search(zh_text or ""):
+        return True
+    return bool(_ja_sob_hit(ja_text))
+
+
+def cry_cue(zh_text=""):
+    """**快哭/委屈**的中文判据（委屈、想哭、快哭、哽咽、眼眶红、「呜呜」…）；否定不算。"""
+    return bool(_zh_hit(zh_text, _ZH_CRY_CUE))
+
 
 def _num(v):
     if isinstance(v, bool) or not isinstance(v, (int, float)):
@@ -219,13 +318,21 @@ def _num(v):
     return f if f == f and abs(f) != float("inf") else None
 
 
-def scene_of(cues, ja_text="", fallback="neutral"):
-    """情绪提示 → 场景。优先级：明示线索 > 发声方式 > 标量 > 日语表面线索 > 默认。
+def scene_of(cues, ja_text="", zh_text="", fallback="neutral"):
+    """情绪提示 → 场景。优先级：真哭 > 快哭 > 明示线索 > 发声方式 > 标量 > 日语表面线索 > 默认。
+
+    哭泣的明示证据（`sob_of` / `cry_cue`）**先于 phonation**：生产实测「呜呜……我、我好像
+    要哭了。对不起，指挥官……」被情感抽取标成 `phonation=breathy`，旧顺序拿到了 coq 的
+    「鼻にかけて、柔らかく、甘える。」；哭泣是比发声方式更强的证据（2026-10-26 修）。
 
     只做「读得出什么就用什么」，猜不出就是 `fallback`（默认 neutral：和现在 83% neutral
     的生产分布一致，不会凭空给一句台词加戏）。
     """
     c = cues if isinstance(cues, dict) else {}
+    if sob_of(zh_text, ja_text):
+        return "sob"
+    if cry_cue(zh_text):
+        return "cry"
     kinds = set()
     for item in c.get("src") or []:
         if isinstance(item, dict) and item.get("kind") and not item.get("negated"):
@@ -278,9 +385,13 @@ def level_of(cues):
     return "normal"
 
 
-def caption_for(cues, ja_text="", fallback="neutral"):
-    """桥的入口：情绪提示 + 日语译文 → 一条通过校验的描述（没把握就返回 ""）。"""
-    scene = scene_of(cues, ja_text, fallback=fallback)
+def caption_for(cues, ja_text="", zh_text="", fallback="neutral"):
+    """桥的入口：情绪提示 + 日语译文 + 中文原文 → 一条通过校验的描述（没把握就返回 ""）。
+
+    `zh_text` 是**中文原文**（桥里传 `req.raw_text`）：真哭/快哭的判据在中文一侧
+    （括号动作、委屈类说法），日语译文里看不到。
+    """
+    scene = scene_of(cues, ja_text, zh_text=zh_text, fallback=fallback)
     caption = compose_caption(scene, level_of(cues))
     if validate_caption(caption):
         return ""                             # 理论上不会发生；真发生了也不送半句
@@ -290,14 +401,17 @@ def caption_for(cues, ja_text="", fallback="neutral"):
 # ---- 句末非语言 emoji ---------------------------------------------------------
 # 只收 `checkpoints/EMOJI_ANNOTATIONS.md` 里**非语言**的那几个（笑声/叹气/哈欠），
 # 风格类（😊😠🥺…）会改整句语气，不在本阶段范围内。
-# 不收 😭：用户要「快哭」不要「大哭」，而 😭 放句末会多出一段抽泣声，属于大哭。
-EMOJI_WHITELIST = ("🤭", "😮‍💨", "🥱")
+# 😭 只在**真哭**（`sob_of` 为真）时回来：句末 😭 会多出 0.3–1.6 s 抽泣声，
+# 快哭/委屈不加（用户口径：「快哭用快哭，真哭用真哭」）。
+EMOJI_WHITELIST = ("🤭", "😮‍💨", "🥱", "😭")
 
 _EMOJI_RULES = (
     ("🤭", re.compile(r"笑|哈哈|嘿|嘻|呵呵|くす|ふふ|ふふっ")),
     ("😮‍💨", re.compile(r"唉|叹|叹气|呼|ため息|ふう|はあ|ほっと")),
     ("🥱", re.compile(r"哈欠|困|睡|疲|あくび|眠|ふわ")),
 )
+
+SOB_EMOJI = "😭"
 
 # emoji 的码位范围（判"是不是 emoji"用；白名单外的整颗剥掉，包括变体选择符/ZWJ）。
 _EMOJI_CHAR = re.compile(
@@ -326,9 +440,21 @@ def strip_emoji(text):
     return "".join(out), n
 
 
-def pick_emoji(*texts):
-    """台词本身在笑/叹气/打哈欠/哭 → 对应 emoji；否则 ""。按 `_EMOJI_RULES` 的优先级。"""
+def pick_emoji(*texts, sob=None):
+    """台词本身在笑/叹气/打哈欠/真哭 → 对应 emoji；否则 ""。按 `_EMOJI_RULES` 的优先级。
+
+    `sob` 是真哭判定（桥里传 `sob_of(raw_text, ja_text)`，和 caption 共用同一个函数）：
+      * `sob=True` → 先给 😭（真哭压过其它语气）；
+      * `sob=False`/未给（自己按第一条文本当中文、其余当日语兜底判）→ 😭 永远不出来，
+        快哭/委屈一律不加 emoji。
+    """
     blob = " ".join(t for t in texts if isinstance(t, str) and t)
+    if sob is None:
+        first_zh = texts[0] if texts and isinstance(texts[0], str) else ""
+        rest_ja = " ".join(t for t in texts[1:] if isinstance(t, str))
+        sob = sob_of(first_zh, rest_ja)
+    if sob:
+        return SOB_EMOJI
     if not blob:
         return ""
     for emoji, rx in _EMOJI_RULES:
@@ -383,7 +509,9 @@ def _selftest():
     assert pick_emoji("ふふ、そうなんだ") == "🤭"
     assert pick_emoji("はあ、疲れた") == "😮‍💨"
     assert pick_emoji("眠い……") == "🥱"
-    assert pick_emoji("うう、泣きそう") == ""      # 😭 已下线：只要快哭，不要句末抽泣
+    assert pick_emoji("うう、泣きそう") == ""      # 快哭：不加 emoji（😭 只跟真哭）
+    assert pick_emoji("（大哭）不要走") == "😭"      # 真哭：句末才回来
+    assert pick_emoji("呜呜……我好像要哭了") == ""   # 呜呜/要哭 = 快哭，不配 😭
     assert pick_emoji("はい、わかりました。") == ""
     b = EmojiBudget(max_keys=2)
     assert b.take(("s", 1)) is True and b.take(("s", 1)) is False
