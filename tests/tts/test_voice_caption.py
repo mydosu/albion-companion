@@ -190,13 +190,13 @@ class TestBridgeOutput(unittest.TestCase):
         with mock.patch.dict(os.environ, ON, clear=False):
             service, _ = svc(ja="はい、わかりました。", emo={"valence": 0.0, "arousal": 0.3})
             res = prepare(service, req(speech="好的，我知道了。", raw="好的，我知道了。"))
-        self.assertFalse(res.ja_segments[0]["text"].endswith(("🤭", "😮‍💨", "🥱", "😭")))
+        self.assertFalse(res.ja_segments[0]["text"].endswith(("🤭", "😮‍💨", "🥱", "😭")))  # 😭 也不在句末
 
     def test_pick_emoji_table(self):
         self.assertEqual(VC.pick_emoji("ふふ、そうなんだ"), "🤭")
         self.assertEqual(VC.pick_emoji("はあ、疲れた"), "😮‍💨")
         self.assertEqual(VC.pick_emoji("眠い……"), "🥱")
-        self.assertEqual(VC.pick_emoji("うう、泣きそう"), "😭")
+        self.assertEqual(VC.pick_emoji("うう、泣きそう"), "")     # 😭 下线：只要快哭，不要句末抽泣
         self.assertEqual(VC.pick_emoji("はい、わかりました。"), "")
 
 

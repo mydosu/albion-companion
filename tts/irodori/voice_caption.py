@@ -288,12 +288,12 @@ def caption_for(cues, ja_text="", fallback="neutral"):
 
 
 # ---- 句末非语言 emoji ---------------------------------------------------------
-# 只收 `checkpoints/EMOJI_ANNOTATIONS.md` 里**非语言**的那几个（笑声/叹气/哈欠/哭），
+# 只收 `checkpoints/EMOJI_ANNOTATIONS.md` 里**非语言**的那几个（笑声/叹气/哈欠），
 # 风格类（😊😠🥺…）会改整句语气，不在本阶段范围内。
-EMOJI_WHITELIST = ("🤭", "😮‍💨", "🥱", "😭")
+# 不收 😭：用户要「快哭」不要「大哭」，而 😭 放句末会多出一段抽泣声，属于大哭。
+EMOJI_WHITELIST = ("🤭", "😮‍💨", "🥱")
 
 _EMOJI_RULES = (
-    ("😭", re.compile(r"哭|呜|泪|哽咽|泣|嗚咽|涙|ぐす|しくしく")),
     ("🤭", re.compile(r"笑|哈哈|嘿|嘻|呵呵|くす|ふふ|ふふっ")),
     ("😮‍💨", re.compile(r"唉|叹|叹气|呼|ため息|ふう|はあ|ほっと")),
     ("🥱", re.compile(r"哈欠|困|睡|疲|あくび|眠|ふわ")),
@@ -383,7 +383,7 @@ def _selftest():
     assert pick_emoji("ふふ、そうなんだ") == "🤭"
     assert pick_emoji("はあ、疲れた") == "😮‍💨"
     assert pick_emoji("眠い……") == "🥱"
-    assert pick_emoji("うう、泣きそう") == "😭"
+    assert pick_emoji("うう、泣きそう") == ""      # 😭 已下线：只要快哭，不要句末抽泣
     assert pick_emoji("はい、わかりました。") == ""
     b = EmojiBudget(max_keys=2)
     assert b.take(("s", 1)) is True and b.take(("s", 1)) is False
