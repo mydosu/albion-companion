@@ -365,5 +365,35 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   console.log("P 表态小句删除：整句/小句/称呼兜底、误删面（收下了·记着·接着搬·没接通）与逐字分支 OK");
 }
 
+// Q) 点单腔：「是您点的」→「是您让的」一句话改写（任务 132aa59d）
+{
+  const cases: [string, string][] = [
+    // 正例：人称 +（自己）+「点的」+ 句末标点/语气词/结尾
+    ["头一遍是您点，第二遍也是您点的，我总不能不听话。", "头一遍是您点，第二遍也是您让的，我总不能不听话。"],
+    ["因为是您点的呀。", "因为是您让的呀。"],
+    ["（明明是您自己点的。）", "（明明是您自己让的。）"],
+    ["这茶是您点的", "这茶是您让的"],
+    // 反例：后面跟名词 / 不是人称 / 不是句末
+    ["这是您点的外卖，放门口了。", "这是您点的外卖，放门口了。"],
+    ["八点的闹钟我记住了。", "八点的闹钟我记住了。"],
+    ["一点的时候您还没睡。", "一点的时候您还没睡。"],
+    ["重点的部分我记在本子上了。", "重点的部分我记在本子上了。"],
+  ];
+  for (const [before, after] of cases) assert.equal(tidy(A + before).text, A + after, before);
+  const r = tidy(A + "因为是您点的呀。");
+  assert.ok(r.actions.includes("dian_fixed"), JSON.stringify(r.actions));
+  assert.deepEqual(r.fixed, ["您点的"], JSON.stringify(r.fixed));
+  // 逐字复述：他让照念时不动
+  const verbatim = "您点的";
+  assert.equal(tidy(A + verbatim, "请逐字念：" + verbatim).text, A + verbatim, "逐字复述不动");
+  // 经钩子走一遍：改写也要在 guard.log 记一笔（探针按它数模型本身还犯不犯）
+  const out = tidyMessage(assistant(A + "是您点的呀。"), "为什么这么叫", "s-dian");
+  assert.equal(textOfResult(out), A + "是您让的呀。");
+  const rows = readFileSync(join(TMP, "guard.log"), "utf-8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.ok(rows.at(-1).actions.includes("dian_fixed"), `guard.log 要记 dian_fixed：${JSON.stringify(rows.at(-1))}`);
+  assert.equal(rows.at(-1).fixed, 1);
+  console.log("Q 点单腔「点的」→「让的」：正例 4 / 反例 4、逐字分支、guard.log 记账 OK");
+}
 rmSync(TMP, { recursive: true, force: true });
 console.log("GUARD_EXT SELFTEST OK");
+

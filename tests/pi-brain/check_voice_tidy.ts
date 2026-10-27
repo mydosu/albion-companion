@@ -118,9 +118,22 @@ const ACT_CASES: [string, string, string | null][] = [
 ];
 for (const [name, text, want] of ACT_CASES) check(canonicalAct(text) === (want ?? text), `ACT[${name}]：${JSON.stringify(canonicalAct(text))}`);
 
+// 点单腔（2026-10-27）：人称 +（自己）+「点的」+ 句末 → 「让的」；后面跟名词 / 不是人称 / 不是句末都不动
+const DIAN_CASES: [string, string][] = [
+  ["是您点的呀。", "是您让的呀。"],
+  ["（明明是您自己点的。）", "（明明是您自己让的。）"],
+  ["头一遍是您点，第二遍也是您点的，我总不能不听话。", "头一遍是您点，第二遍也是您让的，我总不能不听话。"],
+  ["这茶是您点的", "这茶是您让的"],
+  ["这是您点的外卖，放门口了。", "这是您点的外卖，放门口了。"],
+  ["八点的闹钟我记住了。", "八点的闹钟我记住了。"],
+  ["一点的时候您还没睡。", "一点的时候您还没睡。"],
+  ["重点的部分我记在本子上了。", "重点的部分我记在本子上了。"],
+];
+for (const [before, after] of DIAN_CASES) check(tidy(ACT + before).text === ACT + after, `点的[${before}]：${JSON.stringify(tidy(ACT + before).text)}`);
 if (fails.length) {
   console.log(`── FAIL（${fails.length}/${n}）`);
   for (const f of fails) console.log("  ✗ " + f);
   process.exit(1);
 }
 console.log(`── PASS（${n} 项，口径表 ${CASES.length} 例）`);
+

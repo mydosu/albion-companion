@@ -13,6 +13,8 @@
  *      整条回复全是姿态句时原样留着（也算放过一次）：不为一句模板让她整轮哑掉。
  *   6. 闭合括号里的自身动作/身体反应描写每 GESTURE_EVERY 条回复最多放过一次；其余只删命中的小句，
  *      保留念头与括号外正文。整条删空则原样留并用掉额度，按会话记在 voice.json 的 gesture_at。
+ *   7. 点单腔：「是您点的（呀）」这种把「您让我做的」说成点菜的说法，只在「人称 +（自己）+ 点的 + 句末」
+ *      这一种形态上把「点的」改成「让的」（fixDianOrder），记 dian_fixed；后面跟名词（点的外卖、八点的闹钟）不动。
  *
  * 判定规则只此一份（bin/voice_tidy.ts 是给 Python 探针用的命令行壳，直接 import 这里）。
  */
@@ -221,11 +223,28 @@ export function dropPledges(body: string, dropped: string[] = []): string {
 		.join("");
 }
 
+// ── 点单腔：「是您点的」→「是您让的」（2026-10-27，任务 132aa59d）────────────────
+// 她把「您让我做的/您让我叫的」说成点菜那种「您点的」。只在**人称 +（自己）+「点的」+ 句末**这一种
+// 形态上改一个字，后面跟句末标点/语气词/右引号才算；「您点的外卖」「八点的闹钟」「一点的时候」
+// 「重点的部分」后面跟的是名词，一律不动（宁漏不误）。「您要点」「点我一声」这类不认。
+const DIAN_ORDER = /(您|你|指挥官|他|员工|大家)(自己)?点的(?=[呀吧啊呢嘛。！？，…」]|$)/g;
+
+/** 「是您点的呀」→「是您让的呀」。只动那两个字；命中哪几处写进 fixed。 */
+export function fixDianOrder(body: string, fixed: string[] = []): string {
+	return body.replace(DIAN_ORDER, (_m, who: string, self: string | undefined) => {
+		fixed.push(_m);
+		return who + (self ?? "") + "让的";
+	});
+}
+
+
 export interface TidyResult {
 	text: string;
-	/** 做了什么：act / aside / refusal / markup / posture_kept / posture_dropped / gesture_kept / gesture_dropped / pledge_dropped */
+	/** 做了什么：act / aside / refusal / markup / posture_kept / posture_dropped / gesture_kept / gesture_dropped / pledge_dropped / dian_fixed */
 	actions: string[];
 	dropped: string[];
+	/** 改写过的「点的」原词（点单腔，见 fixDianOrder）。 */
+	fixed: string[];
 	/** 这条回复里有姿态句（不管留没留）。 */
 	posture: boolean;
 }
@@ -265,14 +284,14 @@ function tidyGestures(r: TidyResult, allowGesture: boolean): TidyResult {
  */
 export function tidy(raw: string, source = "", allowPosture = false, allowGesture = false): TidyResult {
 	const actions: string[] = [];
-	if (isRefusal(raw)) return { text: NEUTRAL_ACT, actions: ["refusal"], dropped: [], posture: false };
+	if (isRefusal(raw)) return { text: NEUTRAL_ACT, actions: ["refusal"], dropped: [], fixed: [], posture: false };
 	let text = canonicalAct(raw);
 	if (text !== raw) actions.push("act");
 	const marker = /^<\|ACT:(\{[^\n]*?\})\|>/.exec(text);
 	const head = marker ? marker[0] : "";
 	let body = text.slice(head.length);
 	if (literalRequested(source) && body.trim() && (source || "").split(MARKER)[0].includes(body.trim()))
-		return { text, actions, dropped: [], posture: false };
+		return { text, actions, dropped: [], fixed: [], posture: false };
 	const leak = body.search(/DSML|<｜｜|<\/?function_calls|<\/?invoke/);
 	if (leak >= 0) {
 		body = body.slice(0, leak).trimEnd();
@@ -285,6 +304,10 @@ export function tidy(raw: string, source = "", allowPosture = false, allowGestur
 	const pledgeFree = dropPledges(body, dropped);
 	if (pledgeFree !== body) actions.push("pledge_dropped");
 	body = pledgeFree;
+	const fixed: string[] = [];
+	const dianFree = fixDianOrder(body, fixed);
+	if (dianFree !== body) actions.push("dian_fixed");
+	body = dianFree;
 	const askedPresence = PRESENCE_ASK.test(currentInput(source));
 	const kept: string[] = [];
 	const postureDropped: string[] = [];
@@ -293,14 +316,14 @@ export function tidy(raw: string, source = "", allowPosture = false, allowGestur
 		if (askedPresence) hits = hits.filter((h) => !PRESENCE_ANSWER.test(h.trim()));
 		(hits.length ? postureDropped : kept).push(seg);
 	}
-	if (!postureDropped.length) return tidyGestures({ text: head + body, actions, dropped, posture: false }, allowGesture);
+	if (!postureDropped.length) return tidyGestures({ text: head + body, actions, dropped, fixed, posture: false }, allowGesture);
 	const rest = kept.join("").replace(/\n{3,}/g, "\n\n").trim();
 	if (allowPosture || !rest) {
 		actions.push("posture_kept");
-		return tidyGestures({ text: head + body, actions, dropped, posture: true }, allowGesture);
+		return tidyGestures({ text: head + body, actions, dropped, fixed, posture: true }, allowGesture);
 	}
 	actions.push("posture_dropped");
-	return tidyGestures({ text: head ? head + "\n" + rest : rest, actions, dropped: [...dropped, ...postureDropped], posture: true }, allowGesture);
+	return tidyGestures({ text: head ? head + "\n" + rest : rest, actions, dropped: [...dropped, ...postureDropped], fixed, posture: true }, allowGesture);
 }
 
 // ── 姿态额度计数（state/voice.json，按会话分开记）────────────────────────────
@@ -406,7 +429,7 @@ export function tidyMessage(message: any, source: string, session = process.env.
 	const raw = textOf(message.content);
 	if (!raw.trim()) return undefined;
 	const r = tidyAndCount(raw, source, session);
-	if (r.actions.length) log({ actions: r.actions, dropped: r.dropped.length, session });
+	if (r.actions.length) log({ actions: r.actions, dropped: r.dropped.length, fixed: r.fixed.length, session });
 	return r.text === raw ? undefined : { message: withText(message, r.text) };
 }
 
