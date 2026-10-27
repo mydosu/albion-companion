@@ -739,6 +739,98 @@ class TestActPrior(unittest.TestCase):
         self.assertEqual(VC.pick_emoji(ACT_SAD + "我先走了。", "", "ごめんなさい。"), "")
 
 
+class TestActOverridesWeak(unittest.TestCase):
+    """任务 #24：ACT 可以顶掉本句的「弱判断」（phonation/标量 给的 gen·shy·coq）。
+
+    依据口径：只有 `phonation`（soft→shy、breathy→coq）和标量（va≥0.2→gen）算弱；
+    src 明示线索与日语表面线索不算弱；whispered→whi、exc/ang/sad/cry/sob 也不算弱。
+    哭腔延续仍用本句自己的判断来判，所以延续 > ACT 不变；level 仍看 cues。
+    """
+
+    def cap(self, prefix="", zh="我先走了。", ja="ごめんなさい。", cues=None):
+        return VC.caption_for(cues if cues is not None else {}, ja, zh, prefix=prefix)
+
+    def test_weak_basis_table(self):
+        self.assertTrue(VC.is_weak_scene("gen", "scalar"))
+        self.assertTrue(VC.is_weak_scene("shy", "phonation"))
+        self.assertTrue(VC.is_weak_scene("coq", "phonation"))
+        for scene, basis in (("shy", "cue"), ("whi", "phonation"), ("exc", "scalar"),
+                             ("sad", "scalar"), ("gen", "ja"), ("cry", "cry"),
+                             ("sob", "cry"), (None, "fallback")):
+            self.assertFalse(VC.is_weak_scene(scene, basis), (scene, basis))
+
+    def test_weak_judgements_yield_to_act(self):
+        with _env_without(VC.VOICE_ACT_ENV):                   # 默认开
+            # phonation soft→shy / breathy→coq，标量 va0.25→gen：三种弱判断都让位
+            self.assertEqual(self.cap(prefix=ACT_SAD, cues={"phonation": "soft"}),
+                             VC.compose_caption("sad"))
+            self.assertEqual(self.cap(prefix=ACT_SAD, cues={"phonation": "breathy"}),
+                             VC.compose_caption("sad"))
+            self.assertEqual(self.cap(prefix=ACT_SAD, cues={"valence": 0.25}),
+                             VC.compose_caption("sad"))
+            # ACT happy 顶掉时也照样生效（happy→gen）
+            self.assertEqual(self.cap(prefix=ACT_HAPPY, cues={"phonation": "soft"}),
+                             VC.compose_caption("gen"))
+            self.assertEqual(self.cap(prefix=ACT_HAPPY, cues={"phonation": "breathy"}),
+                             VC.compose_caption("gen"))
+
+    def test_level_still_comes_from_cues(self):
+        with _env_without(VC.VOICE_ACT_ENV):
+            self.assertEqual(self.cap(prefix=ACT_SAD, cues={"phonation": "soft", "intensity": 0.1}),
+                             VC.compose_caption("sad", "weak"))
+            self.assertEqual(self.cap(prefix=ACT_SAD, cues={"phonation": "soft", "intensity": 0.9}),
+                             VC.compose_caption("sad", "strong"))
+
+    def test_explicit_cues_do_not_yield(self):
+        with _env_without(VC.VOICE_ACT_ENV):
+            # src 明示线索 → 本句说了算，ACT 不覆盖
+            for kind, scene in (("shy", "shy"), ("whisper", "whi"), ("excite", "exc"),
+                                ("sad", "sad"), ("breath", "coq"), ("soft", "shy")):
+                self.assertEqual(self.cap(prefix=ACT_SAD, cues={"src": [{"kind": kind}]}),
+                                 VC.compose_caption(scene), kind)
+            # 否定的 shy 不算明示 → 本句判不出 → ACT 补位
+            self.assertEqual(self.cap(prefix=ACT_SAD,
+                                      cues={"src": [{"kind": "shy", "negated": True}]}),
+                             VC.compose_caption("sad"))
+            # whispered→whi 来自 phonation，但 whi 不在弱集
+            self.assertEqual(self.cap(prefix=ACT_SAD, cues={"phonation": "whispered"}),
+                             VC.compose_caption("whi"))
+
+    def test_strong_judgements_do_not_yield(self):
+        with _env_without(VC.VOICE_ACT_ENV):
+            # 情绪本身很强：exc/sad 不让位（「太好了！」+ACT sad 仍是 exc）
+            self.assertEqual(self.cap(prefix=ACT_SAD, zh="太好了！",
+                                      cues={"valence": 0.6, "arousal": 0.8, "intensity": 0.5}),
+                             VC.compose_caption("exc"))
+            self.assertEqual(self.cap(prefix=ACT_HAPPY, cues={"valence": -0.4}),
+                             VC.compose_caption("sad"))
+            # 日语表面线索判出来的也不让位（「囁」→ whi，依据是 ja 不是 phonation）
+            self.assertEqual(self.cap(prefix=ACT_SAD, ja="囁くように言う。"),
+                             VC.compose_caption("whi"))
+
+    def test_no_act_and_switch_off_are_old_behavior(self):
+        # 没有 ACT：弱判断照旧
+        self.assertEqual(self.cap(cues={"phonation": "soft"}), VC.compose_caption("shy"))
+        self.assertEqual(self.cap(cues={"valence": 0.25}), VC.compose_caption("gen"))
+        with mock.patch.dict(os.environ, {VC.VOICE_ACT_ENV: "0"}, clear=False):
+            self.assertEqual(self.cap(prefix=ACT_SAD, cues={"phonation": "soft"}),
+                             VC.compose_caption("shy"))
+            self.assertEqual(self.cap(prefix=ACT_SAD, cues={"valence": 0.25}),
+                             VC.compose_caption("gen"))
+            self.assertEqual(self.cap(prefix=ACT_SAD), VC.compose_caption("neutral"))
+
+    def test_carry_still_beats_act_over_weak(self):
+        with _env_without(VC.VOICE_ACT_ENV):
+            # 前句快哭 + ACT happy + 本句 soft → 仍延续 cry/weak
+            self.assertEqual(self.cap(prefix="（快哭了）我真的有点难受。" + ACT_HAPPY,
+                                      cues={"phonation": "soft"}),
+                             VC.compose_caption("cry", "weak"))
+            # 前句真哭 → cry/normal（不被 ACT happy 顶成 gen）
+            self.assertEqual(self.cap(prefix="（大哭）对不起……" + ACT_HAPPY,
+                                      cues={"phonation": "breathy"}),
+                             VC.compose_caption("cry", "normal"))
+
+
 class TestBridgeActPrior(unittest.TestCase):
     """桥接线：`source_prefix` / 中文原文里的 ACT 真的会变成 `voice_caption`。"""
 

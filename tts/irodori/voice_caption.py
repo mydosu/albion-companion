@@ -72,7 +72,12 @@ ACT 情绪先验（`ALBION_VOICE_ACT`，默认开）
 （服务端只当 `control` 块：不进 speech_text、不出字幕），于是桥能在 `source_prefix` / 中文原文里
 看到它。本句**自己**判不出情绪时，用最后一条 ACT 的 emotion 当场景：
 
-  * 优先级：本句自己的证据（哭/明示线索/phonation/非中性标量）> 哭腔延续 > ACT 先验 > neutral；
+  * 优先级：本句自己的证据 > 哭腔延续 > ACT 先验 > neutral；
+  * **弱判断可以让 ACT 顶掉**（2026-10-27 任务 #24）：本句只说得出 gen/shy/coq，而且这点
+    判断只来自 phonation（soft→shy、breathy→coq）或标量（va≥0.2→gen）时，用 ACT 的场景。
+    src 明示线索（whisper/breath/shy/excite/sad/soft）和日语表面线索不算弱；whispered→whi、
+    exc/ang/sad/cry/sob 也不算弱（「太好了！」+ACT sad 仍是 exc）。哭腔延续仍用本句自己的
+    判断来判，所以延续 > ACT 不变；
   * 映射：happy→`gen`（intensity≥0.7 → `exc`）、surprised→`exc`、sad→`sad`、angry→`ang`、
     awkward/shy→`shy`；neutral/think/question/curious 和没见过的名字**不给先验**；
   * 强度仍走 `level_of(cues)`；ACT 先验**不产出 sob/cry、不加 emoji**；
@@ -412,6 +417,49 @@ def _num(v):
     return f if f == f and abs(f) != float("inf") else None
 
 
+def _scene_basis_of(cues, ja_text="", zh_text="", fallback="neutral"):
+    """情绪提示 → `(场景, 依据)`。依据：`cry`/`cue`/`phonation`/`scalar`/`ja`/`fallback`。
+
+    `scene_of` 只是它的薄壳（对外 API 不变）。**依据是给 ACT 先验用的**：只有
+    phonation（soft→shy、breathy→coq）和标量（va≥0.2→gen）判出来的场景算「弱判断」，
+    日语表面线索与 src 明示线索都不算 —— 判据在 `_WEAK_BASIS` / `_WEAK_SCENES`。
+    """
+    c = cues if isinstance(cues, dict) else {}
+    if sob_of(zh_text, ja_text):
+        return "sob", "cry"
+    if paren_cry(zh_text) == "cry" or cry_cue(zh_text):
+        return "cry", "cry"                   # （快哭了）（强忍着不哭）/ 委屈类说法
+    kinds = set()
+    for item in c.get("src") or []:
+        if isinstance(item, dict) and item.get("kind") and not item.get("negated"):
+            kinds.add(str(item["kind"]))
+    for kind in ("whisper", "breath", "shy", "excite", "sad", "soft"):
+        if kind in kinds:
+            return _CUE_SCENE[kind], "cue"
+    ph = c.get("phonation")
+    if isinstance(ph, str) and ph in _PHONATION_SCENE:
+        return _PHONATION_SCENE[ph], "phonation"
+    ar, va, it = _num(c.get("arousal")), _num(c.get("valence")), _num(c.get("intensity"))
+    if va is not None:
+        if va <= -0.5 and (ar is None or ar <= 0.45):
+            return "cry", "scalar"            # 低落 + 不高唤醒：哽咽（快哭）
+        if va <= -0.35 and ar is not None and ar >= 0.6:
+            return "ang", "scalar"            # 负面 + 高唤醒：生气（码本没有这个锚，描述里有）
+        if va <= -0.3:
+            return "sad", "scalar"
+        if va >= 0.35 and (ar is None or ar >= 0.55):
+            return "exc", "scalar"
+        if va >= 0.2:
+            return "gen", "scalar"
+    if it is not None and it >= 0.75:
+        return "exc", "scalar"                # 只有强度没有正负：按「感情を込めて」处理
+    if no_scalar_cues(c):
+        for scene, rx in _JA_SCENE:
+            if ja_text and rx.search(ja_text):
+                return scene, "ja"
+    return fallback, "fallback"
+
+
 def scene_of(cues, ja_text="", zh_text="", fallback="neutral"):
     """情绪提示 → 场景。优先级：真哭 > 快哭 > 明示线索 > 发声方式 > 标量 > 日语表面线索 > 默认。
 
@@ -422,40 +470,19 @@ def scene_of(cues, ja_text="", zh_text="", fallback="neutral"):
     只做「读得出什么就用什么」，猜不出就是 `fallback`（默认 neutral：和现在 83% neutral
     的生产分布一致，不会凭空给一句台词加戏）。
     """
-    c = cues if isinstance(cues, dict) else {}
-    if sob_of(zh_text, ja_text):
-        return "sob"
-    if paren_cry(zh_text) == "cry" or cry_cue(zh_text):
-        return "cry"                          # （快哭了）（强忍着不哭）/ 委屈类说法
-    kinds = set()
-    for item in c.get("src") or []:
-        if isinstance(item, dict) and item.get("kind") and not item.get("negated"):
-            kinds.add(str(item["kind"]))
-    for kind in ("whisper", "breath", "shy", "excite", "sad", "soft"):
-        if kind in kinds:
-            return _CUE_SCENE[kind]
-    ph = c.get("phonation")
-    if isinstance(ph, str) and ph in _PHONATION_SCENE:
-        return _PHONATION_SCENE[ph]
-    ar, va, it = _num(c.get("arousal")), _num(c.get("valence")), _num(c.get("intensity"))
-    if va is not None:
-        if va <= -0.5 and (ar is None or ar <= 0.45):
-            return "cry"                      # 低落 + 不高唤醒：哽咽（快哭）
-        if va <= -0.35 and ar is not None and ar >= 0.6:
-            return "ang"                      # 负面 + 高唤醒：生气（码本没有这个锚，描述里有）
-        if va <= -0.3:
-            return "sad"
-        if va >= 0.35 and (ar is None or ar >= 0.55):
-            return "exc"
-        if va >= 0.2:
-            return "gen"
-    if it is not None and it >= 0.75:
-        return "exc"                          # 只有强度没有正负：按「感情を込めて」处理
-    if no_scalar_cues(c):
-        for scene, rx in _JA_SCENE:
-            if ja_text and rx.search(ja_text):
-                return scene
-    return fallback
+    return _scene_basis_of(cues, ja_text, zh_text=zh_text, fallback=fallback)[0]
+
+
+# ACT 先验能覆盖的「弱判断」（任务 #24）：场景是 gen/shy/coq，而且依据只有 phonation
+# 或标量 —— src 明示线索（whisper/breath/shy/excite/sad/soft）和日语表面线索都不算弱；
+# whispered→whi、exc/ang/sad/cry/sob 也不在弱集里（「太好了！」+ ACT sad 仍是 exc）。
+_WEAK_SCENES = frozenset(("gen", "shy", "coq"))
+_WEAK_BASIS = frozenset(("phonation", "scalar"))
+
+
+def is_weak_scene(scene, basis):
+    """这个判断是不是「弱判断」（可以被 ACT 覆盖）。公开给测试用。"""
+    return scene in _WEAK_SCENES and basis in _WEAK_BASIS
 
 
 def no_scalar_cues(cues):
@@ -633,19 +660,24 @@ def caption_for(cues, ja_text="", zh_text="", fallback="neutral", prefix=""):
     开关 `ALBION_VOICE_CARRY=0` 或 `prefix` 为空时行为与加这个参数之前逐字节一致；
     `ALBION_VOICE_ACT=0` 时同样逐字节一致（ACT 块不参与判场景）。
 
-    优先级：**本句自己的证据**（哭/明示线索/phonation/非中性标量）> 哭腔延续 > ACT 先验 > fallback。
-    所以 ACT 只当 `scene_of` 判不出（`fallback=None`）时的补位，而哭腔延续是用**本句自己的**证据
-    判的（`basis`）—— 前一句在哭、这条 ACT 写着 happy 时仍延续哭腔（任务 #23）。
+    优先级：**本句自己的证据** > 哭腔延续 > ACT 先验 > fallback。
+    但「弱判断」是例外（任务 #24）：本句自己只说得出 gen/shy/coq，而且这点判断只来自
+    phonation（soft→shy / breathy→coq）或标量（va≥0.2 的 gen）时，ACT 先验可以直接顶掉它
+    —— 生产实测中性寒暄句常被翻译腿标成这两种，ACT 因此几乎从不生效。
+    src 明示线索（whisper/breath/shy/excite/sad/soft）与日语表面线索**不算弱**，照样优先。
+    哭腔延续仍用**本句自己的**判断（`own`）来判，所以延续 > ACT 不变。
     """
-    own = scene_of(cues, ja_text, zh_text=zh_text, fallback=None)   # None = 本句自己判不出
+    own, own_basis = _scene_basis_of(cues, ja_text, zh_text=zh_text, fallback=None)  # None = 判不出
     act = act_scene_of("%s%s" % (prefix or "", zh_text or "")) if voice_act_on() else None
-    basis = own if own is not None else fallback    # 延续判据只看本句（与加 ACT 之前同一口径）
+    carry_scene = own if own is not None else fallback   # 延续判据只看本句（与加 ACT 之前同一口径）
     scene = own or act or fallback
+    if act and is_weak_scene(own, own_basis):
+        scene = act                           # 弱判断让位给 ACT（level 仍看 cues）
     level = level_of(cues)
     if prefix and voice_carry_on():
         # 回看哭腔时先把 ACT 块剥掉（与开关无关：它只是元数据）：留着会把「最后一句」
         # 变成 `<|ACT…|>`，让 `_tone_switched` 看不到真正的上一句已经换了语气。
-        carried = carry_cry(basis, cues, _strip_act(prefix))
+        carried = carry_cry(carry_scene, cues, _strip_act(prefix))
         if carried:
             scene, level = carried
     caption = compose_caption(scene, level)
@@ -817,6 +849,18 @@ def _selftest():
         # 哭腔延续压过 ACT 先验
         assert caption_for({}, "ごめんなさい。", "我先走了。", prefix="（快哭了）对不起。" + _sad) \
             == compose_caption("cry", "weak")
+        # 弱判断（phonation / 标量给的 gen·shy·coq）让 ACT 顶掉（任务 #24）
+        assert caption_for({"phonation": "soft"}, "そう、ですか。", "嗯。", prefix=_sad) \
+            == compose_caption("sad")
+        assert caption_for({"valence": 0.25}, "そう、ですか。", "嗯。", prefix=_sad) \
+            == compose_caption("sad")
+        assert caption_for({"phonation": "breathy"}, "そう、ですか。", "嗯。",
+                           prefix='<|ACT:{"emotion":"happy"}|>') == compose_caption("gen")
+        # 明示线索 / whispered / 强场景不让位
+        assert caption_for({"src": [{"kind": "shy"}]}, "そう、ですか。", "嗯。", prefix=_sad) \
+            == compose_caption("shy")
+        assert caption_for({"phonation": "whispered"}, "そう、ですか。", "嗯。", prefix=_sad) \
+            == compose_caption("whi")
         os.environ[VOICE_ACT_ENV] = "0"
         assert caption_for({}, "そう、ですか。", "嗯。", prefix=_sad) == compose_caption("neutral")
     finally:
