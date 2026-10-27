@@ -451,9 +451,11 @@ _CARRY_BREAK = re.compile(r"[。！？!?\n]|…+")
 
 # 反向线索：她在**换语气**（笑 / 压低声音 / 生气）—— 哭腔不再往下延续。
 # 只看最后两句里**离当前句最近**的那一句，避免把更早的笑话当成现在的语气。
+# 否定（我没生气）和被否掉的笑（笑不出来）不算换语气。
 _ZH_CARRY_BREAK = re.compile(
     r"笑|哈哈|嘿|嘻|呵呵|开心|高兴|兴奋|小声|低声|轻声|悄悄|耳语|压低|"
     r"生气|气死|哼|怒|凶|讨厌|烦死")
+_ZH_CARRY_NOT_BREAK = re.compile(r"笑不出[来]?|哭笑不得|不想笑|没心情笑")
 
 # 当前句**自己**的明示非哭线索（非否定）：这些说明她换了语气，不延续。
 _CARRY_BLOCK_KINDS = frozenset(("whisper", "excite", "shy"))
@@ -472,6 +474,12 @@ def _paragraph_tail(text):
     if not isinstance(text, str) or not text:
         return ""
     return re.split(r"\n[ \t\r]*\n", text)[-1]
+
+
+def _tone_switched(sent):
+    """这句是不是已经换了语气（笑 / 小声 / 生气）。否定与「笑不出来」不算。"""
+    t = _ZH_CARRY_NOT_BREAK.sub("", sent or "")
+    return bool(_zh_hit(t, _ZH_CARRY_BREAK))
 
 
 def carry_cry(scene, cues, prefix):
@@ -495,7 +503,7 @@ def carry_cry(scene, cues, prefix):
     sents = _carry_sentences(_paragraph_tail(prefix))[-2:]
     if not sents:
         return None
-    if _ZH_CARRY_BREAK.search(sents[-1]):          # 最近那句已经换语气了：断开
+    if _tone_switched(sents[-1]):                  # 最近那句已经换语气了：断开
         return None
     for sent in reversed(sents):                   # 近的优先：强度用更近的那句
         if sob_of(sent, ""):

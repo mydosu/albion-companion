@@ -352,6 +352,10 @@ class TestCryCarry(unittest.TestCase):
                       "（大哭）对不起……你小声一点。",
                       "（大哭）对不起……我生气了。"):
                 self.assertEqual(self.cap(prefix=p), VC.compose_caption("neutral"), p)
+            # 否定（我没生气）和「笑不出来」不算换语气，哭腔继续
+            for p in ("（大哭）对不起……我没生气。",
+                      "（大哭）对不起……我笑不出来。"):
+                self.assertEqual(self.cap(prefix=p), VC.compose_caption("cry", "normal"), p)
 
     def test_closer_sentence_decides_strength(self):
         with _env_without(VC.VOICE_CARRY_ENV):
