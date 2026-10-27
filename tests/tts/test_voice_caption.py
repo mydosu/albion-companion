@@ -234,6 +234,38 @@ class TestSobIsRealCry(unittest.TestCase):
         self.assertIn("😭", VC.EMOJI_WHITELIST)
 
 
+class TestCryWording(unittest.TestCase):
+    """快哭 normal/strong 用旧措辞（#20 用户盲听），weak 保留现措辞。"""
+
+    LEGACY = "今にも泣き出しそうに、声を震わせて話す。"
+
+    def test_normal_and_strong_use_legacy(self):
+        for level in ("normal", "strong"):
+            cap = VC.compose_caption("cry", level)
+            self.assertEqual(cap, self.LEGACY, level)
+            self.assertIsNone(VC.validate_caption(cap), level)
+            self.assertIsNone(RQ.free_caption_error(cap), level)   # 后端 free 模式那道闸
+        self.assertEqual(VC.FIXED_CAPTIONS[("cry", "normal")], self.LEGACY)
+        self.assertEqual(VC.FIXED_CAPTIONS[("cry", "strong")], self.LEGACY)
+
+    def test_weak_unchanged(self):
+        self.assertEqual(VC.compose_caption("cry", "weak"),
+                         "少し声を震わせて、途切れがちに、言う。")
+        self.assertIsNone(VC.validate_caption(VC.compose_caption("cry", "weak")))
+
+    def test_other_two_part_caption_still_rejected(self):
+        """只有表里那条原句被放行；随手拼的两段描述仍判废。"""
+        bad = "今にも泣き出しそうに、声を潜めて話す。"
+        self.assertIsNotNone(VC.validate_caption(bad))
+        self.assertIn("结构不对", VC.validate_caption(bad))
+        self.assertIsNotNone(VC.validate_caption(self.LEGACY + "。"))
+        self.assertIsNotNone(VC.validate_caption("とても" + self.LEGACY))
+
+    def test_caption_for_returns_legacy_for_cry_cue(self):
+        cues = {"phonation": "breathy", "valence": -0.6, "arousal": 0.3, "intensity": 0.5}
+        self.assertEqual(VC.caption_for(cues, "ごめんなさい。", "呜呜……"), self.LEGACY)
+
+
 class TestCueBoundaries(unittest.TestCase):
     """2026-10-26 审出来的三处误判：惊叹「哇——」、括号里的「快哭」修饰、单独的「哭/眼泪/眼眶」。"""
 

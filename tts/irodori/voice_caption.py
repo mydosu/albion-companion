@@ -21,7 +21,10 @@ neutral 占 83%，而 7 条锚彼此差异很小（`tests/output/tts-emotion-sur
 快哭（`cry`）与真哭（`sob`）怎么分
 ---------------------------------
 用户口径：「快哭用快哭（和委屈差不多），真哭用真哭」。
-  * `cry`：现有描述不动。除了标量（valence<=-0.5 且 arousal<=0.45），中文原文里出现
+  * `cry`：normal/strong 两档用**旧措辞** `今にも泣き出しそうに、声を震わせて話す。`
+    （2026-10-27 用户盲听 #20：旧措辞更像哭）；weak 仍用三段模板
+    `少し声を震わせて、途切れがちに、言う。`（哭腔延续句就是 weak）。判据不变：除了标量
+    （valence<=-0.5 且 arousal<=0.45），中文原文里出现
     委屈 / 想哭 / 快哭 / 要哭 / 哽咽 / 哭腔 / 眼眶红 / 含泪 / 泪汪汪 这类也走 `cry`
     （`cry_cue`）；**不认单独的「哭 / 眼泪 / 眼眶」**（「笑出眼泪」「看电影哭了」不抢 cry），
     「呜呜」单独出现只是快哭，不算真哭。
@@ -40,7 +43,8 @@ neutral 占 83%，而 7 条锚彼此差异很小（`tests/output/tts-emotion-sur
 ------------------------------------------------------
 非空、10–40 字、每个「、」段只能是 `MANNER` 里的动作词（可带 `PREFIXES` 前缀）、
 末段只能是 `FINAL_VERBS` 里的动词。出现词表外的实词 / 超长 / 空 → 整条丢掉，
-调用方回到原来的码本锚路径（**绝不把半截描述送进模型**）。
+调用方回到原来的码本锚路径（**绝不把半截描述送进模型**）。`FIXED_CAPTIONS` 里定死的
+描述（真哭一条、快哭 normal/strong 的旧措辞）在基本检查后**整句等于原文**即放行。
 
 开关（默认全关，关时生产行为逐位不变）
 ------------------------------------
@@ -164,28 +168,39 @@ SCENE_FAMILY = {
 
 
 # 少数场景的措辞**定死一条**，不再套「少し/とても」前缀。
-# 真哭（sob）是唯一一个：3 句真哭台词 × 2 seed 实测（tests/output/tts-sob-20261026/REPORT.md），
+# 真哭（sob）是唯一一个不分档的：3 句真哭台词 × 2 seed 实测（tests/output/tts-sob-20261026/REPORT.md），
 # 只有带「とても」的这一条让三句的 f0_std 全部高过基线（+1.3 / +2.1 / +7.9，均值 +3.8）
-# 且 ΔF0 +8 Hz；去掉前缀（声を震わせて、しゃくり上げて、言う。）只能 +1.2 / ±0，和快哭
-# （声を震わせて、途切れがちに、言う。）分不开。真哭不需要「弱一点的哭」，所以定死。
+# 且 ΔF0 +8 Hz；去掉前缀（声を震わせて、しゃくり上げて、言う。）只能 +1.2 / ±0，和快哭分不开。
+# 真哭不需要「弱一点的哭」，所以定死。
+# 快哭（cry）按**档位**定死（2026-10-27 用户盲听 #20：旧措辞更像哭）：
+#   * normal / strong 用旧实验的原句 `今にも泣き出しそうに、声を震わせて話す。`（两段、「、」只有一个）；
+#   * weak 保留现措辞（哭腔延续句用的就是 weak，弱一点正合适），仍走三段模板。
+# 这条两段描述不在 MANNER/FINAL_VERBS 词表里，靠 `FIXED_CAPTION_TEXTS` 在校验里整句放行。
 FIXED_CAPTIONS = {
     "sob": "とても声を震わせて、しゃくり上げて、言う。",
+    ("cry", "normal"): "今にも泣き出しそうに、声を震わせて話す。",
+    ("cry", "strong"): "今にも泣き出しそうに、声を震わせて話す。",
 }
+
+# 定死描述的整句白名单（validate_caption 用）：只认表里的**原字符串**，不做前缀/分词匹配。
+FIXED_CAPTION_TEXTS = frozenset(FIXED_CAPTIONS.values())
 
 
 def compose_caption(scene, level="normal"):
     """拼一条描述。`scene` 必须是 `SCENES` 之一，`level` 是 `LEVELS` 之一。
 
     纯函数：同一 (scene, level) 永远同一字符串 —— 相邻句只要情绪没变，描述就不会跳。
-    `FIXED_CAPTIONS` 里的场景不分强度（真哭只有一条实测有效的措辞）。
+    `FIXED_CAPTIONS` 可以按场景定死（sob 不分档），也可以按 `(scene, level)` 定死
+    （cry 的 normal/strong 用旧措辞，weak 仍走三段模板）。
     """
     if scene not in MANNER:
         raise ValueError("未知场景：%r（合法：%s）" % (scene, ",".join(SCENES)))
     if level not in PREFIXES:
         raise ValueError("未知强度：%r（合法：%s）" % (level, ",".join(LEVELS)))
-    if scene in FIXED_CAPTIONS:
-        caption = FIXED_CAPTIONS[scene]
-    else:
+    caption = FIXED_CAPTIONS.get((scene, level))
+    if caption is None:
+        caption = FIXED_CAPTIONS.get(scene)
+    if caption is None:
         first, second = MANNER[scene]
         caption = "%s%s、%s、%s" % (PREFIXES[level], first, second, FINAL_VERBS[scene])
     why = validate_caption(caption)
@@ -219,6 +234,8 @@ def validate_caption(caption):
         return "含控制字符"
     if "\n" in text or "\r" in text or "\t" in text:
         return "含换行/制表符"
+    if text in FIXED_CAPTION_TEXTS:           # 定死的两段/定档描述：整句等于表里的原文就放行
+        return None
     parts = text.split("、")
     if len(parts) != 3:
         return "结构不对（要 A、B、动词 三段，实际 %d 段）" % len(parts)
@@ -636,6 +653,13 @@ def _selftest():
     assert validate_caption("恥ずかしそうに、声を潜めて、話す。") is not None      # 抽象情绪词
     assert validate_caption("低い声で、語尾を下げて。") is not None                # 缺动词
     assert validate_caption("低い声で、語尾を下げて、呟く。") is None
+    # 快哭：normal/strong 定死旧措辞（两段结构），weak 仍走三段模板；别的两段句不放行
+    _legacy = "今にも泣き出しそうに、声を震わせて話す。"
+    assert compose_caption("cry", "normal") == compose_caption("cry", "strong") == _legacy
+    assert validate_caption(_legacy) is None
+    assert compose_caption("cry", "weak") == "少し声を震わせて、途切れがちに、言う。"
+    assert validate_caption("今にも泣き出しそうに、声を潜めて話す。") is not None
+    assert validate_caption(_legacy + "。") is not None
     # 相邻句同场景同强度 → 同一个描述（不跳）
     assert compose_caption("sad", "normal") == compose_caption("sad", "normal")
     assert compose_caption("sad", "weak") != compose_caption("sad", "strong")
