@@ -41,7 +41,7 @@ pnpm -F @proj-airi/stage-tamagotchi build:unpack
 
 ## 权重与 Windows 环境
 
-Release 附件名与本地路径不同；工具按清单恢复 32 个权重并核验 SHA256。
+Release 附件名与本地路径不同；工具按清单恢复 33 个权重并核验 SHA256。
 LoRA 到 `outputs/<训练名>/checkpoint_<步骤>/adapter_model.safetensors`；
 speaker 到 `outputs/<训练名>/checkpoint_<步骤>.speaker.safetensors`。
 必需的 `adapter_config.json` 已保存到 `config/rebuild/adapters/`，安装时一起恢复。

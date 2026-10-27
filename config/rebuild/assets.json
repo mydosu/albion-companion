@@ -206,6 +206,13 @@
       "size": 105654092,
       "sha256": "45918d2587dc6172fb39fa036baa3d3bca9561dd6b3782059d769004dabc356f",
       "adapter_config": "config/rebuild/adapters/taihou_lora_clean200/checkpoint_final/adapter_config.json"
+    },
+    {
+      "asset": "albion_lora_rich_ck500__final__lora.safetensors",
+      "destination": "tts/irodori/outputs/albion_lora_rich_ck500/checkpoint_final/adapter_model.safetensors",
+      "size": 105654092,
+      "sha256": "1f1d733b185dae0259e79abb148653f74cdb53e9b85bf13983dff7cdd96f60cd",
+      "adapter_config": "config/rebuild/adapters/albion_lora_rich_ck500/checkpoint_final/adapter_config.json"
     }
   ],
   "local_assets": [
