@@ -1,0 +1,447 @@
+{
+ "voice": "albion",
+ "plan_version": 4,
+ "codebook_version": 2,
+ "seeds": [
+  12345,
+  777
+ ],
+ "noise_reference": "neutral_quiet",
+ "notes": "#20 哭腔颤音 LoRA 对比（2026-10-27）：快哭 3 句 × 生产两档描述、真哭 3 句 × 真哭描述、温柔对照 2 句 × 生产描述；每句另有 neutral_quiet 锚基线。三种 LoRA 条件由 ships.json 切换，矩阵本身不变。",
+ "anchors": {
+  "neutral_quiet": {
+   "family": "neutral",
+   "caption": "落ち着いた、静かな声で",
+   "cfg": 3.0,
+   "tier": "weak"
+  }
+ },
+ "sentences": [
+  {
+   "id": "cry1",
+   "kind": "快哭/哽咽",
+   "note": "自责、句中断续",
+   "text": "私のせいで……みんなに、迷惑をかけてしまいました。"
+  },
+  {
+   "id": "cry2",
+   "kind": "快哭/哽咽",
+   "note": "不安、问句收尾",
+   "text": "指揮官は、私のことを、まだ信じてくれますか……"
+  },
+  {
+   "id": "cry3",
+   "kind": "快哭/哽咽",
+   "note": "逞强、句中有长停顿",
+   "text": "泣いてなんか、いません。……ちょっと、風が強かっただけですから。"
+  },
+  {
+   "id": "sob1",
+   "kind": "真哭",
+   "note": "短句、道歉、句末省略号",
+   "text": "ごめんなさい……っ、わたし、もう……"
+  },
+  {
+   "id": "sob2",
+   "kind": "真哭",
+   "note": "疑问+省略号、逗号在中",
+   "text": "どうして……、こんなことに……っ"
+  },
+  {
+   "id": "sob3",
+   "kind": "真哭",
+   "note": "抽泣拟声开头、逗号两处",
+   "text": "ひっく……、ひとりに、しないで……"
+  },
+  {
+   "id": "gen1",
+   "kind": "温柔安慰",
+   "note": "安抚、短句",
+   "text": "大丈夫ですよ、指揮官。ゆっくりで、構いませんから。"
+  },
+  {
+   "id": "gen2",
+   "kind": "温柔安慰",
+   "note": "安慰、两句",
+   "text": "今日はもう、頑張らなくてもいいんです。私がそばにいますから。"
+  }
+ ],
+ "conditions": [
+  {
+   "id": "cry1-base-12345",
+   "sentence": "cry1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base"
+  },
+  {
+   "id": "cry1-base-777",
+   "sentence": "cry1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base"
+  },
+  {
+   "id": "cry1-cry-normal-12345",
+   "sentence": "cry1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free-cry-normal",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "声を震わせて、途切れがちに、言う。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "cry"
+  },
+  {
+   "id": "cry1-cry-normal-777",
+   "sentence": "cry1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free-cry-normal",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "声を震わせて、途切れがちに、言う。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "cry"
+  },
+  {
+   "id": "cry1-cry-weak-12345",
+   "sentence": "cry1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free-cry-weak",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "少し声を震わせて、途切れがちに、言う。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "cry"
+  },
+  {
+   "id": "cry1-cry-weak-777",
+   "sentence": "cry1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free-cry-weak",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "少し声を震わせて、途切れがちに、言う。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "cry"
+  },
+  {
+   "id": "cry2-base-12345",
+   "sentence": "cry2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base"
+  },
+  {
+   "id": "cry2-base-777",
+   "sentence": "cry2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base"
+  },
+  {
+   "id": "cry2-cry-normal-12345",
+   "sentence": "cry2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free-cry-normal",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "声を震わせて、途切れがちに、言う。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "cry"
+  },
+  {
+   "id": "cry2-cry-normal-777",
+   "sentence": "cry2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free-cry-normal",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "声を震わせて、途切れがちに、言う。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "cry"
+  },
+  {
+   "id": "cry2-cry-weak-12345",
+   "sentence": "cry2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free-cry-weak",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "少し声を震わせて、途切れがちに、言う。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "cry"
+  },
+  {
+   "id": "cry2-cry-weak-777",
+   "sentence": "cry2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free-cry-weak",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "少し声を震わせて、途切れがちに、言う。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "cry"
+  },
+  {
+   "id": "cry3-base-12345",
+   "sentence": "cry3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base"
+  },
+  {
+   "id": "cry3-base-777",
+   "sentence": "cry3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base"
+  },
+  {
+   "id": "cry3-cry-normal-12345",
+   "sentence": "cry3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free-cry-normal",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "声を震わせて、途切れがちに、言う。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "cry"
+  },
+  {
+   "id": "cry3-cry-normal-777",
+   "sentence": "cry3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free-cry-normal",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "声を震わせて、途切れがちに、言う。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "cry"
+  },
+  {
+   "id": "cry3-cry-weak-12345",
+   "sentence": "cry3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free-cry-weak",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "少し声を震わせて、途切れがちに、言う。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "cry"
+  },
+  {
+   "id": "cry3-cry-weak-777",
+   "sentence": "cry3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free-cry-weak",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "少し声を震わせて、途切れがちに、言う。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "cry"
+  },
+  {
+   "id": "sob1-base-12345",
+   "sentence": "sob1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base"
+  },
+  {
+   "id": "sob1-base-777",
+   "sentence": "sob1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base"
+  },
+  {
+   "id": "sob1-sob-normal-12345",
+   "sentence": "sob1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free-sob-normal",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "とても声を震わせて、しゃくり上げて、言う。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "sob"
+  },
+  {
+   "id": "sob1-sob-normal-777",
+   "sentence": "sob1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free-sob-normal",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "とても声を震わせて、しゃくり上げて、言う。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "sob"
+  },
+  {
+   "id": "sob2-base-12345",
+   "sentence": "sob2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base"
+  },
+  {
+   "id": "sob2-base-777",
+   "sentence": "sob2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base"
+  },
+  {
+   "id": "sob2-sob-normal-12345",
+   "sentence": "sob2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free-sob-normal",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "とても声を震わせて、しゃくり上げて、言う。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "sob"
+  },
+  {
+   "id": "sob2-sob-normal-777",
+   "sentence": "sob2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free-sob-normal",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "とても声を震わせて、しゃくり上げて、言う。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "sob"
+  },
+  {
+   "id": "sob3-base-12345",
+   "sentence": "sob3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base"
+  },
+  {
+   "id": "sob3-base-777",
+   "sentence": "sob3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base"
+  },
+  {
+   "id": "sob3-sob-normal-12345",
+   "sentence": "sob3",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free-sob-normal",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "とても声を震わせて、しゃくり上げて、言う。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "sob"
+  },
+  {
+   "id": "sob3-sob-normal-777",
+   "sentence": "sob3",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free-sob-normal",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "とても声を震わせて、しゃくり上げて、言う。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "sob"
+  },
+  {
+   "id": "gen1-base-12345",
+   "sentence": "gen1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base"
+  },
+  {
+   "id": "gen1-base-777",
+   "sentence": "gen1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base"
+  },
+  {
+   "id": "gen1-gen-normal-12345",
+   "sentence": "gen1",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free-gen-normal",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "優しく、ゆっくりと、語りかける。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "gen"
+  },
+  {
+   "id": "gen1-gen-normal-777",
+   "sentence": "gen1",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free-gen-normal",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "優しく、ゆっくりと、語りかける。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "gen"
+  },
+  {
+   "id": "gen2-base-12345",
+   "sentence": "gen2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "base"
+  },
+  {
+   "id": "gen2-base-777",
+   "sentence": "gen2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "base"
+  },
+  {
+   "id": "gen2-gen-normal-12345",
+   "sentence": "gen2",
+   "seed": 12345,
+   "anchor": "neutral_quiet",
+   "group": "free-gen-normal",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "優しく、ゆっくりと、語りかける。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "gen"
+  },
+  {
+   "id": "gen2-gen-normal-777",
+   "sentence": "gen2",
+   "seed": 777,
+   "anchor": "neutral_quiet",
+   "group": "free-gen-normal",
+   "baseline_anchor": "neutral_quiet",
+   "caption": "優しく、ゆっくりと、語りかける。",
+   "cfg": 3.0,
+   "caption_mode": "free",
+   "scene": "gen"
+  }
+ ]
+}
