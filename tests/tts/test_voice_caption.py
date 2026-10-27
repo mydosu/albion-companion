@@ -43,12 +43,15 @@ ON = {VC.VOICE_CAPTION_ENV: "1", VC.VOICE_EMOJI_ENV: "1"}
 OFF = {VC.VOICE_CAPTION_ENV: "0", VC.VOICE_EMOJI_ENV: "0"}
 
 
-def req(unit_id="u0", speech="今天有点累了", raw=None, session="s1", gen=1):
-    return B2.parse_request({
+def req(unit_id="u0", speech="今天有点累了", raw=None, session="s1", gen=1, prefix=""):
+    body = {
         "session_id": session, "generation": gen, "unit_id": unit_id,
         "voice": "albion", "source_range": [0, len(speech)],
         "speech_text": speech, "raw_text": raw if raw is not None else speech,
-    })
+    }
+    if prefix:
+        body["source_prefix"] = prefix
+    return B2.parse_request(body)
 
 
 def svc(ja="少しだけ、休ませてください。", emo=None):
@@ -283,6 +286,147 @@ class TestCueBoundaries(unittest.TestCase):
             self.assertEqual(VC.scene_of({}, "", zh), "cry", zh)
         # 成语被剥掉后，句子里真的委屈仍然算 cry
         self.assertTrue(VC.cry_cue("哭笑不得，但好委屈"))
+
+    def test_angry_cry_is_cry_not_sob(self):
+        """「气哭」一类（气哭 / 气得想哭 / 被气哭 / 要被你气哭了）是快哭，不是真哭。"""
+        for zh in ["（要被你气哭了）", "（气哭了）", "（气哭）", "（被你气哭了）",
+                   "（气得想哭）", "（气到哭）"]:
+            self.assertEqual(VC.paren_cry(zh), "cry", zh)
+            self.assertFalse(VC.sob_of(zh, ""), zh)
+            self.assertEqual(VC.scene_of({}, "", zh), "cry", zh)
+            self.assertNotEqual(VC.pick_emoji(zh, ""), "😭", zh)
+        # 括号外的「气哭了」也走快哭（不是 sob）
+        self.assertTrue(VC.cry_cue("我气哭了"))
+        self.assertEqual(VC.scene_of({}, "", "我气哭了"), "cry")
+        self.assertNotEqual(VC.scene_of({}, "", "我气哭了"), "sob")
+        # 否定还是不算
+        for zh in ["（我才没气哭）", "（没气哭）"]:
+            self.assertIsNone(VC.paren_cry(zh), zh)
+        # 别的真哭判据没被放宽
+        self.assertEqual(VC.paren_cry("（大哭）"), "sob")
+        self.assertIsNone(VC.paren_cry("（哭笑不得）"))
+
+
+def _env_without(*names):
+    """复制当前环境、去掉指定变量（用来断言「默认开」）。"""
+    env = dict(os.environ)
+    for name in names:
+        env.pop(name, None)
+    return mock.patch.dict(os.environ, env, clear=True)
+
+
+class TestCryCarry(unittest.TestCase):
+    """任务 #18：哭腔延续到下一句（`ALBION_VOICE_CARRY`，默认开，`=0` 关）。"""
+
+    def cap(self, prefix="", cues=None, zh="我先走了。", ja="ごめんなさい。"):
+        return VC.caption_for(cues if cues is not None else {}, ja, zh, prefix=prefix)
+
+    def test_mild_cry_carries_weak(self):
+        """前一句是快哭/委屈 → 本句 cry/weak（不再突然变回 neutral）。"""
+        with _env_without(VC.VOICE_CARRY_ENV):          # 默认开
+            for p in ("（快哭了）我真的有点难受。", "有点委屈……", "呜呜……我好像要哭了。"):
+                self.assertEqual(self.cap(prefix=p), VC.compose_caption("cry", "weak"), p)
+
+    def test_real_cry_carries_normal_but_never_sob(self):
+        """前一句是真哭 → 本句 cry/normal；延续永远不产出 sob（😭 只看本句）。"""
+        with _env_without(VC.VOICE_CARRY_ENV):
+            for p in ("（大哭）对不起……", "（哭）对不起。", "呜哇——好难过。"):
+                cap = self.cap(prefix=p)
+                self.assertEqual(cap, VC.compose_caption("cry", "normal"), p)
+                self.assertNotEqual(cap, VC.compose_caption("sob", "normal"), p)
+                self.assertEqual(VC.pick_emoji("我先走了。", "", "ごめんなさい。"), "", p)
+
+    def test_blank_line_and_three_sentences_back_break(self):
+        with _env_without(VC.VOICE_CARRY_ENV):
+            self.assertEqual(self.cap(prefix="（大哭）对不起……\n\n换个话题。"),
+                             VC.compose_caption("neutral"))
+            self.assertEqual(
+                self.cap(prefix="（大哭）对不起……我还好。你先坐。现在说吧。"),
+                VC.compose_caption("neutral"))
+
+    def test_changed_tone_in_next_sentence_breaks(self):
+        """离当前句最近的那句（笑）/哈哈/小声/生气 → 她换语气了，不延续。"""
+        with _env_without(VC.VOICE_CARRY_ENV):
+            for p in ("（大哭）对不起……（笑）好啦好啦。",
+                      "（大哭）对不起……哈哈，逗你的。",
+                      "（大哭）对不起……你小声一点。",
+                      "（大哭）对不起……我生气了。"):
+                self.assertEqual(self.cap(prefix=p), VC.compose_caption("neutral"), p)
+
+    def test_closer_sentence_decides_strength(self):
+        with _env_without(VC.VOICE_CARRY_ENV):
+            # 近的那句是快哭 → weak（不被更早的真哭抬成 normal）
+            self.assertEqual(self.cap(prefix="（大哭）对不起……（快哭了）嗯。"),
+                             VC.compose_caption("cry", "weak"))
+            # 近的那句没线索，回看第二句
+            self.assertEqual(self.cap(prefix="（大哭）对不起……我先走了。"),
+                             VC.compose_caption("cry", "normal"))
+            # 「……」也是句界，最后两句正好落在证据上
+            self.assertEqual(self.cap(prefix="今天好累……（大哭）对不起……"),
+                             VC.compose_caption("cry", "normal"))
+
+    def test_current_sentence_keeps_own_cry(self):
+        with _env_without(VC.VOICE_CARRY_ENV):
+            # 本句自己有快哭：用自己的强度（不被前一句的真哭抬成 normal）
+            self.assertEqual(self.cap(prefix="（大哭）对不起……", zh="（快哭了）我没事。",
+                                      cues={"intensity": 0.1}),
+                             VC.compose_caption("cry", "weak"))
+            # 本句自己有真哭线索：仍是 sob
+            self.assertEqual(self.cap(prefix="（快哭了）别走……", zh="（大哭）不要走。"),
+                             VC.compose_caption("sob", "normal"))
+
+    def test_current_non_cry_explicit_cue_blocks_carry(self):
+        p = "（大哭）对不起……"
+        self.assertIsNone(VC.carry_cry("exc", {}, p))
+        self.assertIsNone(VC.carry_cry("whi", {}, p))
+        self.assertIsNone(VC.carry_cry("ang", {}, p))
+        for kind in ("whisper", "excite", "shy"):
+            self.assertIsNone(VC.carry_cry("neutral", {"src": [{"kind": kind}]}, p), kind)
+        # 否定的 shy 不算「换语气」
+        self.assertEqual(VC.carry_cry("neutral", {"src": [{"kind": "shy", "negated": True}]}, p),
+                         ("cry", "normal"))
+        # 来自 soft / phonation / 标量的 shy、coq、sad、gen 都能被延续覆盖
+        for scene, cues in (("shy", {"src": [{"kind": "soft"}]}),
+                            ("coq", {"phonation": "breathy"}),
+                            ("sad", {"valence": -0.3}),
+                            ("gen", {"valence": 0.25})):
+            self.assertEqual(VC.carry_cry(scene, cues, p), ("cry", "normal"), scene)
+        # 本句自己判出 cry/sob 就不用延续
+        self.assertIsNone(VC.carry_cry("cry", {}, p))
+        self.assertIsNone(VC.carry_cry("sob", {}, p))
+        # 没有前文 / 前文没哭 → None
+        self.assertIsNone(VC.carry_cry("neutral", {}, ""))
+        self.assertIsNone(VC.carry_cry("neutral", {}, "今天天气不错。"))
+
+    def test_switch_off_is_old_behavior(self):
+        """`ALBION_VOICE_CARRY=0`：与不带 prefix 时逐字节一致。"""
+        p = "（大哭）对不起……"
+        with mock.patch.dict(os.environ, {VC.VOICE_CARRY_ENV: "0"}, clear=False):
+            self.assertEqual(self.cap(prefix=p), VC.compose_caption("neutral"))
+            self.assertEqual(self.cap(prefix=p), self.cap(prefix=""))
+
+
+class TestBridgeCarry(unittest.TestCase):
+    def test_source_prefix_carries_cry_without_sob_emoji(self):
+        env = dict(ON, **{VC.VOICE_CARRY_ENV: "1"})
+        with mock.patch.dict(os.environ, env, clear=False):
+            service, _ = svc(ja="ごめんなさい……",
+                             emo={"arousal": 0.2, "intensity": 0.3, "valence": 0.0})
+            res = prepare(service, req(speech="我先走了。", raw="我先走了。",
+                                       prefix="（大哭）对不起……"))
+        seg = res.ja_segments[0]
+        self.assertEqual(seg["voice_caption"], VC.compose_caption("cry", "normal"))
+        self.assertNotIn("😭", seg["text"])          # 延续不加 😭（本句自己没有真哭线索）
+
+    def test_carry_off_in_bridge(self):
+        env = dict(ON, **{VC.VOICE_CARRY_ENV: "0"})
+        with mock.patch.dict(os.environ, env, clear=False):
+            service, _ = svc(ja="ごめんなさい……",
+                             emo={"arousal": 0.2, "intensity": 0.3, "valence": 0.0})
+            res = prepare(service, req(speech="我先走了。", raw="我先走了。",
+                                       prefix="（大哭）对不起……"))
+        self.assertEqual(res.ja_segments[0]["voice_caption"],
+                         VC.compose_caption("neutral", "weak"))
 
 
 class TestBridgeOutput(unittest.TestCase):

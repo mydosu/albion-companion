@@ -46,7 +46,21 @@ neutral 占 83%，而 7 条锚彼此差异很小（`tests/output/tts-emotion-sur
 ------------------------------------
   * `ALBION_VOICE_CAPTION=1`：桥写描述、规划器把它当 caption（`caption_mode="free"`）发出去；
   * `ALBION_VOICE_EMOJI=1`：台词本身在笑/叹气/打哈欠/哭时，句末加**一个**白名单非语言 emoji，
-    每条回复最多 1 个（`EmojiBudget`），白名单外的 emoji 一律剥掉。
+    每条回复最多 1 个（`EmojiBudget`），白名单外的 emoji 一律剥掉；
+  * `ALBION_VOICE_CARRY`（**默认开**）：中文原文前一句还在哭时，本句的哭腔可以延续下去
+    （见下节）；`=0` 关掉后与没有这个开关时逐字节一致。
+
+哭腔延续（`ALBION_VOICE_CARRY`，默认开）
+----------------------------------------
+一条回复被切成多句时，哭的明示线索往往只在**前一句**（「呜呜……我好像要哭了。对不起，指挥官……」
+第二句自己没有线索，会落到 shy/neutral，听起来像突然不哭了）。所以桥把本单元之前的中文原文
+（`req.source_prefix`）也交给 `caption_for`，在**同一段落**里回看最后 2 句：
+  * 当前句自己判出 sob/cry，或 exc/whi/ang，或提示里有非否定的 whisper/excite/shy 线索
+    → **不延续**（她自己换语气了 / 本句自己有更强的证据）；
+  * 最后 2 句里更靠近当前句的那一句带反向线索（（笑）「哈哈」「小声」「生气」…）→ **断开**；
+  * 最后 2 句里有真哭（`sob_of`）→ 本句 `cry` / level normal；只有快哭
+    （`paren_cry=="cry"` 或 `cry_cue`）→ 本句 `cry` / level weak。
+  * 延续**永远不产出 sob、不加 😭**：😭 只给带明示真哭线索的那一句。
 """  # noqa: E501 - 说明性长行
 
 import os
@@ -55,6 +69,7 @@ import re
 # ---- 开关 ---------------------------------------------------------------------
 VOICE_CAPTION_ENV = "ALBION_VOICE_CAPTION"
 VOICE_EMOJI_ENV = "ALBION_VOICE_EMOJI"
+VOICE_CARRY_ENV = "ALBION_VOICE_CARRY"
 
 # 自由描述单元的 cfg。评测台（阶段 2b）测过：cfg 2/3/4/6 对同一描述时长完全相同，
 # 不是强度旋钮，所以这里固定 3.0（= 原 neutral_quiet 的 cfg），只让 caption 一个变量动。
@@ -87,6 +102,11 @@ def voice_caption_on():
 def voice_emoji_on():
     """句末非语言 emoji 开关。"""
     return _switch(VOICE_EMOJI_ENV)
+
+
+def voice_carry_on():
+    """哭腔延续开关（**默认开**；`ALBION_VOICE_CARRY=0` 关掉后行为与加它之前逐字节一致）。"""
+    return _switch(VOICE_CARRY_ENV, default=True)
 
 
 # ---- 词表 ---------------------------------------------------------------------
@@ -250,8 +270,12 @@ _JA_SCENE = (
 # 中文原文里的**快哭/委屈**：只认"快要哭"的说法，**不认单独的「哭 / 眼泪 / 眼眶」** ——
 # 「笑出眼泪」「哭笑不得」「你哭什么呀，笑一个」「看电影哭了」都不该抢到 cry（2026-10-26 审）。
 # 否定（「我才没哭」）不算；「哭笑不得」这类成语显式排除。
-_ZH_CRY_CUE = re.compile(r"委屈|想哭|快哭|要哭|哽咽|哭腔|眼眶红|眼圈红|含泪|呜呜|泪汪汪")
+_ZH_CRY_CUE = re.compile(r"委屈|想哭|快哭|要哭|哽咽|哭腔|眼眶红|眼圈红|含泪|呜呜|泪汪汪|气哭|气到哭")
 _ZH_NOT_CRY = re.compile(r"哭笑不得|笑出眼泪|笑到流泪|笑出泪|破涕为笑")
+
+# 「气哭」一类是**快哭**（被气到眼眶热），不是真哭：「（要被你气哭了）」
+# 原来会被括号里的裸「哭」判成 sob（2026-10-27 修）。括号里先按这条落 cry。
+_ZH_ANGRY_CRY = re.compile(r"气哭|气到哭")
 
 # 真哭只认**明示**动作：中文括号里的哭泣动作（（哭）（大哭）（哭出声）（抽泣）（啜泣）（哭着说））。
 # 括号外的一句「哭」不算 —— 宁漏勿错（「我才没哭」在括号外，本来也进不来）。
@@ -301,6 +325,11 @@ def paren_cry(text):
         body = m.group(1)
         if _ZH_NOT_CRY.search(body):               # 「（哭笑不得）」这种成语不是哭
             continue
+        angry = _ZH_ANGRY_CRY.search(body)
+        if angry is not None:                      # 「气哭」一类：快哭（否定则「没在哭」）
+            if _ZH_NEG_HEAD.search(body[max(0, angry.start() - 5):angry.start()]):
+                continue
+            return "cry"                           # （要被你气哭了）= 快哭，不是真哭
         if _ZH_SOB_HOLD.search(body):              # 憋着没哭出来 = 快哭
             return "cry"
         hit = _zh_hit(body, _ZH_SOB_PAREN)
@@ -414,14 +443,83 @@ def level_of(cues):
     return "normal"
 
 
-def caption_for(cues, ja_text="", zh_text="", fallback="neutral"):
+# ---- 哭腔延续（`ALBION_VOICE_CARRY`，默认开） ---------------------------------
+# 回看前文时只用中文原文能判的东西（不为此再调翻译模型）。
+# 切句：句末标点（。！？!?）与换行各算一句；「……」也当句界（「呜呜……我好像要哭了」里的
+# 前半截不该和后半截粘成一句）。切完只留非空片段。
+_CARRY_BREAK = re.compile(r"[。！？!?\n]|…+")
+
+# 反向线索：她在**换语气**（笑 / 压低声音 / 生气）—— 哭腔不再往下延续。
+# 只看最后两句里**离当前句最近**的那一句，避免把更早的笑话当成现在的语气。
+_ZH_CARRY_BREAK = re.compile(
+    r"笑|哈哈|嘿|嘻|呵呵|开心|高兴|兴奋|小声|低声|轻声|悄悄|耳语|压低|"
+    r"生气|气死|哼|怒|凶|讨厌|烦死")
+
+# 当前句**自己**的明示非哭线索（非否定）：这些说明她换了语气，不延续。
+_CARRY_BLOCK_KINDS = frozenset(("whisper", "excite", "shy"))
+
+# 当前句判出这些场景就用自己的：sob/cry 是本句有哭的证据；exc/whi/ang 是换语气。
+_CARRY_BLOCK_SCENES = frozenset(("sob", "cry", "exc", "whi", "ang"))
+
+
+def _carry_sentences(text):
+    """切句（句末标点 / 换行 / 「……」后断），去掉空白片段。"""
+    return [s.strip() for s in _CARRY_BREAK.split(text or "") if s.strip()]
+
+
+def _paragraph_tail(text):
+    """同一段落：遇到空行（`\\n\\n`，允许行内空格）就截断，只留最后一段。"""
+    if not isinstance(text, str) or not text:
+        return ""
+    return re.split(r"\n[ \t\r]*\n", text)[-1]
+
+
+def carry_cry(scene, cues, prefix):
+    """前文最后 2 句还在哭、本句自己没哭/没换语气 → `("cry", level)`；否则 None。
+
+    规则（任务 #18）：
+      * 本句自己判出 sob/cry/exc/whi/ang，或提示里有非否定的 whisper/excite/shy 线索
+        → 不延续（用自己的）；来自 phonation / 标量 / soft 的 shy、sad、gen、coq、neutral
+        都可以被覆盖；
+      * 最后 2 句里**更靠近当前句**的那句带反向线索（（笑）「哈哈」「小声」「生气」…）→ 断开；
+      * 这 2 句里有真哭 → `cry`/normal；只有快哭 → `cry`/weak；
+      * 永远不产出 sob（😭 只跟本句自己的真哭线索走）。
+    """
+    if scene in _CARRY_BLOCK_SCENES:
+        return None
+    c = cues if isinstance(cues, dict) else {}
+    for item in c.get("src") or []:
+        if (isinstance(item, dict) and item.get("kind") in _CARRY_BLOCK_KINDS
+                and not item.get("negated")):
+            return None
+    sents = _carry_sentences(_paragraph_tail(prefix))[-2:]
+    if not sents:
+        return None
+    if _ZH_CARRY_BREAK.search(sents[-1]):          # 最近那句已经换语气了：断开
+        return None
+    for sent in reversed(sents):                   # 近的优先：强度用更近的那句
+        if sob_of(sent, ""):
+            return ("cry", "normal")
+        if paren_cry(sent) == "cry" or cry_cue(sent):
+            return ("cry", "weak")
+    return None
+
+
+def caption_for(cues, ja_text="", zh_text="", fallback="neutral", prefix=""):
     """桥的入口：情绪提示 + 日语译文 + 中文原文 → 一条通过校验的描述（没把握就返回 ""）。
 
     `zh_text` 是**中文原文**（桥里传 `req.raw_text`）：真哭/快哭的判据在中文一侧
     （括号动作、委屈类说法），日语译文里看不到。
+    `prefix` 是本单元**之前**的中文原文（桥里传 `req.source_prefix`）：只用来做哭腔延续。
+    开关 `ALBION_VOICE_CARRY=0` 或 `prefix` 为空时行为与加这个参数之前逐字节一致。
     """
     scene = scene_of(cues, ja_text, zh_text=zh_text, fallback=fallback)
-    caption = compose_caption(scene, level_of(cues))
+    level = level_of(cues)
+    if prefix and voice_carry_on():
+        carried = carry_cry(scene, cues, prefix)
+        if carried:
+            scene, level = carried
+    caption = compose_caption(scene, level)
     if validate_caption(caption):
         return ""                             # 理论上不会发生；真发生了也不送半句
     return caption
@@ -546,6 +644,26 @@ def _selftest():
     assert b.take(("s", 1)) is True and b.take(("s", 1)) is False
     assert b.take(("s", 2)) is True and b.take(("s", 3)) is True
     assert len(b) == 2                              # 有界：最老的被挤掉
+    # 哭腔延续（默认开）：快哭 → cry/weak，真哭 → cry/normal；换语气/空行/隔三句都断开。
+    _keep = os.environ.pop(VOICE_CARRY_ENV, None)   # 自检不能受当前环境变量影响
+    try:
+        assert caption_for({}, "ごめんなさい。", "我先走了。",
+                           prefix="（快哭了）我真的有点难受。") == compose_caption("cry", "weak")
+        assert caption_for({}, "ごめんなさい。", "我先走了。",
+                           prefix="（大哭）对不起……") == compose_caption("cry", "normal")
+        assert caption_for({}, "ごめんなさい。", "我先走了。",
+                           prefix="（大哭）对不起。哈哈，逗你的。") == compose_caption("neutral")
+        assert caption_for({}, "ごめんなさい。", "我先走了。",
+                           prefix="（大哭）对不起。\n\n换个话题。") == compose_caption("neutral")
+        assert caption_for({}, "ごめんなさい。", "我先走了。",
+                           prefix="（大哭）对不起。一。二。现在。") == compose_caption("neutral")
+        os.environ[VOICE_CARRY_ENV] = "0"
+        assert caption_for({}, "ごめんなさい。", "我先走了。",
+                           prefix="（大哭）对不起……") == compose_caption("neutral")
+    finally:
+        os.environ.pop(VOICE_CARRY_ENV, None)
+        if _keep is not None:
+            os.environ[VOICE_CARRY_ENV] = _keep
     print("voice_caption 自检通过：%d 场景 × %d 档 = %d 条描述"
           % (len(SCENES), len(LEVELS), len(SCENES) * len(LEVELS)))
 

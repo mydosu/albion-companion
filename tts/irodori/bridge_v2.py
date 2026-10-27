@@ -463,7 +463,10 @@ class PrepareService:
             if pick and self._emoji_budget.take(key):
                 text = text.rstrip() + pick
         if caption_on:
-            caption = voice_caption.caption_for(emo, ja_text, zh_text)
+            # 哭腔延续：把本单元之前的中文原文交给 caption（同一段落最后 2 句里有哭就延续）；
+            # `ALBION_VOICE_CARRY=0` 或没有前文时与以前逐字段一致。😭 仍只判本句。
+            caption = voice_caption.caption_for(
+                emo, ja_text, zh_text, prefix=getattr(req, "source_prefix", "") or "")
             if caption:
                 extra["voice_caption"] = caption
         return text, (extra or None)
