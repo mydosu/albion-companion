@@ -15,7 +15,7 @@ stream 运维日志带日期时区；正文只记录长度和 SHA256。
 | `irodori/` | 后端 :9889、准备/翻译桥 :9881、情感规划/渲染与上游训练工具 |
 | `stream/` | 壳使用的 unspeech 流式网关 :9885 |
 | `GPT-sovits/` | 备用 Denia 源码，以及本机 STT/采集依赖的忽略 runtime |
-| `persona/` | 角色素材，不等同于 WSL 生产 SOUL |
+| `persona/` | 角色素材（本机素材，不入库），不等同于 WSL 生产 SOUL |
 
 独立测试在根 `tests/tts/`，A/B 在 `tests/tts/eval/`；旧 bak/rollback
 在根 `backup/code/20261002/tts/`。`bridge_v2.py`、`serve_v2.py` 仍属于生产。

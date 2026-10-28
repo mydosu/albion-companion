@@ -24,6 +24,8 @@ import render_queue as RQ                                              # noqa: E
 
 GOLDEN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "v2_golden.json")
 PERSONA = os.path.join(ROOT, "persona")
+PERSONA_FILES = ("阿尔比恩.txt", "大凤.txt", "布雷斯特.txt", "金狮.txt")
+PERSONA_AVAILABLE = all(os.path.isfile(os.path.join(PERSONA, n)) for n in PERSONA_FILES)
 
 
 def persona(name):
@@ -48,6 +50,7 @@ def run_v3(text, limit=None):
     return recs
 
 
+@unittest.skipUnless(PERSONA_AVAILABLE, "tts/persona 台本只在本机")
 class TestV2Regression(unittest.TestCase):
     """v2 是回滚目标：一个字节都不许变。"""
 
@@ -165,6 +168,7 @@ class TestRenderWhitelist(unittest.TestCase):
         self.assertIsNone(RQ._check_unit(self._unit(cap, cfg), 0, 2))
 
 
+@unittest.skipUnless(PERSONA_AVAILABLE, "tts/persona 台本只在本机")
 class TestDiscriminatingPower(unittest.TestCase):
     """**必须有区分力**：v3 若退回"整段一句 caption"，这些断言要变红。"""
 

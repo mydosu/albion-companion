@@ -64,12 +64,23 @@ EXTRA = [
 ]
 
 
+def persona_path(fname):
+    """本机台本的路径。缺了就说清原因，别抛裸 FileNotFoundError。"""
+    path = os.path.join(TTS, "persona", fname)
+    if not os.path.isfile(path):
+        raise SystemExit(
+            "[ab] 找不到台本 %s\n"
+            "     tts/persona/*.txt 是成人台本，只在本机、不入库，新克隆里没有。\n"
+            "     请把本机的台本放回 tts/persona/ 再跑。" % path)
+    return path
+
+
 def group_lines(spec):
     """把组规格摊平成 [文本…]（顺带做 200 字符截断）。"""
     if spec[0] == "lines":
         return [fit_200(t)[0] for t in spec[1]]
     fname, idxs = spec[1], spec[2]
-    with open(os.path.join(TTS, "persona", fname), encoding="utf-8-sig") as f:
+    with open(persona_path(fname), encoding="utf-8-sig") as f:
         segs, _ = SP._segments(f.read().strip())
     return [fit_200(segs[i])[0] for i in idxs if i < len(segs)]
 
