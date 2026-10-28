@@ -147,6 +147,16 @@ class TestSceneOf(unittest.TestCase):
         self.assertEqual(VC.level_of({"intensity": 0.9}), "strong")
         self.assertEqual(VC.level_of({}), "normal")
 
+    def test_breath_cue_prefers_codebook(self):
+        """明示「喘」线索交给码本喘息锚；hint 自述/耳语不受影响，真哭优先。"""
+        self.assertTrue(VC.breath_cue_prefers_codebook({"src": [{"kind": "breath"}]}))
+        self.assertFalse(VC.breath_cue_prefers_codebook({"src": [{"kind": "whisper"}]}))
+        self.assertFalse(VC.breath_cue_prefers_codebook({"phonation": "breathy"}))
+        self.assertFalse(VC.breath_cue_prefers_codebook(
+            {"src": [{"kind": "breath"}]}, zh_text="（大哭）不要走"))
+        self.assertFalse(VC.breath_cue_prefers_codebook(
+            {"src": [{"kind": "breath", "negated": True}]}))
+
 
 class TestSobIsRealCry(unittest.TestCase):
     """真哭（sob）只认明示线索；快哭/委屈仍走 cry（2026-10-26 用户口径）。"""
@@ -487,6 +497,19 @@ class TestBridgeOutput(unittest.TestCase):
         self.assertIsNone(VC.validate_caption(seg["voice_caption"]))
         self.assertEqual(seg["voice_caption"], VC.caption_for(
             {"arousal": 0.2, "intensity": 0.3, "valence": -0.5}))
+
+    def test_breath_cue_leaves_caption_to_codebook(self):
+        """（喘着气）不写自由描述，规划器才有机会用训练过的喘息锚（cfg 4.5）。"""
+        with mock.patch.dict(os.environ, ON, clear=False):
+            service, _ = svc(emo={"phonation": "breathy", "src": [{"kind": "breath"}]})
+            res = prepare(service, req(raw="（喘着气）不要了……"))
+        self.assertNotIn("voice_caption", res.ja_segments[0])
+
+    def test_whisper_cue_still_gets_caption(self):
+        with mock.patch.dict(os.environ, ON, clear=False):
+            service, _ = svc(emo={"phonation": "whispered", "src": [{"kind": "whisper"}]})
+            res = prepare(service, req(raw="（耳语）别出声"))
+        self.assertIn("voice_caption", res.ja_segments[0])
 
     def test_caption_confirmed_invalid_is_dropped(self):
         """回退路径：描述判废（这里让生成端返回空）→ 桥不加字段，规划器走锚。"""

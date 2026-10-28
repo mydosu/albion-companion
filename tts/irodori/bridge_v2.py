@@ -465,10 +465,14 @@ class PrepareService:
         if caption_on:
             # 哭腔延续：把本单元之前的中文原文交给 caption（同一段落最后 2 句里有哭就延续）；
             # `ALBION_VOICE_CARRY=0` 或没有前文时与以前逐字段一致。😭 仍只判本句。
-            caption = voice_caption.caption_for(
-                emo, ja_text, zh_text, prefix=getattr(req, "source_prefix", "") or "")
-            if caption:
-                extra["voice_caption"] = caption
+            # 明示「喘」线索不写自由描述：自由描述里 breath→coq 是「鼻にかけて、柔らかく、
+            # 甘える」（撒娇），不是喘；留给规划器用训练过的喘息锚
+            # `息を荒くして、甘く喘ぐように、近い距離で`（cfg 4.5）。
+            if not voice_caption.breath_cue_prefers_codebook(emo, ja_text, zh_text):
+                caption = voice_caption.caption_for(
+                    emo, ja_text, zh_text, prefix=getattr(req, "source_prefix", "") or "")
+                if caption:
+                    extra["voice_caption"] = caption
         return text, (extra or None)
 
     def _unit_key(self, req):

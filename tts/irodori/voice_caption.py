@@ -686,6 +686,18 @@ def caption_for(cues, ja_text="", zh_text="", fallback="neutral", prefix=""):
     return caption
 
 
+def breath_cue_prefers_codebook(cues, ja_text="", zh_text=""):
+    """明示「喘」线索（（喘着气）/（喘息））→ 这一句交给**码本的喘息锚**，不用自由描述。
+
+    自由描述里 `breath` 场景是 `coq`（「鼻にかけて、柔らかく、甘える」），是撒娇不是喘；
+    码本里有训练过的 `息を荒くして、甘く喘ぐように、近い距離で`（cfg 4.5）。
+    只认**明示 cue**：`phonation=breathy` 这类自述仍走 coq（弱判断，留给 ACT/其它规则），
+    真哭/快哭优先于 cue，`_scene_basis_of` 会先返回 cry，这里自然不放行。
+    """
+    scene, basis = _scene_basis_of(cues, ja_text, zh_text=zh_text)
+    return scene == "coq" and basis == "cue"
+
+
 # ---- 句末非语言 emoji ---------------------------------------------------------
 # 只收 `checkpoints/EMOJI_ANNOTATIONS.md` 里**非语言**的那几个（笑声/叹气/哈欠），
 # 风格类（😊😠🥺…）会改整句语气，不在本阶段范围内。
