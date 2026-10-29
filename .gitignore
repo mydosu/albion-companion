@@ -61,6 +61,8 @@ _ab-emotion*/
 tts/irodori/data_lora/
 # 成人台本只留本机（GitHub 不允许色情内容）
 tts/persona/*.txt
+tts/persona/render_persona.py
+tts/persona/*_完整.wav
 tests/output/
 tests/pet/spine-official/sr38/
 .pytest_cache/
