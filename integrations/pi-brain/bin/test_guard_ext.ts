@@ -25,7 +25,7 @@ let fetches = 0;
   throw new Error("albion-guard 不该发网络请求");
 };
 
-const { default: albionGuard, tidy, tidyAndCount, tidyMessage, isRefusal, NEUTRAL_ACT } = await import("../agent/extensions/albion-guard.ts");
+const { default: albionGuard, tidy, tidyAndCount, tidyMessage, isRefusal, NEUTRAL_ACT, fixTicPhrases } = await import("../agent/extensions/albion-guard.ts");
 const { default: albionTurn, _albionTest } = await import("../agent/extensions/albion-turn.ts");
 
 const assistant = (text: string) => ({ role: "assistant", content: [{ type: "text", text }], stopReason: "stop" });
@@ -106,7 +106,7 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   }
   assert.deepEqual(kept, [1, 7]);
   const state = () => JSON.parse(readFileSync(join(TMP, "voice.json"), "utf-8"));
-  assert.deepEqual(state()["s-gesture"], { replies: 10, posture_at: -1e9, gesture_at: 7 });
+  assert.deepEqual(state()["s-gesture"], { replies: 10, posture_at: -1e9, gesture_at: 7, tic_recent: {} });
   const examples = [
     ["（轻轻低头，脸颊微微发热）", ""],
     ["（耳根又烫起来了……）", ""],
@@ -382,26 +382,26 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
     ["嗯，我收着。", ""],
     ["嗯，我全都认下了。您写的、我画的，都放在里面。", "嗯。您写的、我画的，都放在里面。"],
     // 不能删（收下/不接没指着他那句话，或只是普通用词）
-    ["桥西边地上有几颗钻石，收下了。", "桥西边地上有几颗钻石，收下了。"],
-    ["您送的花我收下了", "您送的花我收下了"],
-    ["您送的花我收下了，很喜欢。", "您送的花我收下了，很喜欢。"],
+    ["桥西边地上有几颗钻石，收下了。", "桥西边地上有几颗钻石，记住了。"],
+    ["您送的花我收下了", "您送的花我记住了"],
+    ["您送的花我收下了，很喜欢。", "您送的花我记住了，很喜欢。"],
     ["我替您记着", "我替您记着"],
     ["我记着呢", "我记着呢"],
     ["明天接着搬", "明天接着搬"],
     ["没接通", "没接通"],
     ["九点那声早安我搁在那儿没人接", "九点那声早安我搁在那儿没人接"],
     ["好，我认下了这个错。", "好，我认下了这个错。"],
-    ["我接住了那本书。", "我接住了那本书。"],
-    ["这束花我先收下了。", "这束花我先收下了。"],
+    ["我接住了那本书。", "我听进去了那本书。"],
+    ["这束花我先收下了。", "这束花我先记住了。"],
     ["「谢谢您」这句话我先记着。", "「谢谢您」这句话我先记着。"],
-    ["他扔过来，我接住了。", "他扔过来，我接住了。"],
+    ["他扔过来，我接住了。", "他扔过来，我听进去了。"],
     ["我认不出来", "我认不出来"],
-    ["钥匙我收着呢", "钥匙我收着呢"],
-    ["您给的那张画我收着呢", "您给的那张画我收着呢"],
+    ["钥匙我收着呢", "钥匙我记着呢"],
+    ["您给的那张画我收着呢", "您给的那张画我记着呢"],
     ["这件事我认", "这件事我认"],
     ["他说我不对，我不认也不行。", "他说我不对，我不认也不行。"],
   ];
-  for (const [before, after] of cases) assert.equal(tidy(A + before).text, A + after, before);
+  for (const [before, after] of cases) assert.equal(tidy(A + before, "", false, false, { rng: () => 0, recent: {} }).text, A + after, before);
   // 逐字复述：他让照念时不动
   const verbatim = "「可能我做不到」这句，我不接。";
   assert.equal(tidy(A + verbatim, "请逐字念：" + verbatim).text, A + verbatim, "逐字复述不动");
@@ -429,7 +429,7 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
     ["一点的时候您还没睡。", "一点的时候您还没睡。"],
     ["重点的部分我记在本子上了。", "重点的部分我记在本子上了。"],
   ];
-  for (const [before, after] of cases) assert.equal(tidy(A + before).text, A + after, before);
+  for (const [before, after] of cases) assert.equal(tidy(A + before, "", false, false, { rng: () => 0, recent: {} }).text, A + after, before);
   const r = tidy(A + "因为是您点的呀。");
   assert.ok(r.actions.includes("dian_fixed"), JSON.stringify(r.actions));
   assert.deepEqual(r.fixed, ["您点的"], JSON.stringify(r.fixed));
@@ -469,6 +469,55 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   assert.ok(rows2.at(-1).actions.includes("aside_you"), JSON.stringify(rows2.at(-1)));
   assert.equal(rows2.at(-1).aside_you, 1, JSON.stringify(rows2.at(-1)));
   console.log("S 心声「他」→「您」：两条实例、其他/他们/他乡/他日、正文、第三方名字、没闭合、多条计数、guard.log 记账 OK");
+}
+// T) 口癖语料：命中换成 options 之一、不命中原样、同一规则连换 3 次不重样、语料缺失不崩
+{
+  const A = '<|ACT:{"emotion":"neutral"}|>';
+  const rules = JSON.parse(readFileSync(new URL("../agent/tic-phrases.json", import.meta.url), "utf-8")).rules;
+  const optsOf = (name: string) => rules.find((r: any) => r.name === name).options as string[];
+  const hits: [string, string][] = [
+    ["这一句我一时不知道怎么接。", "不知道怎么接"],
+    ["我一时都不知道该怎么接了。", "不知道怎么接"],
+    ["我一时不知道该接什么好……", "不知道怎么接"],
+    ["我一时不知道该怎么接话了。", "不知道怎么接"],
+    ["这话不绕，我接住。", "接住"],
+    ["好，我收下了。", "收下"],
+    ["这件事我先收在心里，慢慢等。", "收在心里"],
+    ["把他给的都收着呢。", "收着"],
+  ];
+  for (const [text, ruleName] of hits) {
+    const r = fixTicPhrases(text, () => 0, {});
+    assert.notEqual(r.text, text, `该换没换：${text}`);
+    assert.equal(r.hits.length, 1, JSON.stringify(r.hits));
+    assert.equal(r.hits[0].rule, ruleName, JSON.stringify(r.hits));
+    assert.ok(optsOf(ruleName).includes(r.hits[0].to), `换上的不是 options：${JSON.stringify(r.hits)}`);
+    assert.equal(r.text, text.replace(r.hits[0].from, r.hits[0].to), "只换命中的那几个字");
+  }
+  for (const keep of ["我去接电话。", "接着说吧。", "明天我去接您。", "收着点力气"]) {
+    assert.equal(fixTicPhrases(keep, () => 0, {}).text, keep, `不该换：${keep}`);
+  }
+  // 同一规则连换 3 次，结果互不相同（种子固定；最近用过的 2 个避开）
+  let seed = 20261029;
+  const rng = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  const recent: Record<string, string[]> = {};
+  const outs = [0, 1, 2].map(() => fixTicPhrases("这一句我一时不知道怎么接。", rng, recent).text);
+  assert.equal(new Set(outs).size, 3, `连续 3 次不该重样：${JSON.stringify(outs)}`);
+  // 语料文件不存在：原样返回，不抛
+  assert.equal(fixTicPhrases("这话我接住。", () => 0, {}, "/nonexistent/tic-phrases.json").text, "这话我接住。");
+  assert.equal(tidy(A + "这话我接住。", "", false, false, { ticPath: "/nonexistent/tic-phrases.json" }).text, A + "这话我接住。");
+  // 经钩子：换过的稿子写回，日志记规则名与替换前后；最近用过的 option 落到 voice.json
+  const out = tidyMessage(assistant(A + "这话不绕，我接住。"), "在吗", "s-tic");
+  const got = textOfResult(out);
+  assert.ok(optsOf("接住").some((o: string) => got.includes("这话不绕，我" + o + "。")), got);
+  const rows = readFileSync(join(TMP, "guard.log"), "utf-8").trim().split("\n").map((l) => JSON.parse(l));
+  const last = rows.at(-1);
+  assert.ok(last.actions.includes("tic_fixed"), JSON.stringify(last));
+  assert.equal(last.tic[0].rule, "接住");
+  assert.equal(last.tic[0].from, "接住");
+  assert.ok(optsOf("接住").includes(last.tic[0].to), JSON.stringify(last.tic));
+  const st = JSON.parse(readFileSync(join(TMP, "voice.json"), "utf-8"))["s-tic"];
+  assert.ok(Array.isArray(st.tic_recent["接住"]) && st.tic_recent["接住"].length === 1, JSON.stringify(st));
+  console.log("T 口癖语料：8 句命中换 options、4 句不动、连换 3 次不重样、语料缺失不崩、日志与 voice.json 记账 OK");
 }
 rmSync(TMP, { recursive: true, force: true });
 console.log("GUARD_EXT SELFTEST OK");

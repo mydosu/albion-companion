@@ -13,7 +13,7 @@ import { pathToFileURL } from "node:url";
 const EXT = process.argv[2]
   ? pathToFileURL(process.argv[2]).href
   : new URL("../../integrations/pi-brain/agent/extensions/albion-guard.ts", import.meta.url).href;
-const { tidy, segments, postureMatches, canonicalAct, foldLabeledAside, fixAsidePronoun } = await import(EXT);
+const { tidy, segments, postureMatches, canonicalAct, foldLabeledAside, fixAsidePronoun, fixTicPhrases } = await import(EXT);
 
 const ACT = '<|ACT:{"emotion":"neutral"}|>\n';
 const fails: string[] = [];
@@ -64,9 +64,9 @@ const CASES: [string, string, "keep" | "partial" | "whole", string?][] = [
 
 for (const [name, text, want, expectIn] of CASES) {
   const body = bodyOf(text);
-  const base = fixAsidePronoun(foldLabeledAside(body)).text;
+  const base = fixTicPhrases(fixAsidePronoun(foldLabeledAside(body)).text, () => 0, {}).text;
   check(segments(body).join("") === body, `${name}：切分拼不回原文`);
-  const r = tidy(text, "", false, true);
+  const r = tidy(text, "", false, true, { rng: () => 0, recent: {} });
   const outBody = bodyOf(r.text);
   if (want === "keep") {
     check(!r.dropped.length && !r.posture, `${name}：不该删却删了 ${JSON.stringify(r.dropped)}`);

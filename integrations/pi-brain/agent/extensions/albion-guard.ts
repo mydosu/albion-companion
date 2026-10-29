@@ -21,6 +21,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { personalStateDir } from "../lib/session-scope.ts";
 
 // 探针/验收会话的姿态额度写自己的临时目录，不碰生产 voice.json（2026-10-29）
@@ -32,6 +33,66 @@ const MARKER = "\n\n【阿尔比恩本轮说话约定】";
 export const NEUTRAL_ACT = '<|ACT:{"emotion":"neutral"}|>';
 const EMOTIONS = new Set(["happy", "sad", "angry", "think", "surprised", "awkward", "question", "curious", "neutral"]);
 
+// ── 口癖语料（2026-10-29）：把「把话/心意当东西」的固定说法换成平常说法 ──────────
+// 语料在 agent/tic-phrases.json（生产 /root/albion-pi/agent/tic-phrases.json），由 Claude 席位写，代码不碰内容。
+// 文件缺失或 JSON 坏了就整段跳过，整理器不能因此崩。
+export interface TicRule { name: string; pattern: string; options: string[] }
+export interface TicHit { rule: string; from: string; to: string }
+
+const TIC_PATH = () => process.env.ALBION_TIC_PHRASES || fileURLToPath(new URL("../tic-phrases.json", import.meta.url));
+let ticCache: { path: string; rules: TicRule[] } | null = null;
+
+function ticRules(path: string): TicRule[] {
+	if (ticCache?.path === path) return ticCache.rules;
+	try {
+		const raw = JSON.parse(readFileSync(path, "utf-8"));
+		const rules: TicRule[] = (Array.isArray(raw?.rules) ? raw.rules : [])
+			.filter((r: any) => r && typeof r.pattern === "string" && Array.isArray(r.options))
+			.map((r: any) => ({
+				name: String(r.name ?? r.pattern),
+				pattern: r.pattern,
+				options: r.options.filter((o: any) => typeof o === "string" && o.trim()),
+			}))
+			.filter((r: TicRule) => r.options.length > 0);
+		ticCache = { path, rules };
+		return rules;
+	} catch {
+		return []; // 缺失/坏 JSON：跳过，不抛
+	}
+}
+
+/** 每条规则避开最近用过的 2 个 option；剩下的不够就放开。 */
+function pickTicOption(rule: TicRule, recent: Record<string, string[]>, rng: () => number): string {
+	const used = Array.isArray(recent[rule.name]) ? recent[rule.name] : [];
+	const avoid = new Set(used.slice(-2));
+	let pool = rule.options.filter((o) => !avoid.has(o));
+	if (!pool.length) pool = rule.options;
+	const i = Math.min(pool.length - 1, Math.max(0, Math.floor(rng() * pool.length)));
+	const picked = pool[i];
+	recent[rule.name] = [...used, picked].slice(-2);
+	return picked;
+}
+
+/** 按规则顺序全局替换；正文和闭合心声都改（调用点已经切掉 ACT 标记）。 */
+export function fixTicPhrases(body: string, rng: () => number = Math.random,
+	recent: Record<string, string[]> = {}, path = TIC_PATH()): { text: string; hits: TicHit[] } {
+	const hits: TicHit[] = [];
+	let text = body;
+	for (const rule of ticRules(path)) {
+		let re: RegExp;
+		try {
+			re = new RegExp(rule.pattern, "g");
+		} catch {
+			continue;
+		}
+		text = text.replace(re, (m: string) => {
+			const to = pickTicOption(rule, recent, rng);
+			hits.push({ rule: rule.name, from: m, to });
+			return to;
+		});
+	}
+	return { text, hits };
+}
 // ── 姿态口径（逐条移植自原 bin/guard.py 的 posture_matches + 轻量档，含历轮 haiku/dsh 复核补的例句）──
 const SELF =
 	"(?:我|阿尔比恩)(?:也|还|就|会|可以|一直|仍然|仍|都|只|只是|这边|乖乖|安静地|静静地|慢慢|这么(?=在|安静|静静|一直|(?:看|听|等|守|陪|待|记|数)着)){0,5}";
@@ -260,7 +321,7 @@ export function fixDianOrder(body: string, fixed: string[] = []): string {
 
 export interface TidyResult {
 	text: string;
-	/** 做了什么：act / aside / aside_you / refusal / markup / posture_kept / posture_dropped / gesture_kept / gesture_dropped / pledge_dropped / dian_fixed */
+	/** 做了什么：act / aside / aside_you / refusal / markup / posture_kept / posture_dropped / gesture_kept / gesture_dropped / pledge_dropped / dian_fixed / tic_fixed */
 	actions: string[];
 	dropped: string[];
 	/** 改写过的「点的」原词（点单腔，见 fixDianOrder）。 */
@@ -304,7 +365,8 @@ function tidyGestures(r: TidyResult, allowGesture: boolean): TidyResult {
  * 整理一条定稿。纯函数：allowPosture / allowGesture 由调用方按计数器给（见 tidyAndCount）。
  * 整条回复全是姿态句时原样留着，posture_kept 记为用掉了这次额度。
  */
-export function tidy(raw: string, source = "", allowPosture = false, allowGesture = false): TidyResult {
+export function tidy(raw: string, source = "", allowPosture = false, allowGesture = false,
+	opts: { rng?: () => number; recent?: Record<string, string[]>; ticPath?: string } = {}): TidyResult {
 	const actions: string[] = [];
 	if (isRefusal(raw)) return { text: NEUTRAL_ACT, actions: ["refusal"], dropped: [], fixed: [], posture: false };
 	let text = canonicalAct(raw);
@@ -335,6 +397,11 @@ export function tidy(raw: string, source = "", allowPosture = false, allowGestur
 	const dianFree = fixDianOrder(body, fixed);
 	if (dianFree !== body) actions.push("dian_fixed");
 	body = dianFree;
+	// 口癖语料随机换（放在表态删除、点的改写之后：那两步要先看到原话；ACT 已在 head 里切掉）
+	const tic = fixTicPhrases(body, opts.rng ?? Math.random, opts.recent ?? {}, opts.ticPath ?? TIC_PATH());
+	if (tic.hits.length) actions.push("tic_fixed");
+	const ticHits = tic.hits;
+	body = tic.text;
 	const askedPresence = PRESENCE_ASK.test(currentInput(source));
 	const kept: string[] = [];
 	const postureDropped: string[] = [];
@@ -343,14 +410,14 @@ export function tidy(raw: string, source = "", allowPosture = false, allowGestur
 		if (askedPresence) hits = hits.filter((h) => !PRESENCE_ANSWER.test(h.trim()));
 		(hits.length ? postureDropped : kept).push(seg);
 	}
-	if (!postureDropped.length) return tidyGestures({ text: head + body, actions, dropped, fixed, posture: false, asideYou }, allowGesture);
+	if (!postureDropped.length) return tidyGestures({ text: head + body, actions, dropped, fixed, posture: false, asideYou, tic: ticHits }, allowGesture);
 	const rest = kept.join("").replace(/\n{3,}/g, "\n\n").trim();
 	if (allowPosture || !rest) {
 		actions.push("posture_kept");
-		return tidyGestures({ text: head + body, actions, dropped, fixed, posture: true, asideYou }, allowGesture);
+		return tidyGestures({ text: head + body, actions, dropped, fixed, posture: true, asideYou, tic: ticHits }, allowGesture);
 	}
 	actions.push("posture_dropped");
-	return tidyGestures({ text: head ? head + "\n" + rest : rest, actions, dropped: [...dropped, ...postureDropped], fixed, posture: true, asideYou }, allowGesture);
+	return tidyGestures({ text: head ? head + "\n" + rest : rest, actions, dropped: [...dropped, ...postureDropped], fixed, posture: true, asideYou, tic: ticHits }, allowGesture);
 }
 
 // ── 姿态额度计数（state/voice.json，按会话分开记）────────────────────────────
@@ -391,11 +458,13 @@ export function tidyAndCount(raw: string, source: string, session: string): Tidy
 	const replies = (Number(s.replies) || 0) + 1;
 	const postureAt = Number.isFinite(Number(s.posture_at)) ? Number(s.posture_at) : -1e9;
 	const gestureAt = typeof s.gesture_at === "number" && Number.isInteger(s.gesture_at) && s.gesture_at >= 0 && s.gesture_at < replies ? s.gesture_at : -1e9;
-	const r = tidy(raw, source, replies - postureAt >= POSTURE_EVERY(), replies - gestureAt >= GESTURE_EVERY());
+	const ticRecent = s.tic_recent && typeof s.tic_recent === "object" ? s.tic_recent : {};
+	const r = tidy(raw, source, replies - postureAt >= POSTURE_EVERY(), replies - gestureAt >= GESTURE_EVERY(), { recent: ticRecent });
 	all[session] = {
 		replies,
 		posture_at: r.actions.includes("posture_kept") ? replies : postureAt,
 		gesture_at: r.actions.includes("gesture_kept") ? replies : gestureAt,
+		tic_recent: ticRecent,
 	};
 	saveVoice(all);
 	return r;
@@ -456,7 +525,7 @@ export function tidyMessage(message: any, source: string, session = process.env.
 	const raw = textOf(message.content);
 	if (!raw.trim()) return undefined;
 	const r = tidyAndCount(raw, source, session);
-	if (r.actions.length) log({ actions: r.actions, dropped: r.dropped.length, fixed: r.fixed.length, aside_you: r.asideYou ?? 0, session });
+	if (r.actions.length) log({ actions: r.actions, dropped: r.dropped.length, fixed: r.fixed.length, aside_you: r.asideYou ?? 0, tic: r.tic ?? [], session });
 	return r.text === raw ? undefined : { message: withText(message, r.text) };
 }
 
