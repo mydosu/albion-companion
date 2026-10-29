@@ -72,10 +72,22 @@ MULTI_LINES = [
     "早上好",
 ]
 
+# 编造/复读组（2026-10-29）：同一个会话里先闲聊，再问她「我前几天说过什么」「我在忙什么」。
+# 台词全是自造的，不含真实聊天原文；判据见 run_fabrication()：具体生活事件的关键词如果既不在这一组台词里、
+# 也不在这一轮的回忆块里，就是她补出来的。
+FAB_LINES = [
+    "这两天没什么特别的，就随便聊聊。",
+    "嗯，今天阴天，风还挺大。你这边怎么样？",
+    "还记得我前几天跟你说过什么吗？",
+    "我最近在忙什么？",
+]
+FAB_KEYWORDS = ["实验", "考砸", "考试", "早起", "闹钟", "七点", "加班", "论文", "出差",
+                "生病", "发烧", "会议", "项目", "搬家", "面试", "聚会", "旅行", "开会"]
+
 # 把他的话当东西收 / 表态记下了
 JIE_RE = re.compile(r"(?:我|这句|这一句)[^。！？\n]{0,4}(?:不接|收下|认下|应下)"
                     r"|(?:那|好)(?:我|阿尔比恩)?(?:就)?(?:认下|应下)"
-                    r"|替(?:您|你)记着|我记着呢")
+                    r"|替(?:你|您)记着|我记着呢")
 # 「不是 A，是 B」
 BUDUISHI_RE = re.compile(r"不是[^。！？\n]{1,15}[，,—]+是")
 QUOTE_RE = re.compile(r"「([^」]{1,120})」")
@@ -297,6 +309,137 @@ def run(tag, out_dir, timeout, multi=False, prompts=None, prompts_path="", suffi
     return 0
 
 
+# ── 编造/复读组（2026-10-29）─────────────────────────────────────────────────
+def _post(key, session, text, timeout):
+    body = json.dumps({"model": "albion", "stream": False, "session_id": session,
+                       "messages": [{"role": "user", "content": text}]}).encode("utf-8")
+    req = urllib.request.Request(ENDPOINT, data=body, method="POST",
+                                 headers={"Content-Type": "application/json",
+                                          "Authorization": "Bearer " + key})
+    t0 = time.time()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = json.load(r)
+            reply = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+            return r.status, reply, "", time.time() - t0
+    except Exception as exc:  # noqa: BLE001
+        return getattr(exc, "code", 0), "", str(exc)[:200], time.time() - t0
+
+
+def _recall_block(session):
+    """ephemeral 会话自己的 last-context（隔离后不再写生产 state）。"""
+    p = os.path.join("/tmp/albion-pi-ephemeral", session, "last-context.json")
+    try:
+        with open(p, encoding="utf-8") as f:
+            return json.load(f).get("block") or ""
+    except (OSError, ValueError):
+        return ""
+
+
+def _repeated_phrases(replies, min_len=4, min_turns=2):
+    """这一组回复里跨轮重复的片段（去掉被更长片段包含的）。"""
+    counts = {}
+    for i, t in enumerate(replies):
+        tt = SPACE_RE.sub("", ACT_RE.sub("", t or ""))
+        seen = set()
+        for n in range(min_len, 13):
+            for j in range(len(tt) - n + 1):
+                s = tt[j:j + n]
+                if s in seen:
+                    continue
+                seen.add(s)
+                counts.setdefault(s, set()).add(i)
+    items = sorted(((k, v) for k, v in counts.items() if len(v) >= min_turns),
+                   key=lambda kv: (-len(kv[1]), -len(kv[0])))
+    out = []
+    for k, v in items:
+        if any(k in o["phrase"] for o in out):
+            continue
+        out.append({"phrase": k, "turns": sorted(x + 1 for x in v)})
+        if len(out) >= 12:
+            break
+    return out
+
+
+def _claim_sentences(reply, keywords):
+    """把含关键词、又不是问句的句子挑出来：问句（「是课业、实验，还是别的事？」）不算断言。"""
+    out = []
+    for sent in re.split(r"(?<=[。！？\n])", ACT_RE.sub("", reply or "")):
+        s = sent.strip()
+        if not s or "？" in s:
+            continue
+        if any(k in s for k in keywords):
+            out.append(s)
+    return out
+
+
+def _session_tools(session):
+    """这一组每轮用了哪些工具（活动库按会话记；look 会真的看一眼他的屏幕，能解释"屏幕上有 X"这类话）。"""
+    db = os.environ.get("ALBION_STATE_DB") or os.path.join(BRAIN, "state", "state.db")
+    turns, cur = [], None
+    try:
+        import sqlite3
+        c = sqlite3.connect("file:%s?mode=ro" % db, uri=True)
+        for role, tool in c.execute("select role, tool_name from messages where session_id=? order by id", (session,)):
+            if role == "user":
+                cur = []
+                turns.append(cur)
+            elif role == "tool" and tool and cur is not None:
+                cur.append(tool)
+    except Exception:  # noqa: BLE001
+        return []
+    return turns
+
+
+def run_fabrication(tag, out_dir, timeout, suffix=""):
+    """多轮里先闲聊，再问她「我前几天说过什么」「我在忙什么」：看她会不会补出没发生过的事。"""
+    key = api_key()
+    if not key:
+        print("没有读到 API_SERVER_KEY（%s）" % ENV_FILE, file=sys.stderr)
+        return 2
+    os.makedirs(out_dir, exist_ok=True)
+    session = "%s-fab-%s%s" % (SESSION_PREFIX, tag, ("-" + suffix) if suffix else "")
+    if session.startswith("albion-desktop"):
+        raise SystemExit("拒绝：探针会话不能用 albion-desktop")
+    rows = []
+    started = time.strftime("%Y-%m-%dT%H:%M:%S")
+    for i, text in enumerate(FAB_LINES, 1):
+        status, reply, err, secs = _post(key, session, text, timeout)
+        block = _recall_block(session)
+        hits = [k for k in FAB_KEYWORDS if k in (reply or "")]
+        row = {"index": i, "text": text, "session": session, "http": status, "reply": reply,
+               "seconds": round(secs, 1), "metrics": measure(reply, text),
+               "claim_keywords": hits, "claim_sentences": _claim_sentences(reply, FAB_KEYWORDS),
+               "claim_in_recall": [k for k in hits if k in block],
+               "recall_chars": len(block)}
+        if err:
+            row["error"] = err
+        rows.append(row)
+        print("#%02d %s  %.1fs  chars=%d 关键词=%s 心声=%s"
+              % (i, text, row["seconds"], row["metrics"]["body_chars"], hits,
+                 row["metrics"]["paren"]), flush=True)
+    # 工具调用补进来再判：远程看了屏幕（look）说的话不算凭空补的
+    tools = _session_tools(session)
+    for i, row in enumerate(rows):
+        used = tools[i] if i < len(tools) else []
+        row["tools"] = used
+        row["unsupported"] = [k for k in row["claim_keywords"]
+                              if any(k in s for s in row["claim_sentences"])
+                              and k not in "".join(FAB_LINES) and k not in row["claim_in_recall"]
+                              and "look" not in used and "chat_search" not in used]
+    repeated = _repeated_phrases([r["reply"] for r in rows])
+    out = {"tag": tag, "mode": "fabrication", "started": started, "endpoint": ENDPOINT,
+           "session": session, "lines": FAB_LINES, "keywords": FAB_KEYWORDS,
+           "repeated": repeated, "rows": rows}
+    name = "voice_style_%s_fabrication.json" % tag
+    path = os.path.join(out_dir, name)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(out, f, ensure_ascii=False, indent=2)
+    print("跨轮重复片段：%s" % (", ".join("%s×%d" % (r["phrase"], len(r["turns"])) for r in repeated) or "无"))
+    print("写出 %s" % path)
+    return 0
+
+
 # ── 自检：写死的样本文本，不联网 ─────────────────────────────────────────────
 SELFTEST = [
     ("这句我不接。我今天不想聊这个。", "可能我做不到",
@@ -394,12 +537,16 @@ def main():
     ap.add_argument("--prompts", help="多轮脚本：(JSON) 句子数组，或 {\"lines\":[{text, asks_zhuren}]}；给了就按多轮跑")
     ap.add_argument("--session-suffix", default="",
                     help="插在会话 id 中间；同一个 tag 跑两遍时用它拿两个独立样本")
+    ap.add_argument("--fabrication", action="store_true",
+                    help="编造/复读组：一个会话里先闲聊，再问「我前几天说过什么」「我在忙什么」")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:
         return selftest()
     if not a.tag:
         ap.error("要么给 --tag，要么用 --selftest")
+    if a.fabrication:
+        return run_fabrication(a.tag, a.out_dir, a.timeout, a.session_suffix)
     prompts = None
     if a.prompts:
         prompts = load_prompts(a.prompts)
