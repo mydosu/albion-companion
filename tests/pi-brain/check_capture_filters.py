@@ -20,6 +20,7 @@ import os
 import re
 import sys
 import tempfile
+from datetime import date, datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BRAIN = os.path.join(ROOT, "integrations", "pi-brain")
@@ -121,14 +122,24 @@ def main() -> int:
              "  指挥官做实验一天\n</memory-context>\n\n【阿尔比恩本轮说话约定】\n只回应当前输入")
     assert apply_rules(dirty, rules) == "今天好累", apply_rules(dirty, rules)
 
+    # 3b) 每轮约定开头那行「现在」（2026-10-29）也在约定块里，一起剥掉、不提交
+    timed = ("今天好累\n\n<memory-context>\n[System note: x]\n- [memory]\n  旧事\n</memory-context>\n\n"
+             "【阿尔比恩本轮说话约定】\n现在是 2026-10-29 18:20，星期四，傍晚。他上一条消息是 2 小时前。\n"
+             "只回应当前输入，当前输入决定本轮话题")
+    got = apply_rules(timed, rules)
+    assert got == "今天好累", got
+    assert "现在是" not in got and "星期" not in got, got
+
     # 4) 闲聊原样留下；assistant 的回复不受这些 user 规则影响
     assert apply_rules("在吗", rules) == "在吗"
     assert apply_rules("晚安", rules, role="assistant") == "晚安"
 
-    # 5) 心事本那一行：带记下的日期；没 at 的省掉括号（C 项）
+    # 5) 心事本那一行：带记下的日期和「几天前」；没 at 的省掉括号（C 项）
     line = [l for l in prompt.split("\n") if l.startswith("心事本里还开着的")][0]
     assert line.startswith("心事本里还开着的（我自己记的，可能记错；等合适的时候再问，问过一次就划掉）："), line
-    assert "#16（10-25 记）指挥官今天下午做实验做了一整天" in line, line
+    n = (datetime.now(wake.TZ).date() - date(2026, 10, 25)).days
+    rel = "今天" if n == 0 else "昨天" if n == 1 else "%d天前" % n
+    assert "#16（10-25 记，%s）指挥官今天下午做实验做了一整天" % rel in line, line
     assert "#30 没有时间的一条" in line and "#30（" not in line, line
 
     print("CAPTURE FILTERS OK：%d 条规则（醒来/补问丢、旧记录剥成原话、约定/回忆块剥掉、闲聊原样）；心事本行带日期"

@@ -32,11 +32,106 @@ const CONTEXT = MARKER + "\n只回应当前输入，当前输入决定本轮话�
  * 把这一轮真正递给模型的那条 user 消息拼出来：当前原文 → 回忆（只作事实参考）→ 逐轮说话约定。
  * 约定放**末尾**，离模型最近；回忆原来接在约定后面，会让检索到的旧话压过当前话题（2026-10-08 codex 发现）。
  */
-export function composeTurnContent(source: string, memory: string | null, hasToolResult = false, recent: string[] = [], facts = "") {
+export function composeTurnContent(source: string, memory: string | null, hasToolResult = false, recent: string[] = [], facts = "", nowMs = Date.now(), prevMs: number | null = null) {
   const parts = [source];
   if (memory) parts.push(memory);
-  parts.push(turn_guidance(source, hasToolResult, recent, facts));
+  parts.push(turn_guidance(source, hasToolResult, recent, facts, nowMs, prevMs));
   return { role: "user", content: parts.join("\n\n") };
+}
+
+// ── 现在几点（2026-10-29）──────────────────────────────────────────────────
+// 普通轮里唯一的“现在”原来是壳加在消息前的 [日期 时间]，没有星期、没有“距上一条多久”。
+// 这里按北京时间算好一行放进每轮约定（不依赖进程时区，Windows/WSL 都能测）。
+const BJ_MS = 8 * 3600_000;
+const WEEK_CN = ["日", "一", "二", "三", "四", "五", "六"];
+const CONTEXT_HEAD = MARKER + "\n";
+const CONTEXT_BODY = CONTEXT.slice(CONTEXT_HEAD.length);
+const STAMP_RE = /\[(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})\]/g;
+
+/** 北京时间的年月日时分与星期（getUTCDay：0=日）。 */
+export function bjParts(ms: number) {
+  const d = new Date(ms + BJ_MS);
+  return { y: d.getUTCFullYear(), mo: d.getUTCMonth() + 1, d: d.getUTCDate(), h: d.getUTCHours(), mi: d.getUTCMinutes(), wd: d.getUTCDay() };
+}
+
+/** 时段：0–4 深夜 / 5–7 清早 / 8–10 上午 / 11–12 中午 / 13–16 下午 / 17–18 傍晚 / 19–22 晚上 / 23 深夜。 */
+export function slotName(hour: number): string {
+  if (hour <= 4) return "深夜";
+  if (hour <= 7) return "清早";
+  if (hour <= 10) return "上午";
+  if (hour <= 12) return "中午";
+  if (hour <= 16) return "下午";
+  if (hour <= 18) return "傍晚";
+  if (hour <= 22) return "晚上";
+  return "深夜";
+}
+
+/** 间隔的说法：跟 bin/wake.py 的 ago() 一个风格（分钟/小时），再补上“天”。 */
+export function agoText(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  if (m < 1) return "刚刚";
+  if (m < 60) return `${m} 分钟`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} 小时${m % 60 ? ` ${m % 60} 分钟` : ""}`;
+  return `${Math.floor(h / 24)} 天${h % 24 ? ` ${h % 24} 小时` : ""}`;
+}
+
+/** 每轮约定开头那行；没有上一条就只说“现在”。 */
+export function timeLine(nowMs: number, prevMs: number | null): string {
+  const p = bjParts(nowMs);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const head = `现在是 ${p.y}-${pad(p.mo)}-${pad(p.d)} ${pad(p.h)}:${pad(p.mi)}，星期${WEEK_CN[p.wd]}，${slotName(p.h)}。`;
+  if (prevMs === null || !Number.isFinite(prevMs) || prevMs > nowMs) return head;
+  const gap = (nowMs - prevMs) / 1000;
+  return gap < 60 ? head + "他上一条消息就在刚刚。" : head + `他上一条消息是${agoText(gap)}前。`;
+}
+
+/** 一条消息里所有 [YYYY-MM-DD HH:MM]（按北京时间解析；播种块里会有很多条）。 */
+export function stampsOf(text: string): number[] {
+  const out: number[] = [];
+  STAMP_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = STAMP_RE.exec(text))) out.push(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4] - 8, +m[5]));
+  return out;
+}
+
+/**
+ * 这个会话里、本条之前他上一条消息的时间；找不到返回 null。
+ * 只看本条【现在】之前的历史 + 前面那些 user 消息（别把本条自己的时间戳算进来）。
+ */
+export function previousUserMs(messages: any[], idx: number): number | null {
+  let best: number | null = null;
+  const cur = msg_text(messages?.[idx]);
+  const nowPos = cur.lastIndexOf("【现在】");
+  for (const t of stampsOf(nowPos >= 0 ? cur.slice(0, nowPos) : "")) if (best === null || t > best) best = t;
+  for (let i = idx - 1; i >= 0; i--) {
+    if (messages?.[i]?.role !== "user") continue;
+    for (const t of stampsOf(msg_text(messages[i]))) if (best === null || t > best) best = t;
+  }
+  return best;
+}
+
+/** 消息里没带时间戳时（探针/验收不走壳）：退回活动库找这个会话里他上一条真实消息。 */
+async function previousUserMsFromDb(): Promise<number | null> {
+  const mod = await getSqlite();
+  if (!mod) return null;
+  try {
+    const db = new mod.DatabaseSync(STATE_DB);
+    try {
+      const row = db
+        .prepare(
+          "SELECT timestamp AS t FROM messages WHERE session_id=? AND role='user' " +
+            "AND content NOT LIKE '（阿尔比恩%' AND content NOT LIKE '【%' ORDER BY id DESC LIMIT 1",
+        )
+        .get(SESSION_ID);
+      return row?.t ? Number(row.t) * 1000 : null;
+    } finally {
+      db.close();
+    }
+  } catch (e) {
+    log("warn: previous message lookup failed", String((e as Error)?.message ?? e));
+    return null;
+  }
 }
 
 /**
@@ -140,7 +235,7 @@ function brokenExtensionsNote(): string {
   }
 }
 
-function turn_guidance(text: string, hasToolResult = false, recent: string[] = [], facts = ""): string {
+function turn_guidance(text: string, hasToolResult = false, recent: string[] = [], facts = "", nowMs = Date.now(), prevMs: number | null = null): string {
   const body = text.replace(/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]\s*/, "");
   // 她自己定的醒来时间到了（bin/wake.py 换进来的那段，开头是【自主醒来】；醒来时该看到的都写在那段里，这里只认一下）
   const woke = /(?:^|【现在】\s*)【自主醒来】/.test(body); // 会话刚重启时前面会先接上历史
@@ -170,7 +265,9 @@ function turn_guidance(text: string, hasToolResult = false, recent: string[] = [
   if (recent.length) {
     event += `我最近几次的心声写过：「${recent.join("」「")}」。这次别再用同样的说法或同一种感受（比如又写耳根烫、脸红）；没有新的感受就不写心声。`;
   }
-  return CONTEXT + event + SITUATION;
+  // 自主醒来轮的时间在醒来提示里（wake.py），这里不再重复加
+  const line = woke ? "" : timeLine(nowMs, prevMs);
+  return CONTEXT_HEAD + (line ? line + "\n" : "") + CONTEXT_BODY + event + SITUATION;
 }
 
 // 账本（albion-loopguard 在一轮前后对她的目录做快照比对得出，globalThis.__albionLedger）：有账本时，写类工具只有真改过的文件才记成 verified，
@@ -354,8 +451,12 @@ export default function albionTurn(pi: ExtensionAPI): void {
     // 上一轮的改动事实只给一次（读完就清，同一轮后面几次 context 不再重复）
     const facts = String((globalThis as any).__albionTurnFacts ?? "");
     (globalThis as any).__albionTurnFacts = "";
-    const composed = composeTurnContent(source, block, hasToolResult, recent, facts);
-    writeLastContext(source, turn_guidance(source, hasToolResult, recent, facts), block,
+    // “现在”和“他上一条消息”：先看这一轮消息里带的 [时间]（壳加的），没有就退回活动库
+    const nowMs = Date.now();
+    let prevMs = previousUserMs(messages, idx);
+    if (prevMs === null) prevMs = await previousUserMsFromDb();
+    const composed = composeTurnContent(source, block, hasToolResult, recent, facts, nowMs, prevMs);
+    writeLastContext(source, turn_guidance(source, hasToolResult, recent, facts, nowMs, prevMs), block,
                      composed.content.slice(source.length).replace(/^\n\n/, ""));
 
     lastSource = source;
@@ -437,4 +538,4 @@ export default function albionTurn(pi: ExtensionAPI): void {
 }
 
 // 自检钩子：bin/test_guard_ext.ts 直接驱动这些函数。
-export const _albionTest = { MARKER, CONTEXT, turn_guidance, composeTurnContent, tool_row, msg_text, recentAsides };
+export const _albionTest = { MARKER, CONTEXT, turn_guidance, composeTurnContent, tool_row, msg_text, recentAsides, timeLine, slotName, bjParts, agoText, stampsOf, previousUserMs };

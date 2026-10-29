@@ -314,6 +314,44 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   console.log("K 自主醒来轮只认来源、处境段在末尾 OK");
 }
 
+// R) 每轮约定开头报时：时段边界、星期、间隔各档、没有上一条、醒来轮不加、别取到本条自己
+{
+  const T = _albionTest;
+  const slots: [number, string][] = [[0, "深夜"], [4, "深夜"], [5, "清早"], [7, "清早"], [8, "上午"], [10, "上午"],
+    [11, "中午"], [12, "中午"], [13, "下午"], [16, "下午"], [17, "傍晚"], [18, "傍晚"], [19, "晚上"], [22, "晚上"], [23, "深夜"]];
+  for (const [h, want] of slots) assert.equal(T.slotName(h), want, `${h} 点 → ${want}`);
+  const at = (y: number, mo: number, d: number, h: number, mi: number) => Date.UTC(y, mo - 1, d, h - 8, mi);
+  const now = at(2026, 10, 29, 18, 20); // 星期四
+  assert.equal(T.timeLine(now, null), "现在是 2026-10-29 18:20，星期四，傍晚。", "没有上一条就只说现在");
+  assert.ok(!T.timeLine(now, null).includes("他上一条消息"));
+  assert.equal(T.timeLine(now, now - 30_000), "现在是 2026-10-29 18:20，星期四，傍晚。他上一条消息就在刚刚。");
+  assert.ok(T.timeLine(now, now - 90_000).endsWith("他上一条消息是1 分钟前。"));
+  assert.ok(T.timeLine(now, now - 59 * 60_000).endsWith("他上一条消息是59 分钟前。"));
+  assert.ok(T.timeLine(now, now - 90 * 60_000).endsWith("他上一条消息是1 小时 30 分钟前。"));
+  assert.ok(T.timeLine(now, now - 25 * 3600_000).endsWith("他上一条消息是1 天 1 小时前。"));
+  // 星期：2026-10-29 星期四；2026-11-01 星期日
+  assert.ok(T.timeLine(at(2026, 11, 1, 9, 5), null).includes("星期日"));
+  assert.ok(T.timeLine(at(2026, 10, 26, 9, 0), null).includes("星期一"));
+  // 放到约定最前面
+  const g = T.turn_guidance("在吗", false, [], "", now, now - 90_000);
+  assert.ok(g.startsWith(T.MARKER + "\n现在是 2026-10-29 18:20，星期四，傍晚。他上一条消息是1 分钟前。"), g.slice(0, 120));
+  // 醒来轮不加（时间在 wake.py 的醒来提示里）
+  const woke = T.turn_guidance("【自主醒来】现在是 2026-10-29 18:20（星期四）。", false, [], "", now, now - 90_000);
+  assert.ok(!woke.includes("现在是 2026-10-29 18:20，星期四，傍晚。"), "醒来轮不重复加时间");
+  // 别取到本条自己：本条只有自己的时间戳 → 没有上一条
+  const cur = { role: "user", content: "[2026-10-29 18:20] 在吗" };
+  assert.equal(T.previousUserMs([cur], 0), null);
+  const prev = { role: "user", content: "[2026-10-29 16:00] 你好" };
+  assert.equal(T.previousUserMs([prev, { role: "assistant", content: "嗯" }, cur], 2), at(2026, 10, 29, 16, 0));
+  // 播种块：本条【现在】之前的历史算上一条
+  const seed = { role: "user", content: "【以下是这次对话此前的记录】\n指挥官：[2026-10-29 15:00] 早上好\n\n【现在】\n[2026-10-29 18:20] 在吗" };
+  assert.equal(T.previousUserMs([seed], 0), at(2026, 10, 29, 15, 0));
+  // 组合进本轮内容
+  const composed = T.composeTurnContent("在吗", null, false, [], "", now, now - 3 * 3600_000);
+  assert.ok(composed.content.includes(T.MARKER + "\n现在是 2026-10-29 18:20，星期四，傍晚。他上一条消息是3 小时前。"));
+  console.log("R 每轮约定报时：时段 15 个边界、星期、间隔 5 档/刚刚/没有上一条、醒来轮不加、不取本条自己 OK");
+}
+
 // P) 表态（把他的话当东西收）：整小句只是这种表态才删；删空/只剩称呼就整句删；别处一个字不动
 {
   const cases: [string, string][] = [

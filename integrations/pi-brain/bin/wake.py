@@ -120,16 +120,28 @@ def _notes():
     return [n for n in v if isinstance(n, dict)] if isinstance(v, list) else []
 
 
-def _note_item(n):
-    """心事本一行：#编号（月-日 记）内容；条目没记时间就省掉括号。
+def _days_ago_label(d, now=None):
+    """今天 / 昨天 / N天前（按北京时间的日期算，不按小时）。"""
+    today = datetime.fromtimestamp(now, TZ).date() if now else datetime.now(TZ).date()
+    n = (today - d).days
+    if n <= 0:
+        return "今天"
+    if n == 1:
+        return "昨天"
+    return "%d天前" % n
 
-    2026-10-29 起带日期：不然她自己分不清哪条是几天前记的，一条旧事会被反复当成"最近的事"问。
+
+def _note_item(n, now=None):
+    """心事本一行：#编号（月-日 记，几天前）内容；条目没记时间就省掉括号。
+
+    2026-10-29 起带日期和“几天前”：不然她自己分不清哪条是几天前记的，一条旧事会被反复当成"最近的事"问。
     """
     body = "%s" % (n.get("text") or "")
     at = _num(n.get("at"))
     if not at:
         return "#%s %s" % (n.get("id"), body)
-    return "#%s（%s 记）%s" % (n.get("id"), datetime.fromtimestamp(at, TZ).strftime("%m-%d"), body)
+    dt = datetime.fromtimestamp(at, TZ)
+    return "#%s（%s 记，%s）%s" % (n.get("id"), dt.strftime("%m-%d"), _days_ago_label(dt.date(), now), body)
 
 
 # ── 时间 ────────────────────────────────────────────────────────────────────
@@ -260,7 +272,7 @@ def wake_prompt(now=None):
         lines.append("上次我给自己定的事：%s" % plan["intent"])
     if notes:
         lines.append("心事本里还开着的（我自己记的，可能记错；等合适的时候再问，问过一次就划掉）："
-                     + "；".join(_note_item(n) for n in notes[:10]))
+                     + "；".join(_note_item(n, now) for n in notes[:10]))
     un = int(_num(st.get("unanswered")))
     if un:
         lines.append("我主动说的话，他已经连着 %d 次没回了，可能不在电脑前。" % un)

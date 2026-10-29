@@ -29,7 +29,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 DEFAULT_ENDPOINT = "http://127.0.0.1:1933"
 USER_AGENT = "openviking-memory-hermes/albion-pi"
@@ -316,6 +318,30 @@ def _select_recall_candidates(items: List[Dict[str, Any]], query: str, *, limit:
     return filtered[:limit]
 
 
+def _memory_date(uri: str) -> Optional[date]:
+    """记忆自己的日期：events 的 uri 路径 events/YYYY/MM/DD/ 最可靠；别的类型没有日期。"""
+    m = re.search(r"/events/(\d{4})/(\d{2})/(\d{2})/", uri or "")
+    if not m:
+        return None
+    try:
+        return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    except ValueError:
+        return None
+
+
+def _age_label(d: Optional[date], today: Optional[date] = None) -> str:
+    """（MM-DD，今天/昨天/N天前）；没有日期或日期在未来就不加。"""
+    if d is None:
+        return ""
+    if today is None:
+        today = datetime.now(ZoneInfo(_env_str("ALBION_TZ", "Asia/Shanghai"))).date()
+    n = (today - d).days
+    if n < 0:
+        return ""
+    rel = "今天" if n == 0 else "昨天" if n == 1 else "%d天前" % n
+    return "（%02d-%02d，%s）" % (d.month, d.day, rel)
+
+
 def _build_prefetch_entries(client: _Client, items: List[Dict[str, Any]], *, prefer_abstract: bool,
                             max_injected_chars: int, deadline: float, request_timeout: float,
                             full_read_limit: int) -> List[str]:
@@ -337,7 +363,9 @@ def _build_prefetch_entries(client: _Client, items: List[Dict[str, Any]], *, pre
         if not content:
             continue
         category = str(item.get("category") or "").strip() or "memory"
+        age = _age_label(_memory_date(uri))
         entry = "\n".join([f"- [{category}]", f"  <uri>{item.get('uri', '')}</uri>",
+                           *([f"  {age}"] if age else []),
                            *[f"  {line}" for line in content.splitlines()]])
         projected = total_chars + (1 if entries else 0) + len(entry)
         if projected <= max_injected_chars:
