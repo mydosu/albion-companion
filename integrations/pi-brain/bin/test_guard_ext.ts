@@ -322,19 +322,24 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   for (const [h, want] of slots) assert.equal(T.slotName(h), want, `${h} 点 → ${want}`);
   const at = (y: number, mo: number, d: number, h: number, mi: number) => Date.UTC(y, mo - 1, d, h - 8, mi);
   const now = at(2026, 10, 29, 18, 20); // 星期四
-  assert.equal(T.timeLine(now, null), "现在是 2026-10-29 18:20，星期四，傍晚。", "没有上一条就只说现在");
+  const TAIL = "这些我心里有数就行，他问起来再像平常聊天那样说。";
+  assert.equal(T.timeLine(now, null), "现在是 2026-10-29 18:20，星期四，傍晚。" + TAIL, "没有上一条就只说现在");
   assert.ok(!T.timeLine(now, null).includes("他上一条消息"));
-  assert.equal(T.timeLine(now, now - 30_000), "现在是 2026-10-29 18:20，星期四，傍晚。他上一条消息就在刚刚。");
-  assert.ok(T.timeLine(now, now - 90_000).endsWith("他上一条消息是1 分钟前。"));
-  assert.ok(T.timeLine(now, now - 59 * 60_000).endsWith("他上一条消息是59 分钟前。"));
-  assert.ok(T.timeLine(now, now - 90 * 60_000).endsWith("他上一条消息是1 小时 30 分钟前。"));
-  assert.ok(T.timeLine(now, now - 25 * 3600_000).endsWith("他上一条消息是1 天 1 小时前。"));
+  assert.equal(T.timeLine(now, now - 30_000), "现在是 2026-10-29 18:20，星期四，傍晚。他上一条消息就在刚刚。" + TAIL);
+  assert.ok(T.timeLine(now, now - 90_000).endsWith("他上一条消息是1分钟前。" + TAIL));
+  assert.ok(T.timeLine(now, now - 59 * 60_000).endsWith("他上一条消息是59分钟前。" + TAIL));
+  assert.ok(T.timeLine(now, now - 90 * 60_000).endsWith("他上一条消息是1小时30分钟前。" + TAIL));
+  assert.ok(T.timeLine(now, now - 25 * 3600_000).endsWith("他上一条消息是1天1小时前。" + TAIL));
+  assert.ok(!/\d\s+(分|小时|天)/.test(T.timeLine(now, now - 25 * 3600_000)), "数字和单位之间不留空格");
   // 星期：2026-10-29 星期四；2026-11-01 星期日
   assert.ok(T.timeLine(at(2026, 11, 1, 9, 5), null).includes("星期日"));
   assert.ok(T.timeLine(at(2026, 10, 26, 9, 0), null).includes("星期一"));
   // 放到约定最前面
   const g = T.turn_guidance("在吗", false, [], "", now, now - 90_000);
-  assert.ok(g.startsWith(T.MARKER + "\n现在是 2026-10-29 18:20，星期四，傍晚。他上一条消息是1 分钟前。"), g.slice(0, 120));
+  assert.ok(g.startsWith(T.MARKER + "\n现在是 2026-10-29 18:20，星期四，傍晚。他上一条消息是1分钟前。" + TAIL), g.slice(0, 140));
+  // 心声那句之后紧接着一行“只说他自己提过的”
+  assert.ok(T.CONTEXT.includes("正常问话就正常答。\n说到他平时怎么样，只说他自己提过的；没提过的，就只说这一次。\n我最看重的一件事"), "约定里要加这一行");
+  assert.ok(g.includes("说到他平时怎么样，只说他自己提过的；没提过的，就只说这一次。"), "每轮约定也带上");
   // 醒来轮不加（时间在 wake.py 的醒来提示里）
   const woke = T.turn_guidance("【自主醒来】现在是 2026-10-29 18:20（星期四）。", false, [], "", now, now - 90_000);
   assert.ok(!woke.includes("现在是 2026-10-29 18:20，星期四，傍晚。"), "醒来轮不重复加时间");
@@ -348,8 +353,8 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   assert.equal(T.previousUserMs([seed], 0), at(2026, 10, 29, 15, 0));
   // 组合进本轮内容
   const composed = T.composeTurnContent("在吗", null, false, [], "", now, now - 3 * 3600_000);
-  assert.ok(composed.content.includes(T.MARKER + "\n现在是 2026-10-29 18:20，星期四，傍晚。他上一条消息是3 小时前。"));
-  console.log("R 每轮约定报时：时段 15 个边界、星期、间隔 5 档/刚刚/没有上一条、醒来轮不加、不取本条自己 OK");
+  assert.ok(composed.content.includes(T.MARKER + "\n现在是 2026-10-29 18:20，星期四，傍晚。他上一条消息是3小时前。" + TAIL));
+  console.log("R 每轮约定报时：时段 15 个边界、星期、间隔 5 档/刚刚/没有上一条、无空格、结尾那句、只说提过的、醒来轮不加、不取本条自己 OK");
 }
 
 // P) 表态（把他的话当东西收）：整小句只是这种表态才删；删空/只剩称呼就整句删；别处一个字不动

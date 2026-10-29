@@ -124,11 +124,13 @@ def main() -> int:
 
     # 3b) 每轮约定开头那行「现在」（2026-10-29）也在约定块里，一起剥掉、不提交
     timed = ("今天好累\n\n<memory-context>\n[System note: x]\n- [memory]\n  旧事\n</memory-context>\n\n"
-             "【阿尔比恩本轮说话约定】\n现在是 2026-10-29 18:20，星期四，傍晚。他上一条消息是 2 小时前。\n"
+             "【阿尔比恩本轮说话约定】\n现在是 2026-10-29 18:20，星期四，傍晚。他上一条消息是2小时前。"
+             "这些我心里有数就行，他问起来再像平常聊天那样说。\n"
              "只回应当前输入，当前输入决定本轮话题")
     got = apply_rules(timed, rules)
     assert got == "今天好累", got
     assert "现在是" not in got and "星期" not in got, got
+    assert "这些我心里有数就行" not in got, got
 
     # 4) 闲聊原样留下；assistant 的回复不受这些 user 规则影响
     assert apply_rules("在吗", rules) == "在吗"
