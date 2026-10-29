@@ -25,7 +25,7 @@ let fetches = 0;
   throw new Error("albion-guard 不该发网络请求");
 };
 
-const { default: albionGuard, tidy, tidyAndCount, tidyMessage, tidyMessageRegen, isRefusal, NEUTRAL_ACT, fixTicPhrases } = await import("../agent/extensions/albion-guard.ts");
+const { default: albionGuard, tidy, tidyAndCount, tidyMessage, tidyMessageRegen, isRefusal, NEUTRAL_ACT, fixTicPhrases, detectRegenHits } = await import("../agent/extensions/albion-guard.ts");
 const { default: albionTurn, _albionTest } = await import("../agent/extensions/albion-turn.ts");
 
 const assistant = (text: string) => ({ role: "assistant", content: [{ type: "text", text }], stopReason: "stop" });

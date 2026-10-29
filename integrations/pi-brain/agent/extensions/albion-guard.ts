@@ -549,10 +549,12 @@ const EXTRA_LINES: Record<string, string> = {
 	stance: "自己怎么想，用一整句平常话把理由讲出来，不用两三个字的短句表态。",
 };
 
-const RE_METAPHOR_A = /(?<!电)(?:话|句|心意|心事|好意|夸奖?)[^。！？…，,\n]{0,6}?(?:接住|接不住|接得住|收下|收着|收好|搁|放下|放在|递|留着|丢|捎|装进|装在|拆开|揣|攥|捧)/g;
-const RE_METAPHOR_B = /(?:接|递|丢|捎)(?:过来|过去|给我|给您)?的(?:话|那句|这句)/g;
+const RE_METAPHOR_A = /(?<!电)(?:话|句|心意|心事|好意|夸奖?)[^。！？…\n]{0,16}?(?:接住|接不住|接得住|接下(?![来去])|收下|收着|收好|搁|放下|放在|递|留着|丢|捎|装进|装在|拆开|揣|攥|捧|扎)/g;
+const RE_METAPHOR_B = /(?:接|递|丢|捎|扔)(?:过来|过去|给我|给您)?的?(?:这么|这|那)?一?(?:句|话)(?!题)/g;
+// 10-29 复测漏网：「没准备过怎么接」「那我就收下了」「有点扎人」「讨这一句」
+const RE_METAPHOR_C = /怎么接(?![电您你人送着手班])|我(?:就|先|都|也)?收下了?(?=[。！？…，,]|$)|扎(?:人|心|耳)|讨(?:这|那)?一?句/g;
 const RE_HABIT = /(?:您|你)(?:总(?!得|算|共|之|归)是?|老是|每次|一向|向来)|别又/g;
-const RE_STANCE = /(?:^|[。！？，,…\s])(?:这话|这句|这个)?我(?:不装|不辩|不躲|不争|认一半|认了|就认)(?=[。！？，,…]|$)/g;
+const RE_STANCE = /(?:^|[。！？，,…\s])(?:那)?(?:这话|这句|这个)?我(?:不装|不辩|不躲|不争|认一半|认了|就认|认|不认)(?=[。！？，,…]|$)/g;
 const RE_RECALL_Q = /记得|记不清|回忆|之前|以前|上次|买过|九月份|过去/;
 const RE_RECALL_META = /记得一样(?=[：:，,。！？\s]|$)|(?:敢说|能说)[^。！？\n]{0,8}(?:只有|就剩)[^。！？\n]{0,6}(?:这一笔|这一件|这一条)|(?:翻出来|翻到|检索到|查到)[^。！？\n]{0,8}(?:只有|就剩)[^。！？\n]{0,6}(?:这一个|这一件|这一条)/;
 const RE_NOTE_WORDS = /记住|记着|记得|记一下|记下来|记下|还记|别忘|记事|记录|收好|收下|留着|保存/;
@@ -619,7 +621,7 @@ export function detectRegenHits(body: string): RegenHit[] {
 		const text = clipHit(m);
 		if (text && !hits.some((h) => h.rule === rule && h.text === text)) hits.push({ rule, text });
 	};
-	for (const re of [RE_METAPHOR_A, RE_METAPHOR_B]) {
+	for (const re of [RE_METAPHOR_A, RE_METAPHOR_B, RE_METAPHOR_C]) {
 		re.lastIndex = 0;
 		for (const m of body.matchAll(re)) add("metaphor", m[0]);
 	}
