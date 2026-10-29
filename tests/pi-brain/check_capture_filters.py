@@ -127,7 +127,7 @@ def main() -> int:
 
     # 5) 心事本那一行：带记下的日期；没 at 的省掉括号（C 项）
     line = [l for l in prompt.split("\n") if l.startswith("心事本里还开着的")][0]
-    assert line.startswith("心事本里还开着的（我自己记的，可能记错；没合适的时机就先放着，提过一次就划掉）："), line
+    assert line.startswith("心事本里还开着的（我自己记的，可能记错；等合适的时候再问，问过一次就划掉）："), line
     assert "#16（10-25 记）指挥官今天下午做实验做了一整天" in line, line
     assert "#30 没有时间的一条" in line and "#30（" not in line, line
 

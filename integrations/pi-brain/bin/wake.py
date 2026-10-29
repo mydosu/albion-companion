@@ -259,7 +259,7 @@ def wake_prompt(now=None):
     if plan.get("intent") and _num(plan.get("set_at")) >= prev_wake:
         lines.append("上次我给自己定的事：%s" % plan["intent"])
     if notes:
-        lines.append("心事本里还开着的（我自己记的，可能记错；没合适的时机就先放着，提过一次就划掉）："
+        lines.append("心事本里还开着的（我自己记的，可能记错；等合适的时候再问，问过一次就划掉）："
                      + "；".join(_note_item(n) for n in notes[:10]))
     un = int(_num(st.get("unanswered")))
     if un:

@@ -281,6 +281,13 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   assert.ok(!_albionTest.turn_guidance("在吗").includes("adventure 工具"));
   assert.ok(!_albionTest.turn_guidance("【以下是这次对话此前的记录】\n指挥官：去看书吧\n\n【现在】\n在吗").includes("adventure 工具"), "历史里的「去看书」不算");
   assert.ok(g.trimEnd().endsWith("这一轮没有画面送来，就不说看见了他的样子。"), "处境段仍在最末尾");
+  // 心声摆到她眼前时只截 14 字（2026-10-29：原来 24 字，太长的旧心声会被照着写回来）
+  const longAside = _albionTest.recentAsides([asst("好。（" + "很".repeat(40) + "）")], 1);
+  assert.equal(longAside[0].length, 14, "心声只留 14 字");
+  // 每轮约定里写明心声该多长、写什么（Claude 写的那句，逐字保留）
+  assert.ok(_albionTest.CONTEXT.includes(
+    "心声只写一个念头，一句话，十来个字，口语，想眼前具体的事或对他的一点真感觉；事情和进度放在正文里说，心声里只有感觉；提到他用「您」。",
+  ));
   console.log("M 最近心声防复读 / 去做自己的事是她自己的念头 OK");
 }
 
