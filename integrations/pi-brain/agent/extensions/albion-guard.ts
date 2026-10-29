@@ -21,8 +21,10 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { personalStateDir } from "../lib/session-scope.ts";
 
-const STATE_DIR = () => process.env.ALBION_STATE_DIR || "/root/albion-pi/state";
+// 探针/验收会话的姿态额度写自己的临时目录，不碰生产 voice.json（2026-10-29）
+const STATE_DIR = () => personalStateDir();
 const LOG_PATH = () => process.env.ALBION_GUARD_LOG || "/root/albion-pi/logs/guard.log";
 const POSTURE_EVERY = () => Math.max(1, Number(process.env.ALBION_POSTURE_EVERY) || 8);
 const GESTURE_EVERY = () => Math.max(1, Number(process.env.ALBION_GESTURE_EVERY) || 6);

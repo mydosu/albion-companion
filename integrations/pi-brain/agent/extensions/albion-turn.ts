@@ -9,12 +9,14 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { spawnSync } from "node:child_process";
-import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { posix } from "node:path";
+import { personalStatePath } from "../lib/session-scope.ts";
 
 const MEM = "/root/albion-pi/bin/memory.py";
 const STATE_DB = `${process.env.ALBION_STATE_DIR || "/root/albion-pi/state"}/state.db`;
-const LAST_CONTEXT = "/root/albion-pi/state/last-context.json";
+// 每轮注入块的留档：原来写死生产路径，探针/验收会话会把它覆盖掉（2026-10-29 修）
+const LAST_CONTEXT = () => personalStatePath("last-context.json");
 const LOG = "/root/albion-pi/logs/albion-turn.log";
 const SESSION_ID = process.env.ALBION_SESSION_ID || "albion-desktop";
 const RECALL_TIMEOUT_MS = 30_000;
@@ -76,8 +78,10 @@ function log(msg: string, detail?: string): void {
 // 每轮把最终注入块另存一份，供复核/排障；写失败只记日志。
 function writeLastContext(source: string, guidance: string, recall: string | null, block: string): void {
   try {
+    const target = LAST_CONTEXT();
+    mkdirSync(posix.dirname(target), { recursive: true });
     writeFileSync(
-      LAST_CONTEXT,
+      target,
       JSON.stringify({
         at: Math.floor(Date.now() / 1000),
         source,

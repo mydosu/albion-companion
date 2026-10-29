@@ -120,6 +120,18 @@ def _notes():
     return [n for n in v if isinstance(n, dict)] if isinstance(v, list) else []
 
 
+def _note_item(n):
+    """心事本一行：#编号（月-日 记）内容；条目没记时间就省掉括号。
+
+    2026-10-29 起带日期：不然她自己分不清哪条是几天前记的，一条旧事会被反复当成"最近的事"问。
+    """
+    body = "%s" % (n.get("text") or "")
+    at = _num(n.get("at"))
+    if not at:
+        return "#%s %s" % (n.get("id"), body)
+    return "#%s（%s 记）%s" % (n.get("id"), datetime.fromtimestamp(at, TZ).strftime("%m-%d"), body)
+
+
 # ── 时间 ────────────────────────────────────────────────────────────────────
 def in_quiet(ts):
     t = datetime.fromtimestamp(ts, TZ)
@@ -247,7 +259,8 @@ def wake_prompt(now=None):
     if plan.get("intent") and _num(plan.get("set_at")) >= prev_wake:
         lines.append("上次我给自己定的事：%s" % plan["intent"])
     if notes:
-        lines.append("心事本里还开着的：" + "；".join("#%s %s" % (n.get("id"), n.get("text")) for n in notes[:10]))
+        lines.append("心事本里还开着的（我自己记的，可能记错；没合适的时机就先放着，提过一次就划掉）："
+                     + "；".join(_note_item(n) for n in notes[:10]))
     un = int(_num(st.get("unanswered")))
     if un:
         lines.append("我主动说的话，他已经连着 %d 次没回了，可能不在电脑前。" % un)

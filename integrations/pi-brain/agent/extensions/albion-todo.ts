@@ -8,10 +8,11 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { personalStatePath } from "../lib/session-scope.ts";
 
 type Item = { id: number; text: string; done: boolean };
-const file = () => join(process.env.ALBION_STATE_DIR || "/root/albion-pi/state", "todo.json");
+// 探针/验收会话写自己的临时目录，不碰生产 todo（2026-10-29）
+const file = () => personalStatePath("todo.json");
 const MAX_ITEMS = 30;
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
 

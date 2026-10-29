@@ -81,7 +81,15 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
   `OPENVIKING_RECALL_ALLOW_FILE` 可改。她用 `openviking_*` 工具主动搜不受限制。
 - **只有真对话会话写记忆**：`bin/server.py` 给 `albion-desktop`、`albion-cli` 以外的会话（探针、验收、自检）
   启动 pi 时设 `OPENVIKING_BYPASS_SESSION=1`，官方扩展整段跳过；`accept.sh` 同样。改名单用 `ALBION_MEMORY_SESSIONS`。
-  当天整理删掉的 76 条（开发会话、测试痕迹、探针对话）全文备份在 WSL `/root/ov-tidy/backup-20261014/`。
+  名单本身在 `agent/real-sessions.json`（env 优先）。当天整理删掉的 76 条（开发会话、测试痕迹、探针对话）全文备份在 WSL `/root/ov-tidy/backup-20261014/`。
+- **探针会话也不写生产 state**（2026-10-29）：同一份名单决定 `isEphemeralSession`（`agent/lib/session-scope.ts`），
+  ephemeral 会话的心事本/self/todo/voice/last-context 写 `ALBION_PERSONAL_STATE_DIR`（`/tmp/albion-pi-ephemeral/<会话>`），
+  工具照常返回、生产文件不动；活动库 `state.db` 仍按会话 id 照常记（只追加，摆件只读桌面那条）。
+  起因：10-25 口癖探针的台词「今天好累，实验做了一下午」被写进共享心事本，之后被当成他说过的事反复提。
+- **提交前剥掉脑自己拼的段**（2026-10-29）：真实会话启动 pi 时设 `OPENVIKING_CAPTURE_FILTERS`（规则在
+  `bin/server.py` 的 `CAPTURE_FILTERS`，sed 式 `user:d|…|` / `user:s|…|`）：自主醒来提示词、`【接着说完】`补问
+  整条不提交；会话重启接上的旧记录只留 `【现在】` 之后他真打的字；`<memory-context>` 与每轮约定剥掉。
+  醒来那轮因此没有 user 依据，events 抽取不会把它记成他的事实。
 
 ## 她自己的时间（醒来循环）
 

@@ -85,6 +85,8 @@ bash /root/pi-brain-probe/probe_flow.sh --only T1,T7    # 只挑几轮
 | `verify_image_bytes.py` | 验 `read` 交出去的 image 块解出来跟磁盘上的原图**逐字节相同**（证明 `images.autoResize: false` 真生效、本机没重编码） |
 | `check_voice_tidy.ts` | 整理器（`albion-guard.ts`）的口径表：34 例句子该删的删、不该删的不动、全是姿态句原样留、`（心声）`标签收回括号、ACT 补竖线、切分原样拼回、历轮复核的误伤/漏认例句（不叫模型，秒级；Windows/WSL 都能跑） |
 | `check_self_rhythm.ts` | `next_wake` 的开口节奏 `speak_every_hours`：默认 3 小时、照她定的、不填沿用、夹在 1–6、坏值回默认 |
+| `check_session_scope.ts` | 会话隔离（2026-10-29）：真实会话名单/`ALBION_MEMORY_SESSIONS` 覆盖/空会话名的口径、ephemeral 会话的状态落点，并实测 `notebook`/`todo`/`next_wake` 在探针会话写临时目录、生产文件不动（`agent/lib/session-scope.ts`；不叫模型，Windows/WSL 都能跑） |
+| `check_capture_filters.py` | 提交 OpenViking 前剥注入段（2026-10-29）：按官方扩展的 sed 式文法逐条解析 `bin/server.py` 的 `CAPTURE_FILTERS`，再跑真实形状的文本——醒来/补问整条丢、旧记录只留 `【现在】` 后他真打的字、约定/回忆块剥掉、闲聊原样留；顺带验 `wake.py` 心事本行带日期（不联网、不碰生产 state） |
 | `host_reload_probe.py` | 经宿主（8650）验"改扩展/`APPEND_SYSTEM.md` 会换身子"：只动 mtime，看子进程 pid 变没变、`brain.log` 有没有重载记录 |
 | `host_chat_probe.py` | 经宿主（8650）发一条闲聊：记回复、子进程、`brain.log` 新行（验"新会话自动用上新代码"和壳路径上的真实发言） |
 | `repeat_lockdown_probe.py` | 逼出"同一条命令复读到第 8 次 → 停用工具"那一档，看她还能不能用文字收尾 |

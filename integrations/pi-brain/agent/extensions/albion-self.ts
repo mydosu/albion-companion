@@ -11,6 +11,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { personalStateDir } from "../lib/session-scope.ts";
 
 const MIN_MINUTES = 10;
 const MAX_MINUTES = 360;
@@ -20,7 +21,8 @@ const MAX_SPEAK_H = 6;
 const DEFAULT_SPEAK_H = 3;
 const MAX_OPEN_NOTES = 30;
 
-const stateDir = () => process.env.ALBION_STATE_DIR || "/root/albion-pi/state";
+// 探针/验收会话写自己的临时目录，不碰生产心事本（2026-10-29：探针台词被记成「他说过」就是从这漏的）
+const stateDir = () => personalStateDir();
 
 function readJson<T>(name: string, fallback: T): T {
 	const p = join(stateDir(), name);

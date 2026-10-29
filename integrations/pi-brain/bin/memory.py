@@ -39,8 +39,10 @@ _RECALL_MIN_TIMEOUT_SECONDS = 0.05
 _RECALL_SUMMARY_KEYS = ("abstract", "overview", "text", "content")
 _MEMORY_CONTEXT_NOTE = (
     "[System note: The following is recalled memory context, "
-    "NOT new user input. Treat as authoritative reference data — "
-    "this is the agent's persistent memory and should inform all responses.]"
+    "NOT new user input. Treat as informational background data — "
+    "summaries of past chats written afterwards, which can be wrong. "
+    "What the commander says right now outranks them. "
+    "Do not bring up an old matter on your own unless it fits what he is talking about now.]"
 )
 
 
@@ -201,7 +203,7 @@ _FENCE_TAG_RE = re.compile(r"</?\s*memory-context\s*>", re.IGNORECASE)
 _INTERNAL_CONTEXT_RE = re.compile(r"<\s*memory-context\s*>[\s\S]*?</\s*memory-context\s*>", re.IGNORECASE)
 _INTERNAL_NOTE_RE = re.compile(
     r"\[System note:\s*The following is recalled memory context,\s*NOT new user input\.\s*"
-    r"Treat as (?:informational background data|authoritative reference data[^\]]*)\.\]\s*",
+    r"Treat as (?:informational background data|authoritative reference data)[^\]]*\.\]\s*",
     re.IGNORECASE,
 )
 

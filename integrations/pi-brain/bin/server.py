@@ -317,7 +317,7 @@ def get_session(session_id):
                                        # 她和指挥官都在北京时间过日子，pi 一律按北京时间起（宿主自己设了 TZ 就照它的）。
                                        "TZ": os.environ.get("TZ") or "Asia/Shanghai",
                                        "COMMANDCODE_API_KEY": os.environ.get("COMMANDCODE_API_KEY", ""),
-                                       **memory_env(session_id)})
+                                       **session_env(session_id)})
             s.start()
             s.seeded = False
             s.ext_sig = sig
@@ -363,15 +363,71 @@ def compose(session, msgs):
     return current, images, woke
 
 
-# 只有她真正的对话会话写进长期记忆。探针、验收、自检会话（albion-probe-*、albion-accept、*-probe……）
-# 原来也被官方 OpenViking 扩展照单捕获，她的记忆里混进了几十条测试对话和开发任务（2026-10-14 整理时发现）。
-# 别的会话启动 pi 时设 OPENVIKING_BYPASS_SESSION=1：官方扩展整段跳过（不捕获、不开 openviking_* 工具）；
-# 每轮召回走 bin/memory.py，不受影响。
-MEMORY_SESSIONS = {s.strip() for s in os.environ.get("ALBION_MEMORY_SESSIONS", "albion-desktop,albion-cli").split(",") if s.strip()}
+# ── 会话隔离：只有他本人那只写生产状态、进 OpenViking ──────────────────────
+# 真实会话名单在 agent/real-sessions.json（ALBION_MEMORY_SESSIONS 可覆盖）。其余会话（探针、验收、自检，
+# 例如 albion-voice-probe-*、albion-accept、albion-r44*、albion-dsh-*）一律算 ephemeral：
+#   · 不写生产 state：心事本/self/todo/voice/last-context 由扩展改写 ALBION_PERSONAL_STATE_DIR 下的临时文件，
+#     工具照常返回（判断在 agent/lib/session-scope.ts，这里只负责把这两个变量交下去）；
+#   · 不提交 OpenViking：OPENVIKING_BYPASS_SESSION=1（官方扩展整段跳过；每轮召回走 bin/memory.py，不受影响）。
+# 2026-10-29 修：原来只挡了 OV 捕获，心事本仍被探针台词写进生产，10-25 的「指挥官做实验一整天」就是那样来的。
+def _real_sessions():
+    env = os.environ.get("ALBION_MEMORY_SESSIONS", "").strip()
+    if env:
+        return {s.strip() for s in env.split(",") if s.strip()}
+    try:
+        with open(os.path.join(AGENT_DIR, "real-sessions.json"), encoding="utf-8") as f:
+            data = json.load(f)
+        sessions = data.get("sessions") if isinstance(data, dict) else data
+        names = {str(s).strip() for s in sessions or [] if str(s).strip()}
+        if names:
+            return names
+    except (OSError, ValueError):
+        pass
+    return {"albion-desktop", "albion-cli"}
 
 
-def memory_env(session_id):
-    return {} if session_id in MEMORY_SESSIONS else {"OPENVIKING_BYPASS_SESSION": "1"}
+REAL_SESSIONS = _real_sessions()
+
+
+def is_ephemeral_session(session_id):
+    """探针/验收/自检会话：不写生产 state、不提交 OpenViking（与 agent/lib/session-scope.ts 同一口径）。"""
+    return session_id not in REAL_SESSIONS
+
+
+def ephemeral_state_dir(session_id):
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", session_id or "unknown")[:120] or "unknown"
+    return os.path.join("/tmp", "albion-pi-ephemeral", safe)
+
+
+# 提交给 OpenViking 之前要剥掉的「脑自己拼进去的段」（官方扩展的 OPENVIKING_CAPTURE_FILTERS，sed 式规则）：
+#   · 她自己醒来的提示词：心事本、上次定的事都在里面，那不是他说的，整条不提交；
+#   · 宿主补问【接着说完】、活动库里那两句占位、会话刚重启时接上的旧记录（只留【现在】之后他真打的字）；
+#   · 每轮约定与回忆块（正常轮由 albion-turn 在 context 钩子里加，不进 pi 会话；留着兜底）。
+# 规则里不能出现英文逗号（宿主按逗号拼成一条环境变量交给扩展）。
+CAPTURE_FILTERS = (
+    r"user:d|^【自主醒来】|",
+    r"user:d|^【接着说完】|",
+    r"user:d|^（阿尔比恩自己醒来）$|",
+    r"user:d|^（阿尔比恩接着把刚才的话说完）$|",
+    r"user:s|^【以下是这次对话此前的记录[^\n]*\n[\s\S]*?【现在】\n||",
+    r"user:s|<memory-context>[\s\S]*?</memory-context>||",
+    r"user:s|\n*【阿尔比恩本轮说话约定】[\s\S]*$||",
+)
+
+
+def capture_filter_rules():
+    extra = [s.strip() for s in os.environ.get("OPENVIKING_CAPTURE_FILTERS", "").split(",") if s.strip()]
+    return list(CAPTURE_FILTERS) + [r for r in extra if r not in CAPTURE_FILTERS]
+
+
+def session_env(session_id):
+    """pi 子进程的环境：真实会话只加「提交前剥注入段」；ephemeral 会话隔离状态、不进 OV。"""
+    if is_ephemeral_session(session_id):
+        return {"OPENVIKING_BYPASS_SESSION": "1",
+                "ALBION_EPHEMERAL": "1",
+                "ALBION_PERSONAL_STATE_DIR": ephemeral_state_dir(session_id)}
+    rules = capture_filter_rules()
+    return {"OPENVIKING_CAPTURE_FILTERS": ",".join(rules)} if rules else {}
 
 
 # 只有桌面会话的 pi stderr 留在 logs/（超 1MB 起新身子前轮转成 .err.1）；探针/验收会话写 /tmp，不再堆满 logs/。
@@ -728,7 +784,19 @@ def _selftest():
     fresh.name = "albion-new"
     text, _, _ = compose(fresh, [{"role": "user", "content": "你好"}])
     assert text == "你好", "活动库里没这个会话：不接"
-    assert memory_env("albion-desktop") == {} and memory_env("albion-probe-r44a") == {"OPENVIKING_BYPASS_SESSION": "1"}
+    # 会话隔离：真实会话不隔离、只带「提交前剥注入段」；探针/验收会话写临时 state、不进 OV（2026-10-29）
+    assert not is_ephemeral_session("albion-desktop") and not is_ephemeral_session("albion-cli")
+    assert is_ephemeral_session("albion-voice-probe-after4c-05") and is_ephemeral_session("albion-accept")
+    desk_env, probe_env = session_env("albion-desktop"), session_env("albion-probe-r44a")
+    assert "OPENVIKING_BYPASS_SESSION" not in desk_env and "ALBION_EPHEMERAL" not in desk_env, desk_env
+    assert desk_env["OPENVIKING_CAPTURE_FILTERS"].count("user:") >= len(CAPTURE_FILTERS), desk_env
+    assert probe_env["OPENVIKING_BYPASS_SESSION"] == "1" and probe_env["ALBION_EPHEMERAL"] == "1", probe_env
+    assert probe_env["ALBION_PERSONAL_STATE_DIR"] == ephemeral_state_dir("albion-probe-r44a"), probe_env
+    assert probe_env["ALBION_PERSONAL_STATE_DIR"].startswith("/tmp") and "albion-pi-ephemeral" in probe_env["ALBION_PERSONAL_STATE_DIR"]
+    assert "OPENVIKING_CAPTURE_FILTERS" not in probe_env
+    # 剥注入段的规则：醒来提示词整条丢；重启接上的旧记录只留【现在】之后他真打的字；约定/回忆块剥掉
+    assert re.match(r"^【自主醒来】", wake.wake_prompt()), "醒来提示词要以 WAKE_MARKER 开头（过滤规则赖它）"
+    assert re.match(r"^【接着说完】", FINISH_FOLLOWUP)
     # 会话 id：body 优先，其次壳的请求头，都没有才是桌面默认
     assert session_of({"session_id": "a"}, {"X-Hermes-Session-Id": "b"}) == "a"
     assert session_of({"user": "u"}, {"X-Hermes-Session-Id": "albion-x"}) == "albion-x"
