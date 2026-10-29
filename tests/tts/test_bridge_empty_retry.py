@@ -46,7 +46,12 @@ class EmptyTranslationRetryTest(unittest.TestCase):
 
 
     def test_带情绪的翻译回调也走同一条重试(self):
-        """codex 复核第 4 条：生产走的是 `translate_ex`（译文 + 情绪二元组），单独验一次。"""
+        """codex 复核第 4 条：生产走的是 `translate_ex`（译文 + 情绪二元组），单独验一次。
+
+        源句这里必须是**中文**：2026-10-28 起，译文与原文相同的单元按日语直通处理，
+        翻译腿带回的情绪会被丢掉（`bridge_v2._ready` 的 `passthrough`），
+        这条测的是"重试 + 第二次的情绪要留住"，用真翻译的输入才验得到。
+        """
         calls = []
 
         def tr_ex(seg):
@@ -54,7 +59,7 @@ class EmptyTranslationRetryTest(unittest.TestCase):
             return ("", None) if len(calls) == 1 else ("おはよう。", {"arousal": 0.3, "valence": 0.2})
 
         svc = bridge_v2.PrepareService(translate=lambda s: "（不该走到这条路）", translate_ex=tr_ex)
-        r = asyncio.run(svc._translate_unit(mk_req("おはよう。"), time.monotonic()))
+        r = asyncio.run(svc._translate_unit(mk_req("早上好。"), time.monotonic()))
         self.assertEqual(r.status, "ready")
         self.assertEqual(len(calls), 2)
         self.assertEqual(r.ja_segments[0]["text"], "おはよう。")       # 用第二次的译文

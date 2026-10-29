@@ -57,7 +57,7 @@ def req(unit_id="u0", speech="今天有点累了", raw=None, session="s1", gen=1
     return B2.parse_request(body)
 
 
-def svc(ja="少しだけ、休ませてください。", emo=None):
+def svc(ja="少しだけ、休ませてください。", emo=None, cues=None):
     calls = []
 
     def translate_ex(text):
@@ -65,7 +65,7 @@ def svc(ja="少しだけ、休ませてください。", emo=None):
         return ja, (emo if emo is not None else {"arousal": 0.45, "intensity": 0.4,
                                                  "valence": -0.4, "phonation": "voiced"})
 
-    return B2.PrepareService(translate=translate_ex, translate_ex=translate_ex), calls
+    return B2.PrepareService(translate=translate_ex, translate_ex=translate_ex, cues=cues), calls
 
 
 def prepare(service, request):
@@ -510,6 +510,81 @@ class TestBridgeOutput(unittest.TestCase):
             service, _ = svc(emo={"phonation": "whispered", "src": [{"kind": "whisper"}]})
             res = prepare(service, req(raw="（耳语）别出声"))
         self.assertIn("voice_caption", res.ja_segments[0])
+
+    def test_japanese_direct_gets_no_caption(self):
+        """日语直通（没走翻译腿）：不写描述、不带翻译情绪（2026-10-28 问题 1）。
+
+        日语输入没有翻译腿的情绪标量，`caption_for` 几乎只会落到 neutral 描述 —— 写出来就是
+        把规划器按日语表面线索定的族/档（码本锚 + cfg 4.0/4.5）整片盖掉。改成不写，
+        规划器自然回锚路径；cue 与 emoji 不受影响。
+        """
+        with mock.patch.dict(os.environ, ON, clear=False):
+            service, calls = svc(emo={"phonation": "soft", "arousal": 0.2})
+            res = prepare(service, req(speech="今日は、少し疲れました。"))
+        seg = res.ja_segments[0]
+        self.assertFalse(res.translated)
+        self.assertEqual(calls, [])                 # 日语根本没送翻译腿
+        self.assertNotIn("voice_caption", seg)
+        self.assertNotIn("emotion", seg)
+
+    def test_same_translation_drops_caption_and_emotion(self):
+        """译文 == 原文（纯汉字句被 `is_japanese` 判成中文）：按日语直通处理（2026-10-28 问题 7）。
+
+        生产实测 `指揮官？` 连发 3 次会拿回 3 种情绪提示 → 3 种描述；这种"翻译"没有依据，
+        不该进规划器。`translated` 字段仍如实报 True（翻译腿确实跑过），只挡它的产物。
+        """
+        with mock.patch.dict(os.environ, ON, clear=False):
+            service, calls = svc(ja="指揮官？", emo={"phonation": "soft", "arousal": 0.2,
+                                                     "intensity": 0.3, "valence": 0.1})
+            res = prepare(service, req(speech="指揮官？"))
+        seg = res.ja_segments[0]
+        self.assertTrue(res.translated)
+        self.assertEqual(calls, ["指揮官？"])         # 确实走过翻译腿（现状如此）
+        self.assertEqual(seg["text"], "指揮官？")
+        self.assertNotIn("voice_caption", seg)
+        self.assertNotIn("emotion", seg)
+
+    def test_whitespace_only_difference_still_counts_as_same(self):
+        """只差空白也算"译回原样"：比较前两边都去掉所有空白（含全角空格）。"""
+        with mock.patch.dict(os.environ, ON, clear=False):
+            service, _ = svc(ja="指揮官 ？", emo={"phonation": "soft"})
+            res = prepare(service, req(speech="指揮官？"))
+        seg = res.ja_segments[0]
+        self.assertNotIn("voice_caption", seg)
+        self.assertNotIn("emotion", seg)
+
+    def test_same_translation_keeps_source_cues(self):
+        """只丢翻译腿的产物：原文里看得见的线索（括号指令）照旧留给规划器，与日语直通一致。"""
+        cue = lambda t: ([{"kind": "soft", "negated": False}] if "小声" in t else None)  # noqa: E731
+        with mock.patch.dict(os.environ, ON, clear=False):
+            service, _ = svc(ja="指揮官？", emo={"phonation": "soft"}, cues=cue)
+            res = prepare(service, req(speech="指揮官？", raw="（小声）指揮官？"))
+        seg = res.ja_segments[0]
+        self.assertNotIn("voice_caption", seg)
+        self.assertEqual([c["kind"] for c in seg["emotion"]["src"]], ["soft"])
+        self.assertNotIn("phonation", seg["emotion"])
+
+    def test_real_translation_keeps_caption_and_emotion(self):
+        """中文聊天（真翻译）：描述与情绪提示照旧，字段集合与加这次改动之前一致。"""
+        emo = {"arousal": 0.45, "intensity": 0.4, "valence": -0.4}
+        with mock.patch.dict(os.environ, ON, clear=False):
+            service, calls = svc(ja="少しだけ、休ませてください。", emo=emo)
+            res = prepare(service, req(speech="今天有点累了"))
+        seg = res.ja_segments[0]
+        self.assertTrue(res.translated)
+        self.assertEqual(calls, ["今天有点累了"])
+        self.assertEqual(set(seg), {"sub_index", "text", "voice_caption", "emotion"})
+        self.assertEqual(seg["emotion"], emo)
+        self.assertEqual(seg["voice_caption"], VC.caption_for(emo))
+
+    def test_emoji_still_added_on_japanese_direct(self):
+        """emoji 行为不变：日语直通照旧按台词加（这次只挡描述与情绪提示）。"""
+        with mock.patch.dict(os.environ, ON, clear=False):
+            service, _ = svc()
+            res = prepare(service, req(speech="ふふ、そうなんだ。"))
+        seg = res.ja_segments[0]
+        self.assertTrue(seg["text"].endswith("🤭"), seg["text"])
+        self.assertNotIn("voice_caption", seg)
 
     def test_caption_confirmed_invalid_is_dropped(self):
         """回退路径：描述判废（这里让生成端返回空）→ 桥不加字段，规划器走锚。"""

@@ -70,6 +70,18 @@ def split_sentences(text: str):
     return [x.strip() for x in SENT.findall(text or "") if x.strip()]
 
 
+_WS = re.compile(r"\s+")        # 含全角空格 U+3000（Python 的 \s 在 Unicode 模式下认它）
+
+
+def same_text(a: str, b: str) -> bool:
+    """两段文本**去掉所有空白**后是否完全相同。
+
+    用途（2026-10-28）：`is_japanese` 的判据是"假名占一半"，`指揮官？` 这类纯汉字短句会被
+    当成中文送进翻译腿，译文原样回来 —— 那不是一次真翻译，不该带翻译腿编的情绪与声音描述。
+    """
+    return _WS.sub("", a or "") == _WS.sub("", b or "")
+
+
 def has_speakable(text: str) -> bool:
     return bool(SPEAKABLE.search(text or ""))
 
@@ -386,6 +398,14 @@ class PrepareService:
 
     def _ready(self, req, lines, t0, translated, emotions=None):
         src_text = req.raw_text or req.speech_text
+        # 2026-10-28：只有**真翻译过**的单元才带翻译腿的证据（情绪标量 + 声音描述）。
+        # 日语直通（translated=False），以及译文与原文只差空白（`is_japanese` 把纯汉字短句
+        # 判成中文时，翻译腿会把原文原样送回来）都按日语直通处理：
+        #   * 声音描述：`caption_for` 拿不到情绪标量时几乎全落到 neutral 档，会把规划器按
+        #     日语表面线索定的族/档（码本锚 + cfg 4.0/4.5）整片盖掉；
+        #   * 情绪标量：翻译腿对这种单元没有真依据（实测同一句连发 3 次给 3 种提示）。
+        # cue 不受影响：它来自原文里看得见的括号/emoji，不是翻译腿的产物，日语直通路径同样保留。
+        passthrough = not translated or same_text("".join(lines), req.speech_text or src_text)
         cues = self._cues(src_text) if self._cues else None
         raw_scoped, cross = self._switches(req)
         scoped = bool(raw_scoped) and cues is not None
@@ -400,7 +420,7 @@ class PrepareService:
         segs = []
         for i, t in enumerate(lines):
             seg = {"sub_index": i, "text": t}
-            emo = emotions[i] if emotions and i < len(emotions) else None
+            emo = (emotions[i] if (not passthrough and emotions and i < len(emotions)) else None)
             if scoped:
                 mine = rows[i] if i < len(rows) else []
                 emo = dict(emo or {})
@@ -423,7 +443,7 @@ class PrepareService:
                 emo["src_scope"] = "unknown_after_first_segment"
             if emo:
                 seg["emotion"] = emo            # 可缺字段：缺了规划器就只用关键词表，不影响译文
-            text, extra = self._voice_fields(req, t, emo)
+            text, extra = self._voice_fields(req, t, emo, translated=not passthrough)
             seg["text"] = text
             if extra:
                 seg.update(extra)
@@ -431,7 +451,7 @@ class PrepareService:
         return PrepareResult(unit_id=req.unit_id, status="ready", source_unit_id=req.unit_id,
                              ja_segments=tuple(segs), translated=translated, duration_ms=_ms(t0))
 
-    def _voice_fields(self, req, ja_text, emo):
+    def _voice_fields(self, req, ja_text, emo, translated=True):
         """阶段 3d：给一个子段加受控声音描述与句末非语言 emoji。返回 `(文本, 附加字段|None)`。
 
         开关默认**关**（`ALBION_VOICE_CAPTION` / `ALBION_VOICE_EMOJI`）：关着时原样返回、
@@ -444,8 +464,12 @@ class PrepareService:
             台词本身在笑/叹气/打哈欠/真哭才算有，判据看中文原文 + 日语译文；
           * **真哭只判一次**：`sob_of(req.raw_text, ja_text)` 同时喂给 caption 与 emoji，
             两边不会一个说真哭、一个说快哭（😭 只跟真哭走）。
+
+        `translated=False`（2026-10-28）：本子段不是真翻译（日语直通，或译文与原文只差空白）——
+        没有翻译腿的情绪依据，**不写** `voice_caption`（写出来几乎全是 neutral 档描述，会把
+        规划器按日语表面线索定的族/档整片盖掉）。emoji 不受这条限制，行为与以前一致。
         """
-        caption_on = voice_caption.voice_caption_on()
+        caption_on = translated and voice_caption.voice_caption_on()
         emoji_on = voice_caption.voice_emoji_on()
         if not caption_on and not emoji_on:
             return ja_text, None
