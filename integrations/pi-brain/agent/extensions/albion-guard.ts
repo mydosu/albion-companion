@@ -743,6 +743,7 @@ export async function tidyMessageRegen(message: any, source: string, request: an
 	const trigger = { issues: issues.slice(), hits: hits.slice() };
 	const tries: any[] = [];
 	const drafts: string[] = [];
+	const firstDraft = draft;
 	const t0 = (deps.now ?? Date.now)();
 
 	if (canRegen && (issues.length || hits.length)) {
@@ -767,7 +768,7 @@ export async function tidyMessageRegen(message: any, source: string, request: an
 		log({
 			regen: true, attempts: tries.length, ok: !!last?.ok && issues.length === 0 && hits.length === 0,
 			rules: [...new Set(trigger.hits.map((h) => h.rule))], hit: trigger.hits, issues: trigger.issues,
-			tries, draft: process.env.ALBION_EPHEMERAL === "1" ? drafts : undefined,
+			tries, draft: process.env.ALBION_EPHEMERAL === "1" ? [firstDraft, ...drafts] : undefined,
 			ms: (deps.now ?? Date.now)() - t0, session,
 		});
 	}
