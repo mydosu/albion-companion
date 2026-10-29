@@ -366,7 +366,7 @@ function tidyGestures(r: TidyResult, allowGesture: boolean): TidyResult {
  * 整条回复全是姿态句时原样留着，posture_kept 记为用掉了这次额度。
  */
 export function tidy(raw: string, source = "", allowPosture = false, allowGesture = false,
-	opts: { rng?: () => number; recent?: Record<string, string[]>; ticPath?: string } = {}): TidyResult {
+	opts: { rng?: () => number; recent?: Record<string, string[]>; ticPath?: string; skipTic?: boolean } = {}): TidyResult {
 	const actions: string[] = [];
 	if (isRefusal(raw)) return { text: NEUTRAL_ACT, actions: ["refusal"], dropped: [], fixed: [], posture: false };
 	let text = canonicalAct(raw);
@@ -398,7 +398,7 @@ export function tidy(raw: string, source = "", allowPosture = false, allowGestur
 	if (dianFree !== body) actions.push("dian_fixed");
 	body = dianFree;
 	// 口癖语料随机换（放在表态删除、点的改写之后：那两步要先看到原话；ACT 已在 head 里切掉）
-	const tic = fixTicPhrases(body, opts.rng ?? Math.random, opts.recent ?? {}, opts.ticPath ?? TIC_PATH());
+	const tic = opts.skipTic ? { text: body, hits: [] as TicHit[] } : fixTicPhrases(body, opts.rng ?? Math.random, opts.recent ?? {}, opts.ticPath ?? TIC_PATH());
 	if (tic.hits.length) actions.push("tic_fixed");
 	const ticHits = tic.hits;
 	body = tic.text;
@@ -529,11 +529,263 @@ export function tidyMessage(message: any, source: string, session = process.env.
 	return r.text === raw ? undefined : { message: withText(message, r.text) };
 }
 
+// ── 重说（2026-10-29 接回 GPT 那套：checks() 全量检测 + 首稿外最多重说 2 次）──────
+// 提示语照 B 代（Hermes albion-voice/voice_guard.py:94-102）一字不改；三稿都不过就交最后一稿，
+// 再过一遍现有的确定性删改（tidy）后交出去——不发哨兵、不回 500。
+const REPAIR_TEXT = [
+	"你现在只负责把这一次的话重新说好，仍是阿尔比恩。历史原样保留；它是事实参考，不是口气范例。下面 unpublished_draft 是已否掉的未交付首稿，不能照着改近义词。直接回应最后一条当前用户消息，保留一个 ACT 标记。不解释修稿，不调用工具。",
+	"指挥官只说正忙或暂离时，简短应答即可，不补陪伴或等待姿态。若同时让阿尔比恩自己找事做或问她的计划，可以说自己的具体兴趣或打算；不把自主行动变成沉默守候。具体的道别、关心、下次聊某个话题都是正常聊天，不等于随时可用的服务承诺。",
+	"别的话题就说具体选择、评价、笑意或害羞；谦逊、轻声，场合合适时称指挥官或自然口吃。",
+	"等待、守候、随时接话、保持安静和不干扰的姿态承诺整句不要，括号里也不用。",
+	"保留自然心声：不说出口的具体害羞、喜悦或自己的念头写在完整闭合的中文圆括号（……）里，只显示、不朗读；说给指挥官听的话放括号外。不把心声搬到正文，不要求每句有心声。",
+	"正文和心声都用平常聊天会说的、明白好懂的话。害羞不需要古旧用词或刻意缩词；直接说清楚感受，别为了含蓄把话说得让人猜。",
+	"静默指令不写会出声的正文，可以只给 ACT 或附自然括号心声；自主开口可聊具体兴趣，没有新内容不凑一句话。",
+].join("");
+
+// 只有命中这三类时，才在 JSON 前各加一行（主脑原文）
+const EXTRA_LINES: Record<string, string> = {
+	metaphor: "他的话、他的心意和心事，说听到了、听懂了、记得、在意、高兴；它们不是拿在手里的东西，不用手上的动作去说。",
+	habit: "他平时怎么样、以前做过什么，只说他亲口提过的；没提过的，只说眼前这一次。",
+	stance: "自己怎么想，用一整句平常话把理由讲出来，不用两三个字的短句表态。",
+};
+
+const RE_METAPHOR_A = /(?<!电)(?:话|句|心意|心事|好意|夸奖?)[^。！？…，,\n]{0,6}?(?:接住|接不住|接得住|收下|收着|收好|搁|放下|放在|递|留着|丢|捎|装进|装在|拆开|揣|攥|捧)/g;
+const RE_METAPHOR_B = /(?:接|递|丢|捎)(?:过来|过去|给我|给您)?的(?:话|那句|这句)/g;
+const RE_HABIT = /(?:您|你)(?:总(?!得|算|共|之|归)是?|老是|每次|一向|向来)|别又/g;
+const RE_STANCE = /(?:^|[。！？，,…\s])(?:这话|这句|这个)?我(?:不装|不辩|不躲|不争|认一半|认了|就认)(?=[。！？，,…]|$)/g;
+const RE_RECALL_Q = /记得|记不清|回忆|之前|以前|上次|买过|九月份|过去/;
+const RE_RECALL_META = /记得一样(?=[：:，,。！？\s]|$)|(?:敢说|能说)[^。！？\n]{0,8}(?:只有|就剩)[^。！？\n]{0,6}(?:这一笔|这一件|这一条)|(?:翻出来|翻到|检索到|查到)[^。！？\n]{0,8}(?:只有|就剩)[^。！？\n]{0,6}(?:这一个|这一件|这一条)/;
+const RE_NOTE_WORDS = /记住|记着|记得|记一下|记下来|记下|还记|别忘|记事|记录|收好|收下|留着|保存/;
+
+export type RegenRule = "metaphor" | "habit" | "stance";
+export interface RegenHit { rule: RegenRule; text: string }
+
+const bodyOf = (text: string) => text.replace(/^<\|ACT:[^\n]*?\|>/, "").trim();
+const clipHit = (s: string) => s.replace(/\s+/g, " ").replace(/^[。！？，,…\s]+/, "").trim().slice(0, 20);
+
+/** 心声之外的“说出口的字”（括号里的念头只显示、不朗读）。 */
+function speechOutsideAsides(body: string): { spoken: string; balanced: boolean } {
+	const stack: string[] = [];
+	let spoken = "";
+	let balanced = true;
+	for (const ch of body) {
+		if (ch === "（" || ch === "(") stack.push(ch === "（" ? "）" : ")");
+		else if (ch === "）" || ch === ")") {
+			if (stack.length && stack[stack.length - 1] === ch) stack.pop();
+			else balanced = false;
+		} else if (!stack.length) spoken += ch;
+	}
+	return { spoken, balanced: balanced && stack.length === 0 };
+}
+
+/** B 代 checks() 的逐条移植（act/fictional_touch/companionship_posture/awkward_diction/
+ *  recalled_meta_narration/unbalanced_aside/leaked_markup/should_be_silent/missing_reply/incomplete_completion）。 */
+export function checkDraft(text: string, source = "", stopReason = "stop"): string[] {
+	const issues: string[] = [];
+	const orig = (source || "").split(MARKER)[0];
+	const marker = /^<\|ACT:(\{[^\n]*?\})\|>/.exec(text);
+	let act: any = {};
+	try {
+		act = marker ? JSON.parse(marker[1]) : {};
+	} catch {
+		act = {};
+	}
+	if (!marker || typeof act !== "object" || !act || !EMOTIONS.has(act.emotion) || text.split("<|ACT:").length !== 2) issues.push("act");
+	const body = marker ? text.slice(marker[0].length).trim() : text.trim();
+	const literal = literalRequested(source) && !!body && orig.includes(body);
+	if (act.motion === "touch_head" && !orig.includes("指挥官摸了摸你的头")) issues.push("fictional_touch");
+	if (act.motion === "touch_body" && !orig.includes("指挥官的手碰到了你胸口")) issues.push("fictional_touch");
+	let poses = postureMatches(body);
+	if (RE_NOTE_WORDS.test(orig)) poses = poses.filter((p) => !/(?:记|收|留)着/.test(p));
+	if (poses.length && !literal) issues.push("companionship_posture");
+	if (!literal && /自己讨(?=[。！？…，、；;）)\s]|$)/.test(body)) issues.push("awkward_diction");
+	if (!literal && RE_RECALL_Q.test(orig) && RE_RECALL_META.test(body)) issues.push("recalled_meta_narration");
+	const { spoken, balanced } = speechOutsideAsides(body);
+	if (!literal && !balanced) issues.push("unbalanced_aside");
+	if (/DSML|<｜｜|<\/?function_calls|<\/?invoke/.test(body)) issues.push("leaked_markup");
+	const quiet = /静默指令：/.test(source);
+	const idle = /自动空闲唤醒，不是指挥官在说话/.test(source);
+	const nonverbal = /(?:做|给|来|换|露|摆).{0,12}(?:表情|动作)/.test(orig);
+	if (quiet && spoken.trim()) issues.push("should_be_silent");
+	if (!quiet && !idle && !nonverbal && !body) issues.push("missing_reply");
+	if (stopReason && stopReason !== "stop") issues.push("incomplete_completion");
+	return issues;
+}
+
+/** 检测：B 代 checks + metaphor/habit/stance + tic-phrases 命中（归 metaphor）。 */
+export function detectRegenHits(body: string): RegenHit[] {
+	const hits: RegenHit[] = [];
+	const add = (rule: RegenRule, m: string) => {
+		const text = clipHit(m);
+		if (text && !hits.some((h) => h.rule === rule && h.text === text)) hits.push({ rule, text });
+	};
+	for (const re of [RE_METAPHOR_A, RE_METAPHOR_B]) {
+		re.lastIndex = 0;
+		for (const m of body.matchAll(re)) add("metaphor", m[0]);
+	}
+	for (const rule of ticRules(TIC_PATH())) {
+		let re: RegExp;
+		try {
+			re = new RegExp(rule.pattern, "g");
+		} catch {
+			continue;
+		}
+		for (const m of body.matchAll(re)) add("metaphor", m[0]);
+	}
+	RE_HABIT.lastIndex = 0;
+	for (const m of body.matchAll(RE_HABIT)) add("habit", m[0]);
+	RE_STANCE.lastIndex = 0;
+	for (const m of body.matchAll(RE_STANCE)) add("stance", m[0]);
+	return hits;
+}
+
+/** 追加的 user 消息：B 代原文 + 命中三类时各一行 + JSON（B 代的键）。 */
+export function regenPrompt(currentMessage: string, draft: string, review: string[], hits: RegenHit[]): string {
+	const rules = [...new Set(hits.map((h) => h.rule))].filter((r) => EXTRA_LINES[r]);
+	const extra = rules.map((r) => EXTRA_LINES[r]).join("\n");
+	const payload = JSON.stringify({ current_message: currentMessage, unpublished_draft: draft, review });
+	return REPAIR_TEXT + (extra ? "\n" + extra : "") + "\n" + payload;
+}
+
+const AGENT_DIR = () => process.env.PI_CODING_AGENT_DIR || "/root/albion-pi/agent";
+
+/** 从 Pi 自己的模型配置里找这个模型的 provider（端点 + 凭据）；找不到返回 null。 */
+export function providerFor(model: string): { baseUrl: string; apiKey: string } | null {
+	try {
+		const cfg = JSON.parse(readFileSync(join(AGENT_DIR(), "models.json"), "utf-8"));
+		for (const p of Object.values(cfg?.providers ?? {}) as any[]) {
+			const ids = (p?.models ?? []).map((m: any) => (typeof m === "string" ? m : m?.id));
+			if (ids.includes(model) && p?.baseUrl) return { baseUrl: String(p.baseUrl), apiKey: String(p.apiKey ?? "") };
+		}
+	} catch {
+		/* 配置读不到就当没有 provider：重说失败，交原稿 */
+	}
+	return null;
+}
+
+export interface RegenDeps {
+	fetchImpl?: typeof fetch;
+	provider?: { baseUrl: string; apiKey: string } | null;
+	now?: () => number;
+	regen?: boolean;
+}
+
+async function regenOnce(request: any, content: string, deps: RegenDeps): Promise<{ text: string; finishReason: string } | { error: string }> {
+	const model = String(request?.model ?? "");
+	const provider = deps.provider !== undefined ? deps.provider : providerFor(model);
+	if (!model || !provider) return { error: "no_provider" };
+	const payload: Record<string, unknown> = {
+		model,
+		messages: [...request.messages, { role: "user", content }],
+		stream: false,
+	};
+	if (/deepseek/i.test(model)) {
+		payload.reasoning_effort = "low";
+		payload.max_tokens = Math.max(Number(request?.max_tokens) || 0, 8192);
+	}
+	const headers: Record<string, string> = { "Content-Type": "application/json" };
+	if (provider.apiKey) headers.Authorization = "Bearer " + provider.apiKey;
+	let res: any;
+	try {
+		res = await (deps.fetchImpl ?? fetch)(String(provider.baseUrl).replace(/\/+$/, "") + "/chat/completions", {
+			method: "POST",
+			headers,
+			body: JSON.stringify(payload),
+			signal: AbortSignal.timeout(90000),
+		});
+	} catch (e: any) {
+		const name = String(e?.name ?? "");
+		return { error: name === "TimeoutError" || name === "AbortError" ? "timeout" : "network" };
+	}
+	if (!res || !res.ok) return { error: "http_" + (res?.status ?? "?") };
+	let data: any;
+	try {
+		data = await res.json();
+	} catch {
+		return { error: "bad_json" };
+	}
+	if (data?.model && String(data.model) !== model) return { error: "model_mismatch" };
+	const choice = data?.choices?.[0];
+	const text = choice?.message?.content;
+	if (typeof text !== "string" || !text.trim()) return { error: "empty" };
+	return { text, finishReason: typeof choice?.finish_reason === "string" ? choice.finish_reason : "stop" };
+}
+
+/** 在原整理稿上做语料替换（没走重说时用；tidy 默认已经做，这里只给重说失败分支复用）。 */
+function applyTic(r: TidyResult, recent: Record<string, string[]>): TidyResult {
+	const head = /^<\|ACT:[^\n]*?\|>/.exec(r.text)?.[0] ?? "";
+	const t = fixTicPhrases(r.text.slice(head.length), Math.random, recent);
+	if (!t.hits.length) return r;
+	return { ...r, text: head + t.text, actions: [...r.actions, "tic_fixed"], tic: t.hits };
+}
+
+/**
+ * 定稿消息：原始首稿 → checks（+三类检测）→ 命中就同路由重说，最多 3 稿 →
+ * 最终那稿再走现有确定性整理（tidy，含语料替换）→ 写回。永远不返回哨兵。
+ */
+export async function tidyMessageRegen(message: any, source: string, request: any,
+	deps: RegenDeps = {}, session = process.env.ALBION_SESSION_ID || "albion-desktop"): Promise<{ message: any } | undefined> {
+	if (!message || message.role !== "assistant") return undefined;
+	const toolRound = hasToolCall(message.content);
+	const raw = textOf(message.content);
+	if (!raw.trim()) return undefined;
+
+	const quiet = /静默指令：/.test(source);
+	const wake = /(?:^|【现在】\s*)【自主醒来】/.test(source);
+	const enabled = deps.regen ?? process.env.ALBION_REGEN !== "0";
+	const canRegen = enabled && !quiet && !wake && !literalRequested(source)
+		&& !!request && Array.isArray(request.messages) && !!request.model;
+
+	if (message.stopReason && message.stopReason !== "stop" && !canRegen) return undefined;
+	let draft = canonicalAct(raw);
+	let issues = checkDraft(draft, source, message.stopReason || "stop");
+	let hits = detectRegenHits(bodyOf(draft));
+	const trigger = { issues: issues.slice(), hits: hits.slice() };
+	const tries: any[] = [];
+	const drafts: string[] = [];
+	const t0 = (deps.now ?? Date.now)();
+
+	if (canRegen && (issues.length || hits.length)) {
+		for (let attempt = 0; attempt < 2 && (issues.length || hits.length); attempt++) {
+			const a0 = (deps.now ?? Date.now)();
+			const rules = [...new Set(hits.map((h) => h.rule))];
+			const out = await regenOnce(request, regenPrompt(source, draft, [...issues, ...hits.map((h) => `${h.rule}:${h.text}`)], hits), deps);
+			const ms = (deps.now ?? Date.now)() - a0;
+			if ("error" in out) {
+				tries.push({ ok: false, error: out.error, ms, rules, hit: hits });
+				break;
+			}
+			draft = canonicalAct(out.text);
+			drafts.push(draft);
+			tries.push({ ok: true, ms, rules, hit: hits });
+			issues = checkDraft(draft, source, out.finishReason);
+			hits = detectRegenHits(bodyOf(draft));
+		}
+	}
+	if (tries.length) {
+		const last = tries[tries.length - 1];
+		log({
+			regen: true, attempts: tries.length, ok: !!last?.ok && issues.length === 0 && hits.length === 0,
+			rules: [...new Set(trigger.hits.map((h) => h.rule))], hit: trigger.hits, issues: trigger.issues,
+			tries, draft: process.env.ALBION_EPHEMERAL === "1" ? drafts : undefined,
+			ms: (deps.now ?? Date.now)() - t0, session,
+		});
+	}
+
+	const finalText = drafts.length ? drafts[drafts.length - 1] : raw;
+	const r = tidyAndCount(finalText, source, session);
+	if (r.actions.length) log({ actions: r.actions, dropped: r.dropped.length, fixed: r.fixed.length, aside_you: r.asideYou ?? 0, tic: r.tic ?? [], session });
+	return r.text === raw ? undefined : { message: withText(message, r.text) };
+}
 export default function albionGuard(pi: ExtensionAPI) {
 	let lastSource = "";
+	let lastRequest: any;
 	pi.on("before_provider_request", (event) => {
 		const payload = event.payload as any;
-		if (payload && Array.isArray(payload.messages)) lastSource = sourceText(payload.messages);
+		if (payload && Array.isArray(payload.messages)) {
+			lastSource = sourceText(payload.messages);
+			lastRequest = { model: payload.model, messages: payload.messages };
+		}
 	});
-	pi.on("message_end", async (event) => tidyMessage(event.message as any, lastSource));
+	pi.on("message_end", async (event) => tidyMessageRegen(event.message as any, lastSource, lastRequest));
 }

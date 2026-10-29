@@ -25,7 +25,7 @@ let fetches = 0;
   throw new Error("albion-guard 不该发网络请求");
 };
 
-const { default: albionGuard, tidy, tidyAndCount, tidyMessage, isRefusal, NEUTRAL_ACT, fixTicPhrases } = await import("../agent/extensions/albion-guard.ts");
+const { default: albionGuard, tidy, tidyAndCount, tidyMessage, tidyMessageRegen, isRefusal, NEUTRAL_ACT, fixTicPhrases } = await import("../agent/extensions/albion-guard.ts");
 const { default: albionTurn, _albionTest } = await import("../agent/extensions/albion-turn.ts");
 
 const assistant = (text: string) => ({ role: "assistant", content: [{ type: "text", text }], stopReason: "stop" });
@@ -36,9 +36,10 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
 {
   assert.equal(tidyMessage(assistant(A + "指挥官早上好，今天想先听您说说昨晚睡得怎么样。"), "早", "s-a"), undefined);
   const src = readFileSync(new URL("../agent/extensions/albion-guard.ts", import.meta.url), "utf-8");
-  assert.ok(!/child_process|\bspawn\(|\bfetch\(/.test(src), "整理器不该起子进程或发请求");
+  assert.ok(!/child_process|\bspawn\(/.test(src), "整理器不该起子进程");
+  assert.ok(src.includes("(deps.fetchImpl ?? fetch)("), "只有重说这一处发请求");
   assert.ok(!src.includes("ALBION_VOICE_REJECTED"), "哨兵已撤");
-  console.log("A 干净稿不动、整理器不调模型不起子进程 OK");
+  console.log("A 干净稿不动、整理器不起子进程、只有重说一处 fetch OK");
 }
 
 // B) 钩子接线：before_provider_request 记下他那句；带工具调用 / 非 assistant / 没写完的不动
@@ -518,6 +519,130 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   const st = JSON.parse(readFileSync(join(TMP, "voice.json"), "utf-8"))["s-tic"];
   assert.ok(Array.isArray(st.tic_recent["接住"]) && st.tic_recent["接住"].length === 1, JSON.stringify(st));
   console.log("T 口癖语料：8 句命中换 options、4 句不动、连换 3 次不重样、语料缺失不崩、日志与 voice.json 记账 OK");
+}
+// U) 重说：检测 → 同路由最多 3 稿（首稿 + 2 次）；失败交最后一稿/首稿；工具/静默/醒来/关掉不重说
+{
+  const A = '<|ACT:{"emotion":"neutral"}|>';
+  const provider = { baseUrl: "http://mock.local/v1", apiKey: "k" };
+  const req = () => ({ model: "deepseek/deepseek-v4-flash", messages: [{ role: "user", content: "在吗" }] });
+  const resp = (content: string, model = "deepseek/deepseek-v4-flash") => ({ ok: true, status: 200, json: async () => ({ model, choices: [{ message: { content }, finish_reason: "stop" }] }) });
+  const fail = (status: number) => ({ ok: false, status, json: async () => ({}) });
+  const make = (queue: any[]) => {
+    const calls: any[] = [];
+    const f = async (_url: string, init: any) => {
+      calls.push(JSON.parse(init.body));
+      const r = queue.length > 1 ? queue.shift() : queue[0];
+      if (typeof r === "function") return r();
+      return r;
+    };
+    return { calls, f };
+  };
+  const run = async (text: string, source: string, queue: any[], deps: any = {}) => {
+    const { calls, f } = make(queue);
+    const text0 = text.startsWith("<|ACT:") ? text : A + text;
+    const out = await tidyMessageRegen(assistant(text0), source, req(), { fetchImpl: f, provider, regen: true, ...deps }, "s-regen");
+    return { calls, out };
+  };
+  const promptOf = (c: any) => c.messages[c.messages.length - 1].content as string;
+
+  // 五句各触发一次，请求里只带对应那一行
+  const cases: [string, string, string][] = [
+    ["这话不绕，我接住。", "metaphor", "他的话、他的心意和心事"],
+    ["想帮您把这句话拆开看看。", "metaphor", "他的话、他的心意和心事"],
+    ["您总把难处说得这么轻。", "habit", "他平时怎么样"],
+    ["这话我认一半。", "stance", "自己怎么想"],
+    ["被子盖好，别又踢到一边去。", "habit", "他平时怎么样"],
+  ];
+  const lines = ["他的话、他的心意和心事", "他平时怎么样", "自己怎么想"];
+  for (const [text, rule, line] of cases) {
+    const { calls } = await run(text, "在吗", [resp(A + "\n我听进去了。")]);
+    assert.equal(calls.length, 1, `${text} 应重说一次`);
+    const p = promptOf(calls[0]);
+    assert.ok(p.startsWith("你现在只负责把这一次的话重新说好"), "B 代提示语原文");
+    assert.ok(p.includes(line), `${text} 应带 ${rule} 那一行`);
+    for (const other of lines.filter((l) => l !== line)) assert.ok(!p.includes(other), `${text} 不该带别的行`);
+    const payload = JSON.parse(p.split("\n").at(-1)!);
+    assert.ok(payload.review.some((x: string) => x.startsWith(rule + ":")), JSON.stringify(payload.review));
+    assert.ok(payload.review.every((x: string) => x.length <= 26));
+    assert.ok(typeof payload.unpublished_draft === "string" && typeof payload.current_message === "string");
+  }
+  // 不触发
+  for (const text of ["我去接电话。", "您总得吃饭吧。", "明天我去接您。", "说话的时候别急。"]) {
+    const { calls } = await run(text, "在吗", [resp(A + "\n好。")]);
+    if (calls.length) console.log("DBG", text, JSON.stringify(promptOf(calls[0]).slice(-200)));
+    assert.equal(calls.length, 0, `${text} 不该触发`);
+  }
+  {
+    const { calls } = await run(A + "辛苦了。", "在吗", [resp(A + "\n好。")]);
+    assert.equal(calls.length, 0, "干净稿不触发");
+  }
+  // 工具轮：只查前导正文，tool_calls 保留
+  {
+    const toolMsg = { role: "assistant", content: [{ type: "toolCall", name: "read" }, { type: "text", text: A + "想帮您把这句话拆开看看。" }], stopReason: "stop" };
+    const { calls, f } = make([resp(A + "\n我知道了。")]);
+    const out = await tidyMessageRegen(toolMsg, "在吗", req(), { fetchImpl: f, provider, regen: true }, "s-regen");
+    assert.equal(calls.length, 1, "工具轮只重说前导正文");
+    const msg = (out as any).message;
+    assert.ok(msg.content.some((b: any) => b.type === "toolCall"), "tool_calls 保留");
+    assert.ok(msg.content.some((b: any) => b.type === "text" && b.text.includes("我知道了")));
+  }
+  // 静默轮 / 醒来轮 / 关掉
+  {
+    const { calls } = await run(A + "想帮您把这句话拆开看看。", "静默指令：这一次不写正文", [resp(A + "\n好。")]);
+    assert.equal(calls.length, 0, "静默轮不重说");
+  }
+  {
+    const { calls } = await run(A + "想帮您把这句话拆开看看。", "【自主醒来】现在是 2026-10-29 10:00（星期四）。", [resp(A + "\n好。")]);
+    assert.equal(calls.length, 0, "醒来轮不重说");
+  }
+  {
+    const { calls } = await run(A + "这话不绕，我接住。", "在吗", [resp(A + "\n我听进去了。")], { regen: false });
+    assert.equal(calls.length, 0, "ALBION_REGEN=0 不重说");
+  }
+  // 失败：500 / 超时 / 空正文 / 换模型 → 交整理后的原稿，只请求 1 次
+  for (const [name, q] of [["http_500", [fail(500)]], ["timeout", [() => { throw Object.assign(new Error("t"), { name: "TimeoutError" }); }]],
+    ["empty", [resp("")]], ["model_mismatch", [resp(A + "\n好。", "other/model")]]] as [string, any][]) {
+    const { calls, out } = await run(A + "这话不绕，我接住。", "在吗", q);
+    assert.equal(calls.length, 1, `${name}: 只请求一次`);
+    const got = textOfResult(out as any);
+    assert.ok(got.includes("这话不绕") && !got.includes("好。"), `${name}: 应交原稿 ${got}`);
+  }
+  // 成功 → 交重说稿
+  {
+    const { out } = await run(A + "这话不绕，我接住。", "在吗", [resp(A + "\n您说的我记住了。")]);
+    assert.ok(textOfResult(out as any).includes("您说的我记住了"), textOfResult(out as any));
+  }
+  // 重说稿仍命中 → 再请求一次；第 3 稿仍命中 → 不再请求，交第 3 稿
+  {
+    const { calls, out } = await run(A + "这话不绕，我接住。", "在吗",
+      [resp(A + "\n我想把您的话收下。"), resp(A + "\n您总是这样。")]);
+    assert.equal(calls.length, 2, "两稿都还命中：总共 2 次请求");
+    assert.ok(textOfResult(out as any).includes("您总是这样"), textOfResult(out as any));
+    // 第 2 次请求的 marked 填上一稿的命中
+    const payload2 = JSON.parse(promptOf(calls[1]).split("\n").at(-1)!);
+    assert.ok(payload2.unpublished_draft.includes("我想把您的话收下"), "第 2 次的 draft 是上一稿");
+  }
+  // 干净重说稿 → 不再请求
+  {
+    const { calls } = await run(A + "这话不绕，我接住。", "在吗", [resp(A + "\n好，我在。")]);
+    assert.equal(calls.length, 1, "第二稿干净就不再请求");
+  }
+  // 第 2 次请求失败 → 交第 2 稿
+  {
+    const { calls, out } = await run(A + "这话不绕，我接住。", "在吗",
+      [resp(A + "\n我想把您的话收下。"), fail(500)]);
+    assert.equal(calls.length, 2);
+    assert.ok(textOfResult(out as any).includes("我想把您的话"), textOfResult(out as any));
+  }
+  // B 代 checks：缺 ACT / missing_reply / 括号没闭合 / 回忆盘点 / 泄漏标记 都会触发
+  for (const [text, source] of [["你好呀。", "在吗"], [A, "在吗"], [A + "\n你好（今天", "在吗"],
+    [A + "\n水果这类事，敢说的只有这一笔。", "你还记得九月份买过什么水果吗？"],
+    [A + "\n你好呀 DSML", "在吗"]] as [string, string][]) {
+    const { calls, f } = make([resp(A + "\n好。")]);
+    await tidyMessageRegen(assistant(text), source, req(), { fetchImpl: f, provider, regen: true }, "s-regen");
+    assert.equal(calls.length, 1, `旧检查该触发：${text.slice(0, 12)}`);
+  }
+  console.log("U 重说：5 句各触发一次且只带对应行、4 句不触发、工具/静默/醒来/关闭不重说、失败交原稿、最多 2 次请求、第 2 次失败交第 2 稿、旧 checks 触发 OK");
 }
 rmSync(TMP, { recursive: true, force: true });
 console.log("GUARD_EXT SELFTEST OK");
