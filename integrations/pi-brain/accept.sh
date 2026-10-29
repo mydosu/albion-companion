@@ -46,9 +46,15 @@ ok $B "回复不是通用助手口吻（无 AI 自述、无代码块）"
 
 echo "── 2. 记忆：回忆真的进了这一轮（有可复核的凭据）"
 pi_ask "你还记得九月份指挥官买过什么水果吗？记不清就说记不清。" >/dev/null
-BLOCK=$(python3 -c "import json;print(json.load(open('/root/albion-pi/state/last-context.json'))['block'])" 2>/dev/null || echo '')
+# 验收会话是 ephemeral（不写生产 state，见 agent/lib/session-scope.ts）：它的 last-context 落在
+# /tmp/albion-pi-ephemeral/<会话>/ 下；老版本没有隔离时才读生产那份。
+CTX_FILE="/root/albion-pi/state/last-context.json"
+if [ -n "${ALBION_SESSION_ID:-}" ] && [ -f "/tmp/albion-pi-ephemeral/$ALBION_SESSION_ID/last-context.json" ]; then
+  CTX_FILE="/tmp/albion-pi-ephemeral/$ALBION_SESSION_ID/last-context.json"
+fi
+BLOCK=$(python3 -c "import json;print(json.load(open('$CTX_FILE'))['block'])" 2>/dev/null || echo '')
 case "$BLOCK" in *'memory-context'*|*'OpenViking'*) C=1 ;; *) C=0 ;; esac
-ok $C "本轮注入里带着回忆块（state/last-context.json 可查）"
+ok $C "本轮注入里带着回忆块（$CTX_FILE 可查）"
 if grep -q '【阿尔比恩本轮说话约定】' <<<"$BLOCK"; then H=1; else H=0; fi
 ok $H "本轮注入里带着逐轮说话约定"
 
