@@ -81,6 +81,24 @@ export function foldLabeledAside(body: string): string {
 	return body.replace(new RegExp("^[ \\t]*" + ASIDE_LABEL + "\\s*[：:]\\s*([^\\n（(]+)$", "gm"), (_m, s: string) => "（" + s.trim() + "）");
 }
 
+// 心声里提到指挥官要用「您」（2026-10-29）：DS 仍有约一成心声写「他」。
+// 只改完整闭合的全角/半角括号心声；第三方名字（Hermes/Codex/DSH/管家…）整段不碰，怕是说别人。
+const THIRD_PARTY = /Hermes|Codex|DSH|管家/i;
+const HIS = /(?<!其)他(?![们人乡日])/g;
+
+export function fixAsidePronoun(body: string): { text: string; fixed: number } {
+	let fixed = 0;
+	const text = segments(body).map((seg) => {
+		if (!/^[（(][\s\S]*[）)]$/.test(seg) || THIRD_PARTY.test(seg)) return seg;
+		const inner = seg.slice(1, -1).replace(HIS, () => {
+			fixed++;
+			return "您";
+		});
+		return inner === seg.slice(1, -1) ? seg : seg[0] + inner + seg.slice(-1);
+	}).join("");
+	return { text, fixed };
+}
+
 /** 正文切成句段：完整闭合的括号心声算一段，其余按句末标点/换行切；拼回去与原文一字不差。 */
 export function segments(body: string): string[] {
 	const segs: string[] = [];
@@ -242,13 +260,15 @@ export function fixDianOrder(body: string, fixed: string[] = []): string {
 
 export interface TidyResult {
 	text: string;
-	/** 做了什么：act / aside / refusal / markup / posture_kept / posture_dropped / gesture_kept / gesture_dropped / pledge_dropped / dian_fixed */
+	/** 做了什么：act / aside / aside_you / refusal / markup / posture_kept / posture_dropped / gesture_kept / gesture_dropped / pledge_dropped / dian_fixed */
 	actions: string[];
 	dropped: string[];
 	/** 改写过的「点的」原词（点单腔，见 fixDianOrder）。 */
 	fixed: string[];
 	/** 这条回复里有姿态句（不管留没留）。 */
 	posture: boolean;
+	/** 心声里「他」→「您」换掉的处数（没换就是 0）。 */
+	asideYou?: number;
 }
 
 const GESTURE = /歪(?:了歪)?头|低(?:下)?头|垂下眼|眨(?:了眨)?眼|抿(?:嘴|了抿)|揉|攥|捏着|脸红|红着脸|脸颊[^，,、；;…]*?(?:发热|发烫|泛红)|脸(?:好烫|发烫)|耳根|耳尖|心跳|嘴角[^，,、；;…]*?(?:弯|上扬|翘)|轻轻(?:地)?(?:点头|摇头|笑|拉|碰|靠|歪)|靠近一点|凑近/;
@@ -302,6 +322,11 @@ export function tidy(raw: string, source = "", allowPosture = false, allowGestur
 	const folded = foldLabeledAside(body);
 	if (folded !== body) actions.push("aside");
 	body = folded;
+	// 心声里的「他」→「您」：只动闭合括号里的念头，正文一个字不碰
+	const pronoun = fixAsidePronoun(body);
+	if (pronoun.fixed) actions.push("aside_you");
+	const asideYou = pronoun.fixed;
+	body = pronoun.text;
 	const dropped: string[] = [];
 	const pledgeFree = dropPledges(body, dropped);
 	if (pledgeFree !== body) actions.push("pledge_dropped");
@@ -318,14 +343,14 @@ export function tidy(raw: string, source = "", allowPosture = false, allowGestur
 		if (askedPresence) hits = hits.filter((h) => !PRESENCE_ANSWER.test(h.trim()));
 		(hits.length ? postureDropped : kept).push(seg);
 	}
-	if (!postureDropped.length) return tidyGestures({ text: head + body, actions, dropped, fixed, posture: false }, allowGesture);
+	if (!postureDropped.length) return tidyGestures({ text: head + body, actions, dropped, fixed, posture: false, asideYou }, allowGesture);
 	const rest = kept.join("").replace(/\n{3,}/g, "\n\n").trim();
 	if (allowPosture || !rest) {
 		actions.push("posture_kept");
-		return tidyGestures({ text: head + body, actions, dropped, fixed, posture: true }, allowGesture);
+		return tidyGestures({ text: head + body, actions, dropped, fixed, posture: true, asideYou }, allowGesture);
 	}
 	actions.push("posture_dropped");
-	return tidyGestures({ text: head ? head + "\n" + rest : rest, actions, dropped: [...dropped, ...postureDropped], fixed, posture: true }, allowGesture);
+	return tidyGestures({ text: head ? head + "\n" + rest : rest, actions, dropped: [...dropped, ...postureDropped], fixed, posture: true, asideYou }, allowGesture);
 }
 
 // ── 姿态额度计数（state/voice.json，按会话分开记）────────────────────────────
@@ -431,7 +456,7 @@ export function tidyMessage(message: any, source: string, session = process.env.
 	const raw = textOf(message.content);
 	if (!raw.trim()) return undefined;
 	const r = tidyAndCount(raw, source, session);
-	if (r.actions.length) log({ actions: r.actions, dropped: r.dropped.length, fixed: r.fixed.length, session });
+	if (r.actions.length) log({ actions: r.actions, dropped: r.dropped.length, fixed: r.fixed.length, aside_you: r.asideYou ?? 0, session });
 	return r.text === raw ? undefined : { message: withText(message, r.text) };
 }
 

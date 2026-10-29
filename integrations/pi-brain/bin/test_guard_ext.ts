@@ -114,7 +114,7 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
     ["（被指挥官这样突然反问，耳根都烫起来了……好害羞……）", "（被指挥官这样突然反问，好害羞……）"],
     ["（耳根烫，好害羞，轻轻低头）", "（好害羞）"],
     ["(眨了眨眼;有点开心、抿了抿……)", "(有点开心)"],
-    ["（他低头看书的样子好认真）", "（他低头看书的样子好认真）"],
+    ["（他低头看书的样子好认真）", "（您低头看书的样子好认真）"],
     ["（您低头，心跳快了）", "（您低头）"],
     ["（你轻轻点头，指挥官耳根发红）", "（你轻轻点头，指挥官耳根发红）"],
     ["低头在看书（好害羞，有点开心）", "低头在看书（好害羞，有点开心）"],
@@ -164,7 +164,7 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
 // E) 泄漏的工具调用标记从那里截掉；心声标签收回括号
 {
   assert.equal(textOfResult(tidyMessage(assistant(A + "我去查一下。<function_calls><invoke name=\"x\">"), "x", "s-e")), A + "我去查一下。");
-  assert.equal(textOfResult(tidyMessage(assistant(A + "晚点再说吧。（心声）希望他开完会就回来。"), "x", "s-e")), A + "晚点再说吧。（希望他开完会就回来。）");
+  assert.equal(textOfResult(tidyMessage(assistant(A + "晚点再说吧。（心声）希望他开完会就回来。"), "x", "s-e")), A + "晚点再说吧。（希望您开完会就回来。）");
   assert.equal(fetches, 0, "整套跑下来没发过一次请求");
   console.log("E 截掉泄漏标记、心声收回括号、全程 0 次网络请求 OK");
 }
@@ -338,7 +338,7 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   const g = T.turn_guidance("在吗", false, [], "", now, now - 90_000);
   assert.ok(g.startsWith(T.MARKER + "\n现在是 2026-10-29 18:20，星期四，傍晚。他上一条消息是1分钟前。" + TAIL), g.slice(0, 140));
   // 心声那句之后紧接着一行“只说他自己提过的”
-  assert.ok(T.CONTEXT.includes("正常问话就正常答。\n说到他平时怎么样，只说他自己提过的；没提过的，就只说这一次。\n我最看重的一件事"), "约定里要加这一行");
+  assert.ok(T.CONTEXT.includes("一时不知道说什么好。\n说到他平时怎么样，只说他自己提过的；没提过的，就只说这一次。\n我最看重的一件事"), "约定里要加这一行");
   assert.ok(g.includes("说到他平时怎么样，只说他自己提过的；没提过的，就只说这一次。"), "每轮约定也带上");
   // 醒来轮不加（时间在 wake.py 的醒来提示里）
   const woke = T.turn_guidance("【自主醒来】现在是 2026-10-29 18:20（星期四）。", false, [], "", now, now - 90_000);
@@ -443,6 +443,32 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   assert.ok(rows.at(-1).actions.includes("dian_fixed"), `guard.log 要记 dian_fixed：${JSON.stringify(rows.at(-1))}`);
   assert.equal(rows.at(-1).fixed, 1);
   console.log("Q 点单腔「点的」→「让的」：正例 4 / 反例 4、逐字分支、guard.log 记账 OK");
+}
+// S) 心声里的「他」→「您」：只动闭合括号；正文、其他/他们、第三方名字、没闭合的都不动
+{
+  const A = '<|ACT:{"emotion":"neutral"}|>';
+  const r1 = tidy(A + "（他跟我说话从来不用挑词。）");
+  assert.equal(r1.text, A + "（您跟我说话从来不用挑词。）", "实例 1");
+  assert.ok(r1.actions.includes("aside_you") && r1.asideYou === 1, JSON.stringify(r1));
+  const r2 = tidy(A + "（想在他额头点一下，可惜手够不到。）");
+  assert.equal(r2.text, A + "（想在您额头点一下，可惜手够不到。）", "实例 2");
+  assert.equal(tidy(A + "（其他人都睡了。）").text, A + "（其他人都睡了。）", "其他 不动");
+  assert.equal(tidy(A + "（他们都在忙。）").text, A + "（他们都在忙。）", "他们 不动");
+  assert.equal(tidy(A + "（他乡遇故知，他日再说。）").text, A + "（他乡遇故知，他日再说。）", "他乡/他日 不动");
+  assert.equal(tidy(A + "他说他今晚要早点睡。").text, A + "他说他今晚要早点睡。", "正文不动");
+  assert.equal(tidy(A + "（Hermes 说他来过。）").text, A + "（Hermes 说他来过。）", "含第三方名字整段不换");
+  assert.equal(tidy(A + "（Codex 也是这么说的。）").text, A + "（Codex 也是这么说的。）");
+  assert.equal(tidy(A + "（他们都在忙。").text, A + "（他们都在忙。", "没闭合的不动");
+  const r3 = tidy(A + "（他说明天来。）（他今天很累。）");
+  assert.equal(r3.text, A + "（您说明天来。）（您今天很累。）", "多条各算一处");
+  assert.equal(r3.asideYou, 2, JSON.stringify(r3));
+  // 经钩子：换过的稿子写回，日志记 aside_you
+  const out = tidyMessage(assistant(A + "（他说明天来。）"), "在吗", "s-aside");
+  assert.equal(textOfResult(out), A + "（您说明天来。）");
+  const rows2 = readFileSync(join(TMP, "guard.log"), "utf-8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.ok(rows2.at(-1).actions.includes("aside_you"), JSON.stringify(rows2.at(-1)));
+  assert.equal(rows2.at(-1).aside_you, 1, JSON.stringify(rows2.at(-1)));
+  console.log("S 心声「他」→「您」：两条实例、其他/他们/他乡/他日、正文、第三方名字、没闭合、多条计数、guard.log 记账 OK");
 }
 rmSync(TMP, { recursive: true, force: true });
 console.log("GUARD_EXT SELFTEST OK");

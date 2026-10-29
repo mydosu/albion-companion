@@ -13,7 +13,7 @@ import { pathToFileURL } from "node:url";
 const EXT = process.argv[2]
   ? pathToFileURL(process.argv[2]).href
   : new URL("../../integrations/pi-brain/agent/extensions/albion-guard.ts", import.meta.url).href;
-const { tidy, segments, postureMatches, canonicalAct, foldLabeledAside } = await import(EXT);
+const { tidy, segments, postureMatches, canonicalAct, foldLabeledAside, fixAsidePronoun } = await import(EXT);
 
 const ACT = '<|ACT:{"emotion":"neutral"}|>\n';
 const fails: string[] = [];
@@ -55,29 +55,30 @@ const CASES: [string, string, "keep" | "partial" | "whole", string?][] = [
   ["忙完再说", ACT + "等您忙完再说吧，我不催。", "whole"],
   ["整句模板", ACT + "阿尔比恩会一直在这里等您，随时都能接话。", "whole"],
   ["括号模板", ACT + "指挥官，您的会开完了吗？\n（阿尔比恩会在这里等您，一直陪着您。）", "partial"],
-  ["（心声）标签", ACT + "指挥官，晚点再说吧。（心声）希望他开完会就回来。", "keep", "（希望他开完会就回来。）"],
+  ["（心声）标签", ACT + "指挥官，晚点再说吧。（心声）希望他开完会就回来。", "keep", "（希望您开完会就回来。）"],
   ["心声：行首标签", ACT + "心声：好想再多聊一会儿", "keep", "（好想再多聊一会儿）"],
-  ["模板+心声", ACT + "阿尔比恩一直都在。\n（心声）希望他早点回来。", "partial", "（希望他早点回来。）"],
+  ["模板+心声", ACT + "阿尔比恩一直都在。\n（心声）希望他早点回来。", "partial", "（希望您早点回来。）"],
   ["整句删+留心声", ACT + "指挥官，早上好呀。阿尔比恩在这里，一直等着您的消息呢。（今天也想多聊几句。）", "partial", "指挥官，早上好呀。（今天也想多聊几句。）"],
   ["心声里的模板", ACT + "好的。（阿尔比恩会一直陪着您的。）晚饭记得吃哦。", "partial", "好的。晚饭记得吃哦。"],
 ];
 
 for (const [name, text, want, expectIn] of CASES) {
   const body = bodyOf(text);
+  const base = fixAsidePronoun(foldLabeledAside(body)).text;
   check(segments(body).join("") === body, `${name}：切分拼不回原文`);
   const r = tidy(text, "", false, true);
   const outBody = bodyOf(r.text);
   if (want === "keep") {
     check(!r.dropped.length && !r.posture, `${name}：不该删却删了 ${JSON.stringify(r.dropped)}`);
-    check(outBody === foldLabeledAside(body), `${name}：不该动却改了稿 ${JSON.stringify(r.text)}`);
+    check(outBody === base, `${name}：不该动却改了稿 ${JSON.stringify(r.text)}`);
   } else if (want === "partial") {
     check(r.dropped.length > 0, `${name}：该删的一句都没删`);
     check(segments(outBody).every((s: string) => !postureMatches(s).length), `${name}：交出去的正文里还有姿态 ${JSON.stringify(r.text)}`);
-    let rest = foldLabeledAside(body);
+    let rest = base;
     for (const d of r.dropped) rest = rest.replace(d, "");
     check(rest.replace(/\n{3,}/g, "\n\n").trim() === outBody.trim(), `${name}：删完剩下的不等于「只去掉被删句段」 ${JSON.stringify(r.text)}`);
   } else {
-    check(r.posture && r.actions.includes("posture_kept") && outBody === foldLabeledAside(body), `${name}：全是姿态句应认得出且原样留 ${JSON.stringify(r)}`);
+    check(r.posture && r.actions.includes("posture_kept") && outBody === base, `${name}：全是姿态句应认得出且原样留 ${JSON.stringify(r)}`);
   }
   if (expectIn) check(r.text.includes(expectIn), `${name}：交付稿里没出现 ${expectIn}（实际 ${JSON.stringify(r.text)}）`);
 }
@@ -100,7 +101,7 @@ check(tidy(ACT + "阿尔比恩会一直在这里等您。", "请逐字念：阿�
 // 心声标签的几种写法
 check(tidy(ACT + "嗯。(OS: 好开心)").text === ACT + "嗯。（好开心）", "OS 标签");
 check(tidy(ACT + "我的心声：其实很想您。").text === ACT + "我的心声：其实很想您。", "正文里说到「心声」不动");
-check(tidy(ACT + "辛苦了。（心想：要不要给他泡杯茶？）").text === ACT + "辛苦了。（要不要给他泡杯茶？）", "（心想：…）去标签");
+check(tidy(ACT + "辛苦了。（心想：要不要给他泡杯茶？）").text === ACT + "辛苦了。（要不要给您泡杯茶？）", "（心想：…）去标签");
 const shot = "指挥官，晚上好。（看到了您……您戴着眼镜、穿绿色连帽卫衣的样子，好想真的站在您身边跟您说话。）（心声：终于看到您了……）";
 check(tidy(ACT + shot).text === ACT + shot.replace("（心声：", "（"), "2026-10-14 截图原句只去标签");
 
