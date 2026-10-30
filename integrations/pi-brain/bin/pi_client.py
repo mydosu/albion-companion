@@ -154,7 +154,8 @@ class PiSession:
     def _dispatch(self, rec):
         t = rec.get("type")
         if t == "response":
-            rid = rec.get("id")
+            # 大多数回应带 id；`abort` 这类没有，只有 command，按 ("cmd", 名字) 等。
+            rid = rec.get("id") or ("cmd", rec.get("command"))
             with self._lock:
                 self._responses[rid] = rec
                 self._resp_event.notify_all()
@@ -245,7 +246,30 @@ class PiSession:
             raise PiError(self._error)
         return out
 
+    def abort(self, timeout=30):
+        """RPC `abort`：中止当前这一轮；Pi 回 abort 时它已经回到 idle（docs/rpc-commands.md）。
+
+        回应没有 id，只有 `command: "abort"`，所以按命令名等。返回 False = 没中止成功
+        （进程没了、管道断了、或超时仍卡着），调用方据此换身子。
+        """
+        if not self.running:
+            return False
+        key = ("cmd", "abort")
+        with self._lock:
+            self._responses.pop(key, None)
+        try:
+            self._send({"type": "abort"})
+        except Exception:                   # noqa: BLE001 - 管道断了按中止失败
+            return False
+        resp = self._wait_response(key, timeout)
+        if not (resp and resp.get("success")):
+            return False
+        # abort 等到 idle 才回应；卡住那一轮的 agent_end 也许不会再来了，这里替它放行。
+        self._settled.set()
+        return True
+
     def interrupt(self):
+        """兼容旧名：只发 abort、不等回应。新代码用 abort()。"""
         self._send({"type": "abort"})
 
     def set_model(self, provider, model_id):

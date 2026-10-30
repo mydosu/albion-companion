@@ -217,6 +217,13 @@ Pi（Node 程序）直连会稳定超时（`Request timed out.`）。转发把�
   更细的三条路与纪律见 `给她加本事.md`。
 - `server.py` 里 `TOOLS = ["*"]`：**必须显式给**——RPC/print 模式不给 `--tools` 就一件工具都没有；
   用 `*` 通配才能让内置四件和她自己注册的扩展工具同时可用。
+- **探针/验收/自检会话只给只读工具**（2026-10-30）：判断沿用 `is_ephemeral_session`（`agent/real-sessions.json`），
+  这类会话用 `READONLY_TOOLS`（`read`/`grep`/`find`/`ls`、查记忆的 `openviking_*`、查网页、农历），
+  不给 `write`/`edit`/`bash`/`delegate`/`next_wake`/`notebook`/`draw`/`todo` 等；真实会话仍是 `*`，一件不少。
+  起因：回放真实对话时探针会话拿到全套工具，被旧台词「坏了你就自己修一修吧」带着改写了生产 `bin/self_ring.py`。
+- **一轮卡住先 abort、再换身子**（2026-10-30）：一轮跑满 420s 没定稿时，宿主发 RPC `abort`（Pi 回 abort 时已 idle，
+  `bin/pi_client.py` 按命令名等这个没有 id 的回应）；abort 不成或仍忙就关掉这具身子，下一个请求重开并从活动库播种。
+  原来超时后同一会话每个请求都秒回 `prompt rejected: pi stayed busy`，直到重启脑。
 
 ## 回退
 

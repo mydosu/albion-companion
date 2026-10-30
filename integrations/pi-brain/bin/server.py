@@ -54,6 +54,16 @@ MODEL = os.environ.get("ALBION_MODEL", "deepseek/deepseek-v4-flash")
 AGENT_NAME = "albion"                 # 壳请求里用的 model id
 SESSION_DEFAULT = "albion-desktop"    # 单只桌宠，一个会话
 TOOLS = ["*"]                         # "*" = 内置四件 + 全部扩展工具（RPC 模式不给 --tools 就没工具）
+# 探针/验收/自检会话（is_ephemeral_session）只给只读工具：2026-10-30 回放真实对话时，探针会话
+# 拿着全套工具，被一句旧的「坏了你就自己修一修吧」带着改写了生产的 bin/self_ring.py。
+# `--tools` 是整份白名单（写 write/edit/bash 就等于允许生产改动），真实会话继续用 "*" 一件不少。
+READONLY_TOOLS = [
+    "read", "grep", "find", "ls",                    # Pi 内置的只读几件
+    "chat_search", "web_search", "grok_web_search",  # 查历史、查网
+    "grab_page", "page_outline", "lunar_calendar",   # 取页面正文、农历（都不落盘）
+    "openviking_find", "openviking_search", "openviking_read", "openviking_list",
+    "openviking_glob", "openviking_grep", "openviking_tree", "openviking_health",  # 只查记忆，不写/不改
+]
 # B6 实测：精简守卫后 DS 桌面轮 p99 349s，留约 20% 余量（含工具链）。
 RUN_TIMEOUT = int(os.environ.get("ALBION_RUN_TIMEOUT", "420"))
 SEED_LIMIT = 40                       # 播种历史时最多带多少条（够接上话就行）
@@ -370,7 +380,7 @@ def get_session(session_id):
             s = None
         if s is None:
             s = PiSession(session_id, cwd="/root", model=route_arg(route),
-                          tools=TOOLS, extensions=usable_extension_files(),
+                          tools=tools_for_session(session_id), extensions=usable_extension_files(),
                           log_path=err_log_path(session_id),
                           sandbox_env={"PI_CODING_AGENT_DIR": AGENT_DIR,
                                        "ALBION_SESSION_ID": session_id,
@@ -383,7 +393,8 @@ def get_session(session_id):
             s.seeded = False
             s.ext_sig = sig
             _sessions[session_id] = s
-            log("started pi session", session=session_id, argv=" ".join(s.args()))
+            log("started pi session", session=session_id, argv=" ".join(s.args()),
+                tools=("readonly" if is_ephemeral_session(session_id) else "all"))
         return s
 
 
@@ -453,6 +464,15 @@ REAL_SESSIONS = _real_sessions()
 def is_ephemeral_session(session_id):
     """探针/验收/自检会话：不写生产 state、不提交 OpenViking（与 agent/lib/session-scope.ts 同一口径）。"""
     return session_id not in REAL_SESSIONS
+
+
+def tools_for_session(session_id):
+    """临时会话只给只读工具；真实会话（albion-desktop/albion-cli…）一件不少。
+
+    判断沿用 is_ephemeral_session（real-sessions.json / ALBION_MEMORY_SESSIONS），不另造名单。
+    `--tools` 是替换整份选择的白名单；写类内置工具（write/edit/bash）不在里面，扩展工具也只剩只读的几件。
+    """
+    return list(READONLY_TOOLS) if is_ephemeral_session(session_id) else list(TOOLS)
 
 
 def ephemeral_state_dir(session_id):
@@ -532,18 +552,68 @@ def needs_finish_followup(user_text, reply):
     return not body_of(reply)
 
 
+# ── 一轮卡住之后：先 abort，abort 不了就换身子 ─────────────────────────────
+# 2026-10-30 生产（albion-voice-probe-soul3-b-multi）：一轮跑满 420s 报 "pi did not settle within 420s"，
+# 但 Pi 那一轮其实还在跑；之后同一会话每个请求都秒回 "prompt rejected: pi stayed busy"，直到重启脑。
+# 桌面会话要是这样，她就一直不说话。现在：RPC abort（Pi 回 abort 时已经 idle）；还不行就关掉这具身子，
+# 下个请求由 get_session 按现有逻辑重开、compose 照常从活动库播种历史。每一步都写进 brain.log。
+ABORT_WAIT = int(os.environ.get("ALBION_ABORT_WAIT", "30"))
+STUCK_ERRORS = ("did not settle", "stayed busy", "already processing",
+                "no response to prompt", "process exited during the run")
+
+
+def is_stuck_error(exc):
+    """这一轮是不是「Pi 还在忙/没定稿」——只有这类才 abort/换身子，别的错误照原样报。"""
+    text = str(exc or "")
+    return any(mark in text for mark in STUCK_ERRORS)
+
+
+def recover_stuck_session(session_id, session, exc):
+    """中止卡住的那一轮；中止失败就换身子。返回 True = abort 后 Pi 已 idle、可继续用这具身子。"""
+    log("turn stuck, aborting", session=session_id, error=str(exc)[:200])
+    aborted = False
+    if getattr(session, "running", False):
+        try:
+            aborted = bool(session.abort(ABORT_WAIT))
+        except Exception as aexc:        # noqa: BLE001 - 管道断了也按换身子走
+            log("abort failed", session=session_id, error=repr(aexc)[:160])
+    if aborted:
+        log("aborted, pi idle again", session=session_id, wait_s=ABORT_WAIT)
+        return True
+    log("pi still busy after abort, restarting session", session=session_id, running=getattr(session, "running", False))
+    try:
+        session.close()
+    except Exception as cexc:            # noqa: BLE001
+        log("session close failed", session=session_id, error=repr(cexc)[:160])
+    with _sessions_lock:
+        if _sessions.get(session_id) is session:
+            _sessions.pop(session_id, None)
+    log("session dropped, next request starts a fresh one", session=session_id)
+    return False
+
+
+def run_prompt(session_id, session, text, images=None):
+    """跑一轮；卡住就恢复再照实抛出（这一轮仍算失败，下一个请求能正常回）。"""
+    try:
+        return session.prompt(text, images=images, timeout=RUN_TIMEOUT)
+    except PiError as exc:
+        if is_stuck_error(exc):
+            recover_stuck_session(session_id, session, exc)
+        raise
+
+
 def chat(session_id, msgs):
     started = time.time()
     with session_lock(session_id):
         session = get_session(session_id)
         text, images, woke = compose(session, msgs)
         log("prompt", session=session_id, chars=len(text), images=len(images), woke=woke)
-        reply = session.prompt(text, images=images, timeout=RUN_TIMEOUT)
+        reply = run_prompt(session_id, session, text, images=images)
         if woke:
             reply = wake.after_wake(reply)
         elif needs_finish_followup(msg_text(msgs[-1]), reply):
             try:
-                again = session.prompt(FINISH_FOLLOWUP, timeout=RUN_TIMEOUT)
+                again = run_prompt(session_id, session, FINISH_FOLLOWUP)
                 log("finish followup", session=session_id, chars=len(again or ""))
                 if body_of(again):
                     reply = again
@@ -888,6 +958,71 @@ def _selftest():
         f.write(b"x" * (1024 * 1024 + 1))
     assert err_log_path(SESSION_DEFAULT, logs_dir, tmp_err) == desk
     assert not os.path.exists(desk) and os.path.getsize(desk + ".1") == 1024 * 1024 + 1, "超 1MB 轮转成 .err.1"
+    # 临时会话只给只读工具；真实会话一件不少（问题 2：探针会话曾改写生产 bin/self_ring.py）
+    assert tools_for_session("albion-desktop") == TOOLS and "*" in tools_for_session("albion-desktop")
+    assert tools_for_session("albion-cli") == TOOLS
+    probe_tools = tools_for_session("albion-voice-probe-after4c-05")
+    for banned in ("write", "edit", "bash", "powershell", "delegate", "next_wake", "notebook",
+                   "draw", "todo", "skill", "adventure", "browser", "look"):
+        assert banned not in probe_tools, (banned, probe_tools)
+    for kept in ("read", "grep", "find", "ls", "openviking_search", "openviking_read", "chat_search", "web_search"):
+        assert kept in probe_tools, (kept, probe_tools)
+    probe_argv = PiSession("probe", model="p/m", tools=probe_tools).args()
+    assert "--tools" in probe_argv and "--no-tools" not in probe_argv
+    assert probe_argv[probe_argv.index("--tools") + 1] == ",".join(probe_tools), probe_argv
+    assert PiSession("desk", model="p/m", tools=TOOLS).args()[probe_argv.index("--tools") + 1] == "*"
+    # 超时/busy 只有这类错误才 abort/换身子；别的错误照原样报
+    assert is_stuck_error(PiError("pi did not settle within 420s"))
+    assert is_stuck_error(PiError("prompt rejected: pi stayed busy"))
+    assert is_stuck_error(PiError("no response to prompt command"))
+    assert not is_stuck_error(PiError("prompt rejected: unauthorized"))
+    # abort 的回应没有 id，只有 command：按命令名等得到
+    _ps = PiSession("probe", model="p/m", tools=[])
+    _ps._dispatch({"type": "response", "command": "abort", "success": True})
+    assert _ps._wait_response(("cmd", "abort"), 1)["success"] is True
+    # 问题 1：超时后先 abort，Pi 回 idle 就继续用这具身子；这一轮照实报错
+    sid = "albion-probe-stuck"
+    stuck = Mock()
+    stuck.running = True
+    stuck.prompt.side_effect = PiError("pi did not settle within 420s")
+    stuck.abort.return_value = True
+    with patch.object(module, "get_session", return_value=stuck), \
+            patch.object(module, "compose", return_value=("在吗", [], False)), \
+            patch.object(module, "log") as logmock:
+        try:
+            chat(sid, msgs[-1:])
+        except PiError as exc:
+            assert "did not settle" in str(exc)
+        else:
+            raise AssertionError("卡住那一轮仍应回报失败")
+        stuck.abort.assert_called_once()
+        stuck.close.assert_not_called()
+        assert any("aborted, pi idle again" in c.args[0] for c in logmock.call_args_list), logmock.call_args_list
+    # abort 不成功（还忙/管道断了）：关掉这具身子、从会话表摘掉，下个请求重开并播种
+    busy = Mock()
+    busy.running = True
+    busy.prompt.side_effect = PiError("prompt rejected: pi stayed busy")
+    busy.abort.return_value = False
+    module._sessions[sid] = busy
+    with patch.object(module, "get_session", return_value=busy), \
+            patch.object(module, "compose", return_value=("在吗", [], False)), \
+            patch.object(module, "log") as logmock:
+        try:
+            chat(sid, msgs[-1:])
+        except PiError:
+            pass
+        else:
+            raise AssertionError("busy 应回报失败")
+        busy.close.assert_called_once()
+        assert sid not in module._sessions, "换了身子：下个请求要重开"
+        assert any("restarting session" in c.args[0] for c in logmock.call_args_list)
+    fresh = Mock()
+    fresh.running = True
+    fresh.prompt.return_value = "好了。"
+    with patch.object(module, "get_session", return_value=fresh), \
+            patch.object(module, "compose", return_value=("在吗", [], False)), \
+            patch.object(module, "log"):
+        assert chat(sid, msgs[-1:]) == "好了。", "下一个请求要能正常回复"
     print("HOST SELFTEST OK")
 
 
