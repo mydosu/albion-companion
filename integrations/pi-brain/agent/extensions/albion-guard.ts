@@ -451,15 +451,17 @@ function saveVoice(v: Record<string, VoiceSession>): void {
 	}
 }
 
-/** 整理一条定稿并记账：这一条算一条回复；姿态句只在离上次放过满 POSTURE_EVERY 条时放过。 */
-export function tidyAndCount(raw: string, source: string, session: string): TidyResult {
+/** 整理一条定稿并记账：这一条算一条回复；姿态句只在离上次放过满 POSTURE_EVERY 条时放过。
+ *  `skipTic`（非 DeepSeek 模型用）跳过口癖语料替换，其余确定性整理照旧。 */
+export function tidyAndCount(raw: string, source: string, session: string, opts: { skipTic?: boolean } = {}): TidyResult {
 	const all = loadVoice();
 	const s: VoiceSession = all[session] ?? { replies: 0, posture_at: -1e9 };
 	const replies = (Number(s.replies) || 0) + 1;
 	const postureAt = Number.isFinite(Number(s.posture_at)) ? Number(s.posture_at) : -1e9;
 	const gestureAt = typeof s.gesture_at === "number" && Number.isInteger(s.gesture_at) && s.gesture_at >= 0 && s.gesture_at < replies ? s.gesture_at : -1e9;
 	const ticRecent = s.tic_recent && typeof s.tic_recent === "object" ? s.tic_recent : {};
-	const r = tidy(raw, source, replies - postureAt >= POSTURE_EVERY(), replies - gestureAt >= GESTURE_EVERY(), { recent: ticRecent });
+	const r = tidy(raw, source, replies - postureAt >= POSTURE_EVERY(), replies - gestureAt >= GESTURE_EVERY(),
+		{ recent: ticRecent, skipTic: opts.skipTic === true });
 	all[session] = {
 		replies,
 		posture_at: r.actions.includes("posture_kept") ? replies : postureAt,
@@ -580,9 +582,22 @@ function speechOutsideAsides(body: string): { spoken: string; balanced: boolean 
 	return { spoken, balanced: balanced && stack.length === 0 };
 }
 
+/**
+ * 本轮是不是 DeepSeek：口癖清洗（三类检测、两条例句、语料替换）只对 DS 生效，
+ * 换了别家的脑子就不该再按 DS 的毛病挑她的稿子。
+ * 取值顺序：本轮请求的 model → ALBION_MODEL → 都没有就当 DS（保守，保持旧行为）。
+ */
+export function isDeepSeekModel(request?: { model?: unknown } | null): boolean {
+	const model = String(request?.model ?? process.env.ALBION_MODEL ?? "");
+	if (!model) return true;
+	return /deepseek/i.test(model);
+}
+
 /** B 代 checks() 的逐条移植（act/fictional_touch/companionship_posture/awkward_diction/
- *  recalled_meta_narration/unbalanced_aside/leaked_markup/should_be_silent/missing_reply/incomplete_completion）。 */
-export function checkDraft(text: string, source = "", stopReason = "stop"): string[] {
+ *  recalled_meta_narration/unbalanced_aside/leaked_markup/should_be_silent/missing_reply/incomplete_completion）。
+ *  companionship_posture / awkward_diction 是 DS 口癖，`ds: false`（非 DeepSeek 模型）时不报；其余通用检查照旧。 */
+export function checkDraft(text: string, source = "", stopReason = "stop", opts: { ds?: boolean } = {}): string[] {
+	const ds = opts.ds !== false;
 	const issues: string[] = [];
 	const orig = (source || "").split(MARKER)[0];
 	const marker = /^<\|ACT:(\{[^\n]*?\})\|>/.exec(text);
@@ -599,8 +614,8 @@ export function checkDraft(text: string, source = "", stopReason = "stop"): stri
 	if (act.motion === "touch_body" && !orig.includes("指挥官的手碰到了你胸口")) issues.push("fictional_touch");
 	let poses = postureMatches(body);
 	if (RE_NOTE_WORDS.test(orig)) poses = poses.filter((p) => !/(?:记|收|留)着/.test(p));
-	if (poses.length && !literal) issues.push("companionship_posture");
-	if (!literal && /自己讨(?=[。！？…，、；;）)\s]|$)/.test(body)) issues.push("awkward_diction");
+	if (ds && poses.length && !literal) issues.push("companionship_posture");
+	if (ds && !literal && /自己讨(?=[。！？…，、；;）)\s]|$)/.test(body)) issues.push("awkward_diction");
 	if (!literal && RE_RECALL_Q.test(orig) && RE_RECALL_META.test(body)) issues.push("recalled_meta_narration");
 	const { spoken, balanced } = speechOutsideAsides(body);
 	if (!literal && !balanced) issues.push("unbalanced_aside");
@@ -724,6 +739,7 @@ function applyTic(r: TidyResult, recent: Record<string, string[]>): TidyResult {
 /**
  * 定稿消息：原始首稿 → checks（+三类检测）→ 命中就同路由重说，最多 3 稿 →
  * 最终那稿再走现有确定性整理（tidy，含语料替换）→ 写回。永远不返回哨兵。
+ * DS 口癖的三类检测、两条例句与语料替换只对本轮模型是 DeepSeek 时生效（见 isDeepSeekModel）。
  */
 export async function tidyMessageRegen(message: any, source: string, request: any,
 	deps: RegenDeps = {}, session = process.env.ALBION_SESSION_ID || "albion-desktop"): Promise<{ message: any } | undefined> {
@@ -737,11 +753,14 @@ export async function tidyMessageRegen(message: any, source: string, request: an
 	const enabled = deps.regen ?? process.env.ALBION_REGEN !== "0";
 	const canRegen = enabled && !quiet && !wake && !literalRequested(source)
 		&& !!request && Array.isArray(request.messages) && !!request.model;
+	const ds = isDeepSeekModel(request);
+	// 非 DS 模型：口癖检测（三类正则 + tic 语料）当空，不做整句重说
+	const hitsOf = (text: string): RegenHit[] => (ds ? detectRegenHits(bodyOf(text)) : []);
 
 	if (message.stopReason && message.stopReason !== "stop" && !canRegen) return undefined;
 	let draft = canonicalAct(raw);
-	let issues = checkDraft(draft, source, message.stopReason || "stop");
-	let hits = detectRegenHits(bodyOf(draft));
+	let issues = checkDraft(draft, source, message.stopReason || "stop", { ds });
+	let hits = hitsOf(draft);
 	const trigger = { issues: issues.slice(), hits: hits.slice() };
 	const tries: any[] = [];
 	const drafts: string[] = [];
@@ -761,14 +780,14 @@ export async function tidyMessageRegen(message: any, source: string, request: an
 			draft = canonicalAct(out.text);
 			drafts.push(draft);
 			tries.push({ ok: true, ms, rules, hit: hits });
-			issues = checkDraft(draft, source, out.finishReason);
-			hits = detectRegenHits(bodyOf(draft));
+			issues = checkDraft(draft, source, out.finishReason, { ds });
+			hits = hitsOf(draft);
 		}
 	}
 	if (tries.length) {
 		const last = tries[tries.length - 1];
 		log({
-			regen: true, attempts: tries.length, ok: !!last?.ok && issues.length === 0 && hits.length === 0,
+			regen: true, ds, attempts: tries.length, ok: !!last?.ok && issues.length === 0 && hits.length === 0,
 			rules: [...new Set(trigger.hits.map((h) => h.rule))], hit: trigger.hits, issues: trigger.issues,
 			tries, draft: process.env.ALBION_EPHEMERAL === "1" ? [firstDraft, ...drafts] : undefined,
 			ms: (deps.now ?? Date.now)() - t0, session,
@@ -776,8 +795,8 @@ export async function tidyMessageRegen(message: any, source: string, request: an
 	}
 
 	const finalText = drafts.length ? drafts[drafts.length - 1] : raw;
-	const r = tidyAndCount(finalText, source, session);
-	if (r.actions.length) log({ actions: r.actions, dropped: r.dropped.length, fixed: r.fixed.length, aside_you: r.asideYou ?? 0, tic: r.tic ?? [], session });
+	const r = tidyAndCount(finalText, source, session, { skipTic: !ds });
+	if (r.actions.length) log({ actions: r.actions, ds, dropped: r.dropped.length, fixed: r.fixed.length, aside_you: r.asideYou ?? 0, tic: r.tic ?? [], session });
 	return r.text === raw ? undefined : { message: withText(message, r.text) };
 }
 export default function albionGuard(pi: ExtensionAPI) {

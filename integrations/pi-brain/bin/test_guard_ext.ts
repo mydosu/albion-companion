@@ -25,7 +25,7 @@ let fetches = 0;
   throw new Error("albion-guard 不该发网络请求");
 };
 
-const { default: albionGuard, tidy, tidyAndCount, tidyMessage, tidyMessageRegen, isRefusal, NEUTRAL_ACT, fixTicPhrases, detectRegenHits } = await import("../agent/extensions/albion-guard.ts");
+const { default: albionGuard, tidy, tidyAndCount, tidyMessage, tidyMessageRegen, isRefusal, NEUTRAL_ACT, fixTicPhrases, detectRegenHits, checkDraft, isDeepSeekModel } = await import("../agent/extensions/albion-guard.ts");
 const { default: albionTurn, _albionTest } = await import("../agent/extensions/albion-turn.ts");
 
 const assistant = (text: string) => ({ role: "assistant", content: [{ type: "text", text }], stopReason: "stop" });
@@ -661,6 +661,96 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   for (const s of yes) assert.ok(detectRegenHits(s).length, `该查出：${s}`);
   for (const s of no) assert.deepEqual(detectRegenHits(s), [], `不该查：${s}`);
   console.log("V 漏网说法 20 句查得出、正常说法 24 句不误查 OK");
+}
+// W) 口癖清洗只对 DS 生效：同一段含口癖首稿，DS 模型触发重说/语料替换；别的模型不重说、不替换，通用 checks 与整理照旧
+{
+  const A = '<|ACT:{"emotion":"neutral"}|>';
+  const provider = { baseUrl: "http://mock.local/v1", apiKey: "k" };
+  const DS = "deepseek/deepseek-v4-flash";
+  const GM = "antigravity/gemini-3.8-flash";
+  const reqOf = (model: string) => ({ model, messages: [{ role: "user", content: "在吗" }] });
+  const resp = (content: string, model: string) => ({ ok: true, status: 200, json: async () => ({ model, choices: [{ message: { content }, finish_reason: "stop" }] }) });
+  const fail = () => ({ ok: false, status: 500, json: async () => ({}) });
+  const call = async (text: string, model: string, queue: any[], session: string, source = "在吗") => {
+    const calls: any[] = [];
+    const f = async (_url: string, init: any) => {
+      calls.push(JSON.parse(init.body));
+      return queue.length > 1 ? queue.shift() : queue[0];
+    };
+    const out = await tidyMessageRegen(assistant(text), source, reqOf(model), { fetchImpl: f, provider, regen: true }, session);
+    return { calls, out };
+  };
+  const ticOpts = (JSON.parse(readFileSync(new URL("../agent/tic-phrases.json", import.meta.url), "utf-8")).rules as any[])
+    .find((r: any) => r.name === "收下").options as string[];
+  const draft = A + "\n好，我收下了。";
+
+  // DS：同一段首稿触发重说（带 metaphor 命中）；重说不成落回 tidy 时照样做语料替换
+  {
+    const { calls, out } = await call(draft, DS, [fail()], "s-ds");
+    assert.equal(calls.length, 1, "DS 该重说一次");
+    const review = JSON.parse(calls[0].messages.at(-1).content.split("\n").at(-1)).review as string[];
+    assert.ok(review.some((x) => x.startsWith("metaphor:")), JSON.stringify(review));
+    const got = textOfResult(out as any);
+    assert.ok(!got.includes("收下了"), `DS 该换掉口癖：${got}`);
+    assert.ok(ticOpts.some((o) => got.includes(o)), `DS 换上的该是 options：${got}`);
+  }
+  // Gemini：同一段首稿不重说、不替换（原样不动）
+  {
+    const { calls, out } = await call(draft, GM, [resp(A + "\n好，我记住了。", GM)], "s-gemini");
+    assert.equal(calls.length, 0, "非 DS 不该重说");
+    assert.equal(out, undefined, "非 DS 不该换口癖");
+  }
+  // Gemini：通用 checks 照旧——missing_reply 仍触发重说，且请求里不带口癖那一行
+  {
+    const { calls, out } = await call(A, GM, [resp(A + "\n我在呢。", GM)], "s-gemini2");
+    assert.equal(calls.length, 1, "非 DS 也查缺失正文");
+    const prompt = calls[0].messages.at(-1).content as string;
+    assert.ok(prompt.includes("missing_reply"), prompt.slice(-300));
+    assert.ok(!prompt.includes("他的话、他的心意和心事"), "非 DS 不带口癖那一行");
+    assert.ok(textOfResult(out as any).includes("我在呢"));
+  }
+  // Gemini：其余整理照旧（缺竖线的 ACT 还是补上）
+  {
+    const { calls, out } = await call('<ACT:{"emotion":"neutral"}|> 好，我收下了。', GM, [], "s-gemini3");
+    assert.equal(calls.length, 0);
+    assert.equal(textOfResult(out as any), A + " 好，我收下了。");
+  }
+  // checkDraft 的两项 DS 口癖只对 DS 报；其余通用项照旧
+  {
+    const posture = A + "\n阿尔比恩会在这里等您。";
+    assert.ok(checkDraft(posture, "在吗").includes("companionship_posture"));
+    assert.ok(!checkDraft(posture, "在吗", "stop", { ds: false }).includes("companionship_posture"));
+    const diction = A + "\n这句我自己讨。";
+    assert.ok(checkDraft(diction, "在吗").includes("awkward_diction"));
+    assert.ok(!checkDraft(diction, "在吗", "stop", { ds: false }).includes("awkward_diction"));
+    assert.ok(checkDraft(A, "在吗", "stop", { ds: false }).includes("missing_reply"), "非 DS 仍查缺失正文");
+    assert.ok(checkDraft(A + "\n你好（今天", "在吗", "stop", { ds: false }).includes("unbalanced_aside"), "非 DS 仍查括号没闭合");
+  }
+  // 模型判定：request.model 优先，其次 ALBION_MODEL，都没有按 DS
+  {
+    const old = process.env.ALBION_MODEL;
+    try {
+      delete process.env.ALBION_MODEL;
+      assert.equal(isDeepSeekModel(undefined), true, "都没有按 DS");
+      assert.equal(isDeepSeekModel({ model: DS }), true);
+      assert.equal(isDeepSeekModel({ model: "commandcode/google/gemini-3.8-flash" }), false);
+      process.env.ALBION_MODEL = GM;
+      assert.equal(isDeepSeekModel(undefined), false, "没有 request 时看 ALBION_MODEL");
+      assert.equal(isDeepSeekModel({ model: DS }), true, "request.model 优先");
+    } finally {
+      if (old === undefined) delete process.env.ALBION_MODEL;
+      else process.env.ALBION_MODEL = old;
+    }
+  }
+  // 日志：regen 与 actions 两处都带 ds 标记
+  {
+    const rows = readFileSync(join(TMP, "guard.log"), "utf-8").trim().split("\n").map((l) => JSON.parse(l));
+    assert.ok(rows.some((r) => r.regen === true && r.ds === true), "DS 的 regen 日志该带 ds:true");
+    assert.ok(rows.some((r) => r.regen === true && r.ds === false), "非 DS 的 regen 日志该带 ds:false");
+    assert.ok(rows.some((r) => Array.isArray(r.actions) && r.ds === true), "actions 日志该带 ds:true");
+    assert.ok(rows.some((r) => Array.isArray(r.actions) && r.ds === false), "actions 日志该带 ds:false");
+  }
+  console.log("W 口癖清洗只对 DS：DS 重说+语料替换；gemini 不重说/不替换但 missing_reply、ACT 补竖线照旧；两项口癖检查不报；模型判定与 ds 日志 OK");
 }
 rmSync(TMP, { recursive: true, force: true });
 console.log("GUARD_EXT SELFTEST OK");
