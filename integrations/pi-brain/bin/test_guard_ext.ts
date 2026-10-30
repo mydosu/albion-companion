@@ -749,6 +749,20 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
     assert.equal(st.posture_at, 9, "DS 记下这次姿态放过");
     assert.equal(st.gesture_at, 9, "DS 记下这次动作放过");
   }
+  // 回包 model 判定：转发会把 model 改写成上游名（等于/以请求 model 最后一段开头）也算匹配；对不上仍报 mismatch
+  {
+    // gemini：请求 antigravity/gemini-3.8-flash，回包 gemini-3.8-flash-n → 算匹配，重说稿生效
+    const { calls, out } = await call(A, GM, [resp(A + "\n我在呢。", "gemini-3.8-flash-n")], "s-model-gm");
+    assert.equal(calls.length, 1);
+    assert.ok(textOfResult(out as any).includes("我在呢"), `回包是上游名也算匹配：${textOfResult(out as any)}`);
+    // DS：请求 deepseek/deepseek-v4-flash，回包 deepseek/deepseek-v4.1-flash → 仍算 mismatch，交原稿、只请求一次
+    const { calls: dsCalls, out: dsOut } = await call(draft, DS, [resp(A + "\n我等您忙完再说。", "deepseek/deepseek-v4.1-flash")], "s-model-ds");
+    assert.equal(dsCalls.length, 1, "mismatch 只请求一次");
+    // 交出去的是原稿走完 tidy 的样子（收下 rule 的 options 之一），不是重说稿
+    const dsGot = textOfResult(dsOut as any);
+    assert.ok(!dsGot.includes("等您忙完"), `mismatch 该交原稿：${dsGot}`);
+    assert.ok(/^<\|ACT:\{[^\n]*\}\|>\n好，我(?:记住了|记下了|听进去了)。$/.test(dsGot), dsGot);
+  }
   // checkDraft 的两项 DS 口癖只对 DS 报；其余通用项照旧
   {
     const posture = A + "\n阿尔比恩会在这里等您。";

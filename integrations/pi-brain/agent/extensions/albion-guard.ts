@@ -694,6 +694,19 @@ export interface RegenDeps {
 	regen?: boolean;
 }
 
+/**
+ * 重说回包的 model 算不算同一个模型：等于请求的 model，或者等于/以请求 model 最后一段
+ * （`/` 之后，如 `gemini-3.8-flash`）开头都算——magpie 这类转发会把回包的 model 改写成上游名
+ * （`antigravity/gemini-3.8-flash` → `gemini-3.8-flash-n`）；对不上就仍报 model_mismatch（防号池错路由）。
+ */
+function modelMatches(requestModel: string, respModel: unknown): boolean {
+	const got = String(respModel ?? "");
+	if (!got) return true;
+	if (got === requestModel) return true;
+	const tail = requestModel.slice(requestModel.lastIndexOf("/") + 1);
+	return !!tail && (got === tail || got.startsWith(tail));
+}
+
 async function regenOnce(request: any, content: string, deps: RegenDeps): Promise<{ text: string; finishReason: string } | { error: string }> {
 	const model = String(request?.model ?? "");
 	const provider = deps.provider !== undefined ? deps.provider : providerFor(model);
@@ -728,7 +741,7 @@ async function regenOnce(request: any, content: string, deps: RegenDeps): Promis
 	} catch {
 		return { error: "bad_json" };
 	}
-	if (data?.model && String(data.model) !== model) return { error: "model_mismatch" };
+	if (data?.model && !modelMatches(model, data.model)) return { error: "model_mismatch" };
 	const choice = data?.choices?.[0];
 	const text = choice?.message?.content;
 	if (typeof text !== "string" || !text.trim()) return { error: "empty" };
