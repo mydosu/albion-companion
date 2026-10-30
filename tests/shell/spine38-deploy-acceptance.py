@@ -4,7 +4,7 @@
 （tapHitArea 是否存在）、`globalThis.__albionSpine38`（骨架，取 zui 骨 scaleX）。
 不写任何用户设置，不点菜单外的按钮；只读 + 回忆情绪。
 
-产物目录：tests/output/promo-face-20261030/deploy/
+产物目录：tests/output/promo-face-20261030/deploy/（可用 --out 换）
   emo_<情绪>.png                  9 个情绪，各等 1.2s 后截图
   poke_<部位>_<秒>.png             poke 后 0.5/1.5/3/5 秒
   poke_<部位>.json                气泡文字、tapHitArea、状态采样
@@ -13,7 +13,10 @@
   summary.json                    汇总数字
 
 用法：<runtime-python> tests/shell/spine38-deploy-acceptance.py
+      [--out 目录] [--emotions happy,surprised,question] [--skip-poke] [--skip-trace]
+只验某几个情绪时可跳过 poke 和逐帧轨迹，几十秒跑完。
 """
+import argparse
 import asyncio
 import base64
 import json
@@ -27,8 +30,21 @@ import websockets
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 CDP = 9335
-OUT = Path(__file__).resolve().parents[2] / "tests" / "output" / "promo-face-20261030" / "deploy"
+DEFAULT_OUT = Path(__file__).resolve().parents[2] / "tests" / "output" / "promo-face-20261030" / "deploy"
+# 截图写到哪个目录由 main() 按 --out 设定
+OUT = DEFAULT_OUT
 EMOTIONS = ["neutral", "happy", "sad", "angry", "surprised", "awkward", "question", "think", "curious"]
+
+
+def parse_args():
+    ap = argparse.ArgumentParser(description="Spine38 部署验收：连生产壳 CDP 逐情绪截图并记录脸轨")
+    ap.add_argument("--out", type=Path, default=DEFAULT_OUT, help="截图/JSON 输出目录")
+    ap.add_argument("--emotions", default=",".join(EMOTIONS), help="逗号分隔的情绪名，默认全部 9 个")
+    ap.add_argument("--skip-poke", action="store_true", help="不戳头/腰（不回作者台词）")
+    ap.add_argument("--skip-trace", action="store_true", help="不逐帧记 zui 骨")
+    args = ap.parse_args()
+    args.emotions = [e.strip() for e in args.emotions.split(",") if e.strip()]
+    return args
 
 # 页面里的公共取值：气泡/菜单按 Spine38.vue 里的内联样式认，不依赖 class 名。
 JS_HELPERS = r"""
@@ -66,6 +82,13 @@ globalThis.__acc = {
     const e = m.state.getCurrent(2)
     return e ? e.animation.name : null
   },
+  // 脸在第 0 条轨道（'normal' 或 '1'..'11'）；轨迹轨（2）平常是空的，所以 idle 只看 poseTrack
+  face() {
+    const m = globalThis.__albionSpine38
+    if (!m || !m.state) return null
+    const e = m.state.getCurrent(0)
+    return e ? e.animation.name : null
+  },
   probe() {
     return {
       hasPet: !!window.__albionPet,
@@ -73,6 +96,7 @@ globalThis.__acc = {
       hasAuthor: !!globalThis.__albionAuthor,
       tapHitArea: typeof (globalThis.__albionAuthor || {}).tapHitArea,
       skeletonSource: globalThis.__albionSpine38 ? '__albionSpine38' : (globalThis.__albionModel ? '__albionModel' : null),
+      face: this.face(),
       zui: (() => { const b = this.zui(); return b ? +b.scaleX.toFixed(5) : null })(),
       bubbles: this.bubbles(),
       menus: this.menus(),
@@ -214,6 +238,9 @@ async def poke_round(p, part):
 
 
 async def main():
+    global OUT
+    args = parse_args()
+    OUT = args.out if args.out.is_absolute() else (Path.cwd() / args.out)
     OUT.mkdir(parents=True, exist_ok=True)
     p = await connect()
     summary = {}
@@ -227,24 +254,27 @@ async def main():
     summary["probe"] = probe0
     summary["tapHitArea_exists"] = probe0.get("tapHitArea") == "function"
 
-    # 4a 九个情绪
-    emo_shots = []
-    for e in EMOTIONS:
+    # 4a 情绪截图（默认九个；--emotions 可只跑几个）
+    emo_shots, emo_faces = [], {}
+    for e in args.emotions:
         await p.ev(f"window.__albionPet.emotion('{e}')")
         await asyncio.sleep(1.2)
         emo_shots.append(await p.shot(f"emo_{e}.png"))
         st = await p.ev("globalThis.__acc.probe()")
-        print(f"emo {e}: zui={st['zui']} menus={st['menus']}", flush=True)
+        emo_faces[e] = st["face"]
+        print(f"emo {e}: face={st['face']} zui={st['zui']} menus={st['menus']}", flush=True)
     await p.ev("window.__albionPet.emotion('neutral')")
     summary["emo_shots"] = emo_shots
+    summary["emo_faces"] = emo_faces
 
     # 4b 两次 poke
-    await asyncio.sleep(3)
-    summary["poke_waist"] = await poke_round(p, "waist")
-    summary["poke_head"] = await poke_round(p, "head")
+    if not args.skip_poke:
+        await asyncio.sleep(3)
+        summary["poke_waist"] = await poke_round(p, "waist")
+        summary["poke_head"] = await poke_round(p, "head")
 
     # 4c 换脸嘴骨逐帧
-    for tag, post in (("zui_trace.json", 1000), ("zui_trace_long.json", 2500)):
+    for tag, post in (("zui_trace.json", 1000), ("zui_trace_long.json", 2500)) if not args.skip_trace else ():
         traces = []
         for emotion in ("happy", "neutral"):
             tr = await p.ev(f"{TRACE_JS}('{emotion}', 100, {post})")
@@ -283,8 +313,9 @@ async def main():
 
     (OUT / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
     for part in ("waist", "head"):
-        v = summary[f"poke_{part}"]
-        (OUT / f"poke_{part}.json").write_text(json.dumps(v, ensure_ascii=False, indent=1), encoding="utf-8")
+        v = summary.get(f"poke_{part}")
+        if v is not None:
+            (OUT / f"poke_{part}.json").write_text(json.dumps(v, ensure_ascii=False, indent=1), encoding="utf-8")
     print("DONE", flush=True)
 
 
