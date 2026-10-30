@@ -780,6 +780,13 @@ export function startAlbionPetInteractions() {
   }
   window.addEventListener('albion:motion-finish', chainAfterMotion, { signal: owner.signal })
 
+  /** 部位 → Spine 作者命中区（骨名）：头、胸各有自己的，其余都落在罩住全身的「身体」上。 */
+  function tapSpineHitArea(part: TouchPart): boolean {
+    const id = part.name === 'head' ? 'faF-6' : part.name === 'chest' ? 'xiongL_x' : 'Y9'
+    const tap = (globalThis as any).__albionAuthor?.tapHitArea
+    return typeof tap === 'function' && tap(id) === true
+  }
+
   /** 按部位戳她：动作 + 该部位专属的小动作 + 对应描述（她的回话与语音跟着变） */
   function poke(part: TouchPart = PART_CHEST, wav?: string, playOwnMotion = true) {
     if (owner.signal.aborted)
@@ -789,6 +796,10 @@ export function startAlbionPetInteractions() {
       return
     lastTouch = now
     if (flag('settings/albion/touch-enabled', true)) {
+      // Spine：走作者命中区的反应（和真实点击同一条路径，自带脸/台词/语音/气泡），
+      // 不再放旧 Live2D 组名的动作，也不再叠一句 TTS 免得和作者语音重叠
+      if (stageModel.stageModelRenderer === 'spine38' && tapSpineHitArea(part))
+        return
       // 新模型（香气来朱阁）的动作组名完全不同：交互层已经按模型包自己的规格播了动作，
       // 这里就不再拿旧模型的组名去点播（否则日志里一条"模型没有这个动作组"）。
       if (playOwnMotion)

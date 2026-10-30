@@ -108,6 +108,50 @@ export function mouthScaleFor(level: number, faceImage: boolean): number {
 }
 
 /**
+ * 嘴骨 scaleX，随脸图不透明度在「无脸」和「脸图」两套结果之间插值。
+ * 脸图一上 / 一撤，两套结果差 0.35（闭嘴 0.55 ↔ 脸图 0.9），直接切会在一两帧里跳变（2026-10-30 实测），
+ * 所以跟着 `FACE_FADE_MS` 的 alpha 走，180ms 内线性过渡。`faceAlpha` 在没有脸图时传 0。
+ *
+ * @example
+ * mouthScaleForFace(0, 0)   // => 0.55
+ * mouthScaleForFace(0, 0.5) // => 0.725
+ * mouthScaleForFace(0, 1)   // => 0.9
+ */
+export function mouthScaleForFace(level: number, faceAlpha: number): number {
+  const a = Math.min(1, Math.max(0, Number.isFinite(faceAlpha) ? faceAlpha : 0))
+  const bare = mouthScaleFor(level, false)
+  return bare + (mouthScaleFor(level, true) - bare) * a
+}
+
+/**
+ * 作者 `normal` 待机的一圈时长（秒）和其中两段快速摆头的相位窗口 [起, 止]。
+ * 来源：2026-10-30 生产壳 30fps 逐帧采样 `lian` 骨（tests/output/promo-face-20261030/live/phase.py），
+ * 快摆出现在约 3.5–4.5s 和 8.5–9.0s。换脸的淡入若同时落在这两段，叠上去就是「抽一下」。
+ */
+export const IDLE_LOOP_SEC = 13.367
+export const IDLE_SWING_WINDOWS: ReadonlyArray<readonly [number, number]> = [[3.5, 4.5], [8.5, 9.0]]
+/** 最多推迟这么久：窗口最长 1s，超过就不值得让 ACT 的脸晚出。 */
+export const IDLE_SWING_MAX_DEFER_MS = 1000
+
+/**
+ * 现在（待机播放头 `trackTime` 秒）换脸要不要等：落在快摆窗口里返回要等的毫秒数（≤1000），否则 0。
+ *
+ * @example
+ * idleSwingDeferMs(3.9) // => 600（等到 4.5s）
+ * idleSwingDeferMs(2.0) // => 0
+ */
+export function idleSwingDeferMs(trackTime: number, loopSec = IDLE_LOOP_SEC): number {
+  if (!Number.isFinite(trackTime) || !(loopSec > 0))
+    return 0
+  const phase = ((trackTime % loopSec) + loopSec) % loopSec
+  for (const [from, to] of IDLE_SWING_WINDOWS) {
+    if (phase >= from && phase < to)
+      return Math.min(IDLE_SWING_MAX_DEFER_MS, Math.ceil((to - phase) * 1000))
+  }
+  return 0
+}
+
+/**
  * 换脸不透明度的一帧推进：线性，`FACE_FADE_MS` 内一定走到目标。
  *
  * @example

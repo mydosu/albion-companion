@@ -103,6 +103,37 @@ describe('s3 pet startup and ownership', () => {
     expect(play).not.toHaveBeenCalled()
   })
 
+  it('s5 pokes through the Spine author hit areas, keeps the 4s cooldown, and skips the Live2D motion and TTS', async () => {
+    localStorage.setItem('settings/albion/touch-voice', 'true')
+    // 开局的触摸语音预热会 fetch，不能拿 fetch 当证据；戳她若还走旧路，会 new Audio().play()
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(new Blob(['test-audio'])))
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
+    const tapHitArea = vi.fn(() => true)
+    ;(globalThis as any).__albionAuthor = { tapHitArea }
+    running = startAlbionPetInteractions()
+    // 壳在后台刷新 stage model 时会把 renderer 重置成内置默认，所以每次戳之前重新钉成 spine38
+    const poke = (part: string) => {
+      useSettingsStageModel().stageModelRenderer = 'spine38'
+      ;(window as any).__albionPet.poke(part)
+    }
+    poke('waist')
+    expect(tapHitArea).toHaveBeenLastCalledWith('Y9')
+    poke('head')
+    expect(tapHitArea).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(4001)
+    poke('head')
+    expect(tapHitArea).toHaveBeenLastCalledWith('faF-6')
+    await vi.advanceTimersByTimeAsync(4001)
+    poke('chest')
+    expect(tapHitArea).toHaveBeenLastCalledWith('xiongL_x')
+    await vi.advanceTimersByTimeAsync(4001)
+    poke('thigh')
+    expect(tapHitArea).toHaveBeenLastCalledWith('Y9')
+    await vi.advanceTimersByTimeAsync(100)
+    expect(play).not.toHaveBeenCalled()
+    delete (globalThis as any).__albionAuthor
+  })
+
   it('seeds history without performance or mutation, then performs a new turn once', async () => {
     const session = useChatSessionStore()
     const content = '<|ACT:{"emotion":"happy","motion":"touch_head"}|>旧消息'

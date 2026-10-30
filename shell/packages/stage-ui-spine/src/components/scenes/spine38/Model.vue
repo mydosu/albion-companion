@@ -34,7 +34,7 @@ import costumeAUrl from '../../../assets/author-models/albion-spine-38-costume-a
 import { loadSpineZip } from '../../../utils/spine-zip-loader'
 import { AuthorState, parseCommand, selfTest } from './author-engine'
 import { erasableFacesIn, eraseMaskedPixels, EYE_SLOT_NAMES, stripSlotTimelines } from './face-eye-mask'
-import { faceFadeStep, faceOverlayAlpha, faceSwayDeg, MOUTH_CLOSED_SCALE, MOUTH_LEVEL_TIMEOUT_MS, mouthLevelFromRms, mouthScaleFor, smoothMouth } from './face-motion'
+import { faceFadeStep, faceOverlayAlpha, faceSwayDeg, idleSwingDeferMs, MOUTH_CLOSED_SCALE, MOUTH_LEVEL_TIMEOUT_MS, mouthLevelFromRms, mouthScaleForFace, smoothMouth } from './face-motion'
 import { asHeadMotion, FaceHoldTimer, headMotionOffset, parseHold, resolveFace } from './stage-act'
 
 import '@pixi/loaders'
@@ -129,6 +129,8 @@ let faceAlpha = 1
 let faceAlphaTarget = 1
 /** 淡出中：这张脸还挂在 track 0 上（附件还在），等 alpha 到 0 再真的切回 normal。 */
 let faceFadeOut = false
+/** 换脸被推迟到待机快摆结束后（见 idleSwingDeferMs）时的定时器；新的换脸或卸载会取消它。 */
+let faceDeferTimer: ReturnType<typeof setTimeout> | undefined
 
 // 作者的 `sound` 字段 → 同名 wav。语音是第三方资产，放在 gitignore 的本地目录里，
 // 由 vite 作为资源提供（避免 file:// 与 dev server 的跨源限制）。
@@ -349,6 +351,7 @@ async function setup() {
   // 与上面两个同样的调试出口：CDP 里可直接驱动作者交互做客观验收
   ;(globalThis as unknown as Record<string, unknown>).__albionAuthor = {
     play: (ref: string) => playMotionRef(ref),
+    tapHitArea: (id: string) => tapHitArea(id),
     choose: (i: number) => choose(i),
     slotOpacity: (name: string, v: number) => setSlotGroupOpacity(name, v),
     mouth: (v: number) => setMouthLevel(v),
@@ -698,7 +701,8 @@ function installControllers() {
         // 电平有看门狗：TTS 会话断开或 Stage 的循环停掉时，超过 250ms 没新值就当静音，
         // 保证说完/打断/静音后一定回到闭嘴，不会停在张开。
         const level = now - mouthLevelAt > MOUTH_LEVEL_TIMEOUT_MS ? 0 : mouthLevelRef.value
-        const want = posing ? 1 : mouthScaleFor(level, faceOn)
+        // 脸图的嘴和无脸的嘴按脸图 alpha 插值，换脸/撤脸时 zui 不会一两帧内跳 0.35
+        const want = posing ? 1 : mouthScaleForFace(level, faceOn ? faceAlpha : 0)
         mouthNow = smoothMouth(mouthNow, want, (dt || 0.016) * 1000)
         zui.scaleX = mouthNow
         touched = true
@@ -788,6 +792,19 @@ function setSlotGroupOpacity(groupName: string, value: number) {
   g.value = v
 }
 
+/**
+ * 按命中区骨名（作者 spec 的 hit_areas[].id，如 faF-6 / xiongL_x / Y9）触发它的反应：
+ * 和真实点击落在该区同一条路径（`playMotionRef(area.motion)`：随机台词、脸、作者 wav、气泡）。
+ * 供 `__albionPet.poke` 在 Spine 下使用。没有这个命中区返回 false。
+ */
+function tapHitArea(id: string) {
+  const area = author.value?.spec.hit_areas?.find(a => a.id === id)
+  if (!area)
+    return false
+  playMotionRef(area.motion)
+  return true
+}
+
 function installAuthorInteractions() {
   const canvas = props.canvas
   const spine = model
@@ -840,7 +857,7 @@ function installAuthorInteractions() {
     const py = (e.clientY - rect.top) * (props.resolution ?? 1)
     const hit = hitAt(px, py)
     if (hit)
-      playMotionRef(hit.motion)
+      tapHitArea(hit.id)
   }
 
   // 作者的 key_trigger：input 88 = 键盘 X（作者默认快捷键）→ 打开选项菜单
@@ -1039,6 +1056,7 @@ function choose(index: number) {
 function teardownModel() {
   clearTimeout(bubbleTimer)
   clearTimeout(playTimer)
+  clearTimeout(faceDeferTimer)
   faceHold.cancel()
   headMotion = undefined
   // 换装扮会重建模型：嘴和脸的瞬时状态跟着旧骨架走，别把半截淡出/张嘴带到新骨架上
@@ -1185,6 +1203,20 @@ function listSkins() {
  * 所以改变量再重套一次 idle 层即可：layer0 换脸，layer1 身体照常。
  */
 function setFace(anim: string) {
+  if (!author.value || !model)
+    return false
+  clearTimeout(faceDeferTimer)
+  // 待机（身体层）正在快速摆头时换脸，淡入叠上去就是「抽一下」：推迟到这段结束，最多 1s
+  const idle = model.state.getCurrent(poseTrack - 1)
+  const wait = idleSwingDeferMs(idle?.trackTime ?? 0, idle?.animation?.duration)
+  if (wait > 0)
+    faceDeferTimer = setTimeout(showFace, wait, anim)
+  else
+    showFace(anim)
+  return true
+}
+
+function showFace(anim: string) {
   const st = author.value
   if (!st)
     return false

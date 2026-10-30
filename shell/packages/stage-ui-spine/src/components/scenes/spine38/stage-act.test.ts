@@ -18,10 +18,27 @@ describe('resolveFace', () => {
 
   it('falls back to the emotion default when face is missing or not a semantic name', () => {
     expect(resolveFace({ emotion: 'happy', face: '8' })).toBe('8')
-    expect(resolveFace({ emotion: 'sad' })).toBe('11')
     expect(resolveFace({ emotion: 'neutral' })).toBe('normal')
     expect(resolveFace({ emotion: 'nope' })).toBeUndefined()
     expect(resolveFace({})).toBeUndefined()
+  })
+})
+
+describe('emotion default faces', () => {
+  // 2026-10-30 对着生产壳截图和作者台词重排；每个情绪都要有脸，且都是 FACE_ANIMATION 里存在的脸
+  it.each([
+    ['neutral', 'normal'],
+    ['happy', '8'],
+    ['sad', '3'],
+    ['angry', '11'],
+    ['surprised', '10'],
+    ['awkward', '5'],
+    ['question', '10'],
+    ['think', '7'],
+    ['curious', '2'],
+  ])('%s -> %s', (emotion, face) => {
+    expect(resolveFace({ emotion })).toBe(face)
+    expect(Object.values(FACE_ANIMATION)).toContain(face)
   })
 })
 

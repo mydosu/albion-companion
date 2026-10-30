@@ -8,6 +8,9 @@ import {
   faceFadeStep,
   faceOverlayAlpha,
   faceSwayDeg,
+  IDLE_LOOP_SEC,
+  IDLE_SWING_MAX_DEFER_MS,
+  idleSwingDeferMs,
   MOUTH_ATTACK_MS,
   MOUTH_CLOSED_SCALE,
   MOUTH_OPEN_SCALE,
@@ -15,6 +18,7 @@ import {
   mouthLevelFromRms,
   mouthPushFor,
   mouthScaleFor,
+  mouthScaleForFace,
   smoothMouth,
   stepFaceAlpha,
 } from './face-motion'
@@ -73,6 +77,49 @@ describe('mouthScaleFor', () => {
   it('keeps the painted face almost still (the face mesh is skinned to zui)', () => {
     expect(mouthScaleFor(0, true)).toBeCloseTo(0.9, 6)
     expect(mouthScaleFor(1, true)).toBeCloseTo(1.1, 6)
+  })
+})
+
+describe('mouthScaleForFace', () => {
+  it('is the bare mouth without a face and the painted-face mouth at full alpha', () => {
+    expect(mouthScaleForFace(0.3, 0)).toBeCloseTo(mouthScaleFor(0.3, false), 9)
+    expect(mouthScaleForFace(0.3, 1)).toBeCloseTo(mouthScaleFor(0.3, true), 9)
+    expect(mouthScaleForFace(0, Number.NaN)).toBe(MOUTH_CLOSED_SCALE)
+  })
+
+  // ROOT CAUSE: 脸图一上，旧写法按「有没有脸附件」二选一，zui 从 0.55 在一两帧内跳到 0.9，撤脸时再跳回。
+  // 现在跟着淡入淡出 alpha 插值：相邻帧变化 ≤ 0.05。
+  it.each([['in', 0, 1], ['out', 1, 0]] as const)('fading %s moves zui by ≤0.05 per 60fps frame (through smoothMouth)', (_n, from, to) => {
+    let alpha: number = from
+    let zui = mouthScaleForFace(0, from)
+    let maxStep = 0
+    for (let i = 0; i < 40; i++) {
+      alpha = stepFaceAlpha(alpha, to, 1000 / 60)
+      const next = smoothMouth(zui, mouthScaleForFace(0, alpha), 1000 / 60)
+      maxStep = Math.max(maxStep, Math.abs(next - zui))
+      zui = next
+    }
+    expect(maxStep).toBeLessThanOrEqual(0.05)
+    expect(zui).toBeCloseTo(mouthScaleFor(0, to === 1), 6)
+  })
+})
+
+describe('idleSwingDeferMs', () => {
+  // 窗口来自 2026-10-30 实测：normal 一圈里 3.5–4.5s 和 8.5–9.0s 是快速摆头
+  it('defers a face change that lands inside a swing window until the window ends', () => {
+    expect(idleSwingDeferMs(3.5)).toBe(1000)
+    expect(idleSwingDeferMs(3.9)).toBeCloseTo(600, -1)
+    expect(idleSwingDeferMs(8.6)).toBeCloseTo(400, -1)
+    // 取模：第二圈同相位一样
+    expect(idleSwingDeferMs(IDLE_LOOP_SEC + 3.9)).toBeCloseTo(600, -1)
+    expect(idleSwingDeferMs(3.9)).toBeLessThanOrEqual(IDLE_SWING_MAX_DEFER_MS)
+  })
+
+  it('changes immediately outside the windows (end is exclusive) and on bad input', () => {
+    for (const t of [0, 2.9, 3.49, 4.5, 6, 8.49, 9.0, 13])
+      expect(idleSwingDeferMs(t)).toBe(0)
+    expect(idleSwingDeferMs(Number.NaN)).toBe(0)
+    expect(idleSwingDeferMs(4, 0)).toBe(0)
   })
 })
 

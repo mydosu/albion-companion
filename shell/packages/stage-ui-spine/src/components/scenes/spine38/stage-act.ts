@@ -15,11 +15,21 @@ export interface SpineStageAct {
 }
 
 /**
- * 脸的语义名 → 换脸动画名。对照来自 2026-10-25 逐张截图
- * （tests/output/spine-act-20261025/faces-sheet.png）：
- *   calm 平静 · nervous 慌张（颤线+汗）· smile 张嘴笑 · worried 担心（o 嘴+汗）· wry 冒汗苦笑
- *   bashful 含羞小嘴 · fluster 着急咧嘴 · gentle 温和抿笑 · happy 红脸微笑 · shy 害羞到冒圈
- *   dizzy 一只眼闭、发晕 · pout 鼓气（头上一朵小云）
+ * 脸的语义名 → 换脸动画名（名字在脑的提示词里用，不改）。描述按 2026-10-30 生产壳逐张截图
+ * （tests/output/promo-face-20261030/live/faces-all.png）校准，名字和实际画面不一定相符；
+ * 括号里是作者在 spec 里拿这张脸配过的台词（含义以台词为准）：
+ *   calm(normal) 平静待机
+ *   nervous(1) 慌张，颤线+汗（作者配：牛奶打翻了…指挥官，您醒了？）
+ *   smile(2) 眼睛睁大、嘴微张，愉快地开口说话（作者配：谢谢您／出去走走吧／任务处理完了？刚好…）。不是张嘴笑，也不是惊讶
+ *   worried(3) 眉下压、小 o 嘴+汗，歉疚难过（作者配：试牛奶温度时手忙脚乱…）
+ *   wry(4) 冒汗苦笑（作者没配台词）
+ *   bashful(5)、shy(5) 含羞红脸小嘴（作者配：昨晚休息得怎么样？）
+ *   fluster(6) 着急咧嘴（作者配：面包烤焦了，抱歉）
+ *   gentle(7) 温和抿笑（作者没配台词）
+ *   happy(8) 红脸眯眼笑（作者配：一起准备早餐／来新邮件了）
+ *   dizzy(10) 手指抵唇、单眼眯、头边卷线的疑问小吃惊（作者配：这么早就有新的任务了？）。不是发晕
+ *   pout(11) 皱眉鼓气（作者没配台词）
+ *   9 漩涡眼（作者配：早安吻／誓约），没有语义名，见下面 shy 的注释
  */
 export const FACE_ANIMATION: Readonly<Record<string, string>> = Object.freeze({
   calm: 'normal',
@@ -39,18 +49,20 @@ export const FACE_ANIMATION: Readonly<Record<string, string>> = Object.freeze({
 })
 
 /**
- * AIRI 的 9 种情绪 → 默认脸（她没写 face 时用）。脸号沿用 2026-09-17 的实拍标注。
+ * AIRI 的 9 种情绪 → 默认脸（她没写 face 时用）。2026-10-30 对着截图和作者台词重排：
+ * 难过用 3（歉疚）；闹小脾气用 11（皱眉鼓气）；惊讶和疑问都用 10（小吃惊的「嗯？」）；
+ * 思考用 7（平和抿嘴）；好奇用 2（睁大眼、愉快开口）。
  */
 const FACE_OF_EMOTION: Readonly<Record<string, string>> = Object.freeze({
   neutral: 'normal',
   happy: '8',
-  sad: '11',
-  angry: '10',
-  surprised: '1',
+  sad: '3',
+  angry: '11',
+  surprised: '10',
   awkward: '5',
-  question: '3',
-  think: '2',
-  curious: '3',
+  question: '10',
+  think: '7',
+  curious: '2',
 })
 
 /**
