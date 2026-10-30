@@ -13,15 +13,32 @@ import {
   idleSwingDeferMs,
   MOUTH_ATTACK_MS,
   MOUTH_CLOSED_SCALE,
+  MOUTH_FACE_IMAGE_CLOSED,
+  MOUTH_FACE_IMAGE_OPEN,
   MOUTH_OPEN_SCALE,
   MOUTH_RELEASE_MS,
   mouthLevelFromRms,
   mouthPushFor,
   mouthScaleFor,
   mouthScaleForFace,
+  rmsOfByteTimeDomain,
   smoothMouth,
   stepFaceAlpha,
 } from './face-motion'
+
+describe('rmsOfByteTimeDomain', () => {
+  it('is 0 for silence or empty input, full-scale square wave is ~1, a half-scale wave is ~0.5', () => {
+    expect(rmsOfByteTimeDomain(new Uint8Array([]))).toBe(0)
+    expect(rmsOfByteTimeDomain(new Uint8Array(512).fill(128))).toBe(0)
+    expect(rmsOfByteTimeDomain(new Uint8Array([0, 256 - 1, 0, 255]))).toBeCloseTo(0.9961, 3)
+    expect(rmsOfByteTimeDomain(new Uint8Array([192, 64, 192, 64]))).toBeCloseTo(0.5, 6)
+  })
+
+  it('feeds mouthLevelFromRms: quiet noise stays below the gate, speech opens the mouth', () => {
+    expect(mouthLevelFromRms(rmsOfByteTimeDomain(new Uint8Array([129, 127, 129, 127])))).toBe(0)
+    expect(mouthLevelFromRms(rmsOfByteTimeDomain(new Uint8Array([160, 96, 160, 96])))).toBeGreaterThan(0.5)
+  })
+})
 
 describe('mouthLevelFromRms', () => {
   it('gates the noise floor and saturates at full scale', () => {
@@ -75,8 +92,19 @@ describe('mouthScaleFor', () => {
   })
 
   it('keeps the painted face almost still (the face mesh is skinned to zui)', () => {
-    expect(mouthScaleFor(0, true)).toBeCloseTo(0.9, 6)
-    expect(mouthScaleFor(1, true)).toBeCloseTo(1.1, 6)
+    expect(mouthScaleFor(0, true)).toBe(MOUTH_FACE_IMAGE_CLOSED)
+    expect(mouthScaleFor(1, true)).toBe(MOUTH_FACE_IMAGE_OPEN)
+  })
+
+  // ROOT CAUSE: 触摸反应播作者 wav 时 pose 轨在播，旧写法 `posing ? 1 : …` 把嘴钉在 1.0，嘴不跟声音动。
+  // 现在 pose 期间（脸图 alpha=1）和脸图说话走同一条规则：电平越大嘴越开，单调变化。
+  it('moves with the audio level while a pose face is fully shown (no longer pinned)', () => {
+    const at = (l: number) => mouthScaleForFace(l, 1)
+    expect(at(0)).toBe(MOUTH_FACE_IMAGE_CLOSED)
+    expect(at(1)).toBe(MOUTH_FACE_IMAGE_OPEN)
+    expect(at(0.5)).toBeGreaterThan(at(0.2))
+    expect(at(0.2)).toBeGreaterThan(at(0))
+    expect(new Set([0, 0.25, 0.5, 0.75, 1].map(at)).size).toBe(5)
   })
 })
 

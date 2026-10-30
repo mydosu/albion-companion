@@ -27,8 +27,14 @@ export const MOUTH_RMS_GAIN = 6
 /** 超过这么久没有新电平就当静音：TTS 会话断开或 Stage 的循环停掉时，嘴也不会卡在张开。 */
 export const MOUTH_LEVEL_TIMEOUT_MS = 250
 
-/** 脸图在场时 `zui` 骨对整张脸有权重（作者实测缩嘴骨有 44.5 万像素变化），摆动收到 ±10%。 */
-export const MOUTH_FACE_IMAGE_SWING = 0.1
+/**
+ * 脸图在场时 `zui.scaleX` 的闭嘴 / 满开值。脸图的嘴是画上去的，`zui` 对整张脸有权重，所以范围比无脸时小得多。
+ * 2026-10-30 在生产壳上对脸 2/5/8/9 逐档截图（tests/output/promo-face-20261030/mouth/）：
+ * ±10% 肉眼几乎看不出在动，0.6–1.4 嘴形变化清楚、腮和下巴没有被拉变形。
+ * 闭嘴值留 0.9（接近原画，没人说话时脸不变形），满开 1.4。
+ */
+export const MOUTH_FACE_IMAGE_CLOSED = 0.9
+export const MOUTH_FACE_IMAGE_OPEN = 1.4
 
 /** 换脸淡入淡出：附件是硬切的，会"闪一下"，用槽 `1` 的不透明度过渡。 */
 export const FACE_FADE_MS = 180
@@ -63,6 +69,25 @@ export function mouthPushFor(speaking: boolean, wasSpeaking: boolean): MouthPush
 }
 
 /**
+ * AnalyserNode.getByteTimeDomainData 的一帧样本（0..255，128 为零点）→ RMS（0..1）。
+ * 作者 wav 的口型和 TTS 共用 {@link mouthLevelFromRms} 之后的那一段。
+ *
+ * @example
+ * rmsOfByteTimeDomain(new Uint8Array([128, 128])) // => 0
+ * rmsOfByteTimeDomain(new Uint8Array([255, 1]))   // => 0.9921875
+ */
+export function rmsOfByteTimeDomain(samples: ArrayLike<number>): number {
+  if (!samples.length)
+    return 0
+  let sum = 0
+  for (let i = 0; i < samples.length; i++) {
+    const d = (samples[i] - 128) / 128
+    sum += d * d
+  }
+  return Math.sqrt(sum / samples.length)
+}
+
+/**
  * 音频 RMS → 口型电平（0..1）：过噪声门后线性放大，到 1 截顶。
  *
  * @example
@@ -92,18 +117,18 @@ export function smoothMouth(current: number, target: number, dtMs: number): numb
 }
 
 /**
- * 电平 → 嘴骨 scaleX。脸图在场时只做 ±10% 的小幅呼吸：脸图的嘴是画上去的，大幅缩放会把
- * 腮和下巴一起拉变形。
+ * 电平 → 嘴骨 scaleX。脸图在场时只在 0.9..1.4 之间动（见 MOUTH_FACE_IMAGE_*）。
+ * 触摸说话和 TTS 说话共用这条规则。
  *
  * @example
  * mouthScaleFor(0, false) // => 0.55（闭嘴）
  * mouthScaleFor(1, false) // => 2.2（满开）
- * mouthScaleFor(1, true)  // => 1.1（脸图在场，只给一点起伏）
+ * mouthScaleFor(1, true)  // => 1.4（脸图在场，满开）
  */
 export function mouthScaleFor(level: number, faceImage: boolean): number {
   const l = Math.min(1, Math.max(0, Number.isFinite(level) ? level : 0))
   if (faceImage)
-    return 1 - MOUTH_FACE_IMAGE_SWING + 2 * MOUTH_FACE_IMAGE_SWING * l
+    return MOUTH_FACE_IMAGE_CLOSED + (MOUTH_FACE_IMAGE_OPEN - MOUTH_FACE_IMAGE_CLOSED) * l
   return MOUTH_CLOSED_SCALE + (MOUTH_OPEN_SCALE - MOUTH_CLOSED_SCALE) * l
 }
 
