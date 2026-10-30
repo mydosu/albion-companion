@@ -37,15 +37,17 @@ export default function albionDelegate(pi: ExtensionAPI) {
 					details: { skipped: "depth" },
 				};
 			}
+			// 模型跟着脑走：不传 --model，pi 就吃 agent/settings.json 的默认值 —— 脑每轮把
+			// 自己在用的模型写回那份设置（bin/follow_settings.py）。临时换一次：ALBION_DELEGATE_MODEL。
+			const modelArgs = process.env.ALBION_DELEGATE_MODEL ? ["--model", process.env.ALBION_DELEGATE_MODEL] : [];
+			const agentDir = process.env.PI_CODING_AGENT_DIR || "/root/albion-pi/agent";
 			const proc = spawnSync(
 				"pi",
 				[
 					"-p",
 					params.task,
 					"--no-session",
-					"--model",
-					// 2026-10-14 起跟主力一起换成 DS：派出去的多是写代码，grok-4.7 在这类活上实测五次全失败
-					process.env.ALBION_DELEGATE_MODEL || "commandcode/deepseek/deepseek-v4.1-flash",
+					...modelArgs,
 					"--tools",
 					"read,bash,edit,write",
 					"--system-prompt",
@@ -56,7 +58,9 @@ export default function albionDelegate(pi: ExtensionAPI) {
 					encoding: "utf-8",
 					timeout: 900_000,
 					maxBuffer: 8 * 1024 * 1024,
-					env: { ...process.env, ALBION_DELEGATE_DEPTH: "1", PI_OFFLINE: "1" },
+					// PI_CODING_AGENT_DIR 必须显式带上：不带 pi 会去读 ~/.pi/agent，那是 magpie 给裸 pi 的目录，
+					// 不是她的（人格、扩展、models.json 全在 albion-pi/agent 这一份）。
+					env: { ...process.env, PI_CODING_AGENT_DIR: agentDir, ALBION_DELEGATE_DEPTH: "1", PI_OFFLINE: "1" },
 				},
 			);
 			const out = (proc.stdout ?? "").trim();

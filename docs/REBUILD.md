@@ -95,6 +95,17 @@ SQLite 从停止后的完整备份或 backup API 快照恢复，不能只复制�
 WSL 里她的技能与 Windows 主 Hermes 的技能树独立，不导入 Windows 通用技能树。
 非敏感模型快照在 `config/rebuild/runtime.json`，不会自动覆盖 `agent/`；部署时核实实际配置。
 
+**脑用哪个模型（2026-10-30 起跟着 magpie 走）**：`bin/follow_settings.py` 每轮开跑前读 magpie 写给 pi 的默认设置
+`/root/.pi/agent/settings.json`（`defaultProvider`/`defaultModel`，路径可用 `ALBION_FOLLOW_SETTINGS` 覆盖），
+把该 provider 的整段从同目录 `models.json` 合并进 `/root/albion-pi/agent/models.json`（只动这一个键、原子写、LF），
+再把实际在用的 `provider/model` 回写 `agent/settings.json` 的 `defaultProvider`/`defaultModel`。
+于是在 magpie 的「Pi · WSL Ubuntu」里换模型就够了，脑下一轮跟上（RPC `set_model`，不行就换身子重开）；
+`ALBION_PROVIDER`/`ALBION_MODEL` 仍最优先，读不到设置时兜底 `commandcode/deepseek/deepseek-v4-flash`。
+`cli.sh` 与 `delegate.ts` 不再传 `--model`，跟着同一份 `settings.json`；要单独换临时 export
+`ALBION_CLI_MODEL` / `ALBION_DELEGATE_MODEL`。合并时去掉模型级 `api`/`baseUrl` 覆盖、统一 provider 级
+`openai-completions`：整理器的钩子与「重说」只发 OpenAI 形状的 payload（`albion-guard.ts` 的 `providerFor` 也只认这种）。
+生产 `agent/models.json` 与仓库示例不同（私密 provider 与明文 key），部署时只追加/替换 magpie 这一个键。
+
 **Hermes 退路已删除（2026-10-16）**：`integrations/hermes/`（gateway 补丁与 `albion-voice` 插件）、
 `tests/hermes/`、`config/rebuild/hermes-environment.json`、根目录 `_启动脑WSL.ps1` 都从仓库撤掉了。
 真要回到 Hermes，从 git 历史取：`git show 5f755e83:integrations/hermes/README.md`（引擎基线
@@ -106,6 +117,10 @@ Windows 翻译桥默认 `TTS_TRANSLATE_BACKEND=codex`；这是历史分支名，
 `TTS_TRANSLATE_FALLBACK_KEY` / `TTS_TRANSLATE_FALLBACK_KEY2`，或已有本机密钥文件与 Hermes 私密配置。
 Codex CLI 仅作最终退路；`CODEX_BIN` 指向的文件不存在时立即跳过、只提示一次，不起进程或设置失败冷却。
 退路模型默认 `deepseek/deepseek-v4.1-flash`，可用 `TTS_TRANSLATE_FALLBACK_MODEL` 覆盖；`reflection/beam:free` 仅作手动备选。
+**首腿跟着脑走（2026-10-30）**：桥先问脑的 `http://127.0.0.1:8650/health` 拿 `provider`/`model`（缓存 60 秒，
+问不到用上次的），`magpie` → 打本机 `magpie` `http://127.0.0.1:3425/v1` 的 `/chat/completions`（`apiKey` 本地占位，
+提示词里带 `reasoning_effort: low`：实测一句 2.4~2.8s，不压是 16s）；`commandcode` → 走上面的 Command Code 腿 + 那个模型。
+DeepSeek 官方、Command Code、codex 三条退路顺序不变；`TTS_BRAIN_ROUTE=0` 可关掉首腿（离线测试用）。
 部署时清理上轮留下的 `TTS_TRANSLATE_BACKEND=api` 环境覆盖，或显式设为 `codex`；启动 bat 不再设置该变量。
 只有显式选择 `api` 才需独立 key：进程环境 `TTS_TRANSLATE_KEY` 优先，否则从 `HERMES_ENV_FILE` 指向的本地
 私密文件读取 `DEEPSEEK_API_KEY`（默认文件 `%USERPROFILE%\AppData\Local\hermes\.env`）。

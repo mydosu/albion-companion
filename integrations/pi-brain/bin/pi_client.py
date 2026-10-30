@@ -248,6 +248,27 @@ class PiSession:
     def interrupt(self):
         self._send({"type": "abort"})
 
+    def set_model(self, provider, model_id):
+        """RPC `set_model`：就地换 provider/模型，上下文不丢，返回 True/False。
+
+        pi 只在启动时读一次 models.json：刚从 magpie 合并进来的 provider 它还不认识，
+        这时会回 `Model not found: <provider>/<id>` —— 调用方据此换身子重开（新进程会重读）。
+        """
+        if not self.running:
+            return False
+        with self._lock:
+            self._req += 1
+            rid = "%s-model-%d" % (self.name, self._req)
+        try:
+            self._send({"id": rid, "type": "set_model", "provider": provider, "modelId": model_id})
+        except Exception:                       # noqa: BLE001 - 管道断了按失败处理，交给换身子
+            return False
+        resp = self._wait_response(rid, 15)
+        if not resp or not resp.get("success"):
+            return False
+        self.model = "%s/%s" % (provider, model_id)
+        return True
+
 
 def _selftest():
     """Smallest thing that fails if the RPC plumbing breaks: two turns, memory kept."""

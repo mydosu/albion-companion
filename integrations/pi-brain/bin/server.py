@@ -44,8 +44,11 @@ ENV_FILE = os.path.join(AGENT_DIR, ".env")
 
 PORT = int(os.environ.get("ALBION_BRAIN_PORT", "8650"))
 RELAY_PORT = int(os.environ.get("ALBION_RELAY_PORT", "8798"))
-# 2026-10-14 起主力换回 DeepSeek（Command Code 第二把 key）：同一套实测里造工具 DS 一次做成、grok-4.7 五次全失败（复读/谎称造好），
-# 聊天 DS 更自然、更快。回 grok：ALBION_PROVIDER=grokpool ALBION_MODEL=grok-4.7 bash start.sh。
+# 2026-10-30 起脑用哪个模型不再写死在这里：跟着 magpie 写给 pi 的默认设置走
+# （/root/.pi/agent/settings.json 的 defaultProvider/defaultModel，路径可用 ALBION_FOLLOW_SETTINGS 覆盖）。
+# 在 magpie 里换 agent 的模型，脑下一轮就跟上；解析、provider 合并、回写 settings 都在 bin/follow_settings.py。
+# 优先级：ALBION_PROVIDER / ALBION_MODEL > 上面那份设置 > 这里的兜底（Command Code 的 DeepSeek V4 Flash）。
+# 兜底留着是因为 magpie 不在的时候脑还得能说话。
 PROVIDER = os.environ.get("ALBION_PROVIDER", "commandcode")
 MODEL = os.environ.get("ALBION_MODEL", "deepseek/deepseek-v4-flash")
 AGENT_NAME = "albion"                 # 壳请求里用的 model id
@@ -59,6 +62,8 @@ SEED_ROW_CHARS = 600                  # 每条最多带这么多字（长篇干�
 
 import sys  # noqa: E402
 sys.path.insert(0, BIN)
+
+import follow_settings   # noqa: E402  模型路由：读 magpie 写给 pi 的默认设置
 
 
 def log(msg, **fields):
@@ -227,6 +232,61 @@ _sessions = {}
 _sessions_lock = threading.Lock()
 _session_locks = {}
 
+# ── 模型路由：跟着 magpie 写给 pi 的默认设置走，每轮开跑前重新解析 ─────────────
+# 只在启动时算一次的话，用户在 magpie 里换模型就得重启脑；这里每轮看一次（读两个小 JSON，很便宜）。
+_START_ENV_ROUTE = ("ALBION_PROVIDER" in os.environ) or ("ALBION_MODEL" in os.environ)
+_route = {"provider": PROVIDER, "model": MODEL, "source": "env" if _START_ENV_ROUTE else "default"}
+_route_lock = threading.Lock()
+
+
+def route_arg(route=None):
+    """pi 的 --model 参数：provider/model。"""
+    r = route or current_route()
+    return "%s/%s" % (r["provider"], r["model"])
+
+
+def current_route():
+    with _route_lock:
+        return dict(_route)
+
+
+def _retarget_session(session, provider, model):
+    """活着的身子就地换模型（RPC set_model，上下文不丢）；pi 还不认识这个 provider 就关掉重开。"""
+    name = getattr(session, "name", "?")
+    try:
+        if session.set_model(provider, model):
+            log("session model switched", session=name, provider=provider, model=model)
+            return
+    except Exception as exc:            # noqa: BLE001 - 换不过去就换身子，不该让她这一轮 500
+        log("session model switch failed", session=name, error=repr(exc)[:160])
+    log("session reloading for model change", session=name, provider=provider, model=model)
+    try:
+        session.close()                 # 下一轮 get_session 发现身子没了，按新 --model 重开并照常播种
+    except Exception:                   # noqa: BLE001
+        pass
+
+
+def refresh_route():
+    """重新读一次设置：变了就先合并 provider，再让所有身子换模型。读不出来就沿用上一次。"""
+    try:
+        r = follow_settings.resolve()
+    except Exception as exc:            # noqa: BLE001 - 设置坏了也得让她继续说话
+        log("follow settings failed", error=repr(exc)[:160])
+        return current_route()
+    with _route_lock:
+        old = dict(_route)
+        _route.update(provider=r.provider, model=r.model, source=r.source)
+    if (old["provider"], old["model"]) != (r.provider, r.model):
+        log("model route changed", was="%s/%s" % (old["provider"], old["model"]),
+            now=r.model_arg, source=r.source, merged_provider=r.merged,
+            settings_written=r.settings_written)
+        for session in list(_sessions.values()):
+            _retarget_session(session, r.provider, r.model)
+    elif r.merged or r.settings_written:
+        log("model route synced", now=r.model_arg, source=r.source,
+            merged_provider=r.merged, settings_written=r.settings_written)
+    return current_route()
+
 
 def session_lock(session_id):
     """一个会话同一时刻只让它跑一轮——Pi 拒绝并发 prompt（'Agent is already processing'），
@@ -294,6 +354,7 @@ def ext_signature():
 
 
 def get_session(session_id):
+    route = refresh_route()          # 每轮前看一次 magpie 写的设置：换了模型这里就跟上
     with _sessions_lock:
         sig = ext_signature()
         s = _sessions.get(session_id)
@@ -308,7 +369,7 @@ def get_session(session_id):
             s.close()
             s = None
         if s is None:
-            s = PiSession(session_id, cwd="/root", model="%s/%s" % (PROVIDER, MODEL),
+            s = PiSession(session_id, cwd="/root", model=route_arg(route),
                           tools=TOOLS, extensions=usable_extension_files(),
                           log_path=err_log_path(session_id),
                           sandbox_env={"PI_CODING_AGENT_DIR": AGENT_DIR,
@@ -516,8 +577,10 @@ class Brain(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0]
         if path == "/health":
+            route = current_route()
             self._json(200, {"status": "ok", "brain": "pi", "host": "thin",
-                             "model": MODEL, "provider": PROVIDER, "agent": AGENT_NAME,
+                             "model": route["model"], "provider": route["provider"],
+                             "source": route["source"], "agent": AGENT_NAME,
                              "extensions": [os.path.basename(p) for p in extension_files()]})
         elif path == "/albion/wake":
             # 壳的门铃：到没到她自己定的醒来时间（底线都算进去了）。到点只响一次。
@@ -832,8 +895,13 @@ def main():
     load_env()
     os.makedirs(LOGS, exist_ok=True)
     make_system_prompt()
-    # 模型通路现在由 albion-relay.ts 在 Pi 里自托管；这里只做一次可达性提示。
+    route = refresh_route()          # 开局先按 magpie 的设置定模型（顺带合并 provider、回写 settings）
+    # 模型通路：commandcode 由 albion-relay.ts 在 Pi 里自托管；别的 provider 不走它，探也白探。
     def relay_probe():
+        if current_route()["provider"] != "commandcode":
+            log("note: relay only serves commandcode; current provider is %s"
+                % current_route()["provider"])
+            return
         try:
             urllib.request.urlopen("http://127.0.0.1:%d/v1/models" % RELAY_PORT, timeout=5)
         except Exception as exc:
@@ -841,7 +909,7 @@ def main():
     brain = ThreadingHTTPServer(("127.0.0.1", PORT), Brain)
     brain.daemon_threads = True
     log("albion host up (thin)", brain=PORT, extensions=[os.path.basename(p) for p in extension_files()],
-        model="%s/%s" % (PROVIDER, MODEL))
+        model=route_arg(route), source=route["source"])
     threading.Thread(target=relay_probe, daemon=True).start()
     threading.Thread(target=widget_snapshot.loop, args=(log,), daemon=True).start()   # 桌面摆件只读 state/widget.json
     try:

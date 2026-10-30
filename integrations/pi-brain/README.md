@@ -53,8 +53,8 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
 | `agent/extensions/albion-relay.ts` | 本机转发 :8798（见下"为什么要转发"）；Pi 一启动它就起 |
 | `agent/extensions/openviking.ts` | 一行薄壳：加载官方 OpenViking 记忆扩展（自动捕获 + 16 个 `openviking_*` 工具）。主体在 `agent/openviking/`，来源与配置见那里的说明 |
 | `agent/openviking/` | 官方扩展 `openviking-pi-extension` 0.4.13（**不 vendor 源码**，只记来源）；`来源与配置.md` 写清了装法、开关与回退 |
-| `agent/models.json` | provider 指向本机转发；`commandcode`（Command Code 第一把 key，daily one）与 `grokpool`（号池 key）都只在 WSL 里，**不入库** |
-| `agent/settings.json` | Pi 设置：默认 commandcode/deepseek/deepseek-v4-flash（脑本体），原思考设置保留、模型能力按注册项声明，`images.autoResize: false`（图片原字节直传，本机不缩） |
+| `agent/models.json` | provider 指向本机转发（`commandcode`）与本机 magpie（`magpie`，2026-10-30 起脑的默认线路）；`commandcode`（Command Code 第一把 key，daily one）与 `grokpool`（号池 key）都只在 WSL 里，**不入库**；仓库里留 `commandcode` 的 `$COMMANDCODE_API_KEY` 引用和 magpie 的本地占位 key `magpie`（回环口不校验，不是凭据） |
+| `agent/settings.json` | Pi 设置：`defaultProvider`/`defaultModel` 跟着脑走——`bin/follow_settings.py` 每轮把脑实际在用的模型写回这两个键（默认 `magpie/antigravity/gemini-3.8-flash`）；`images.autoResize: false`（图片原字节直传，本机不缩） |
 | `agent/extensions/albion-lunar.ts` | `lunar_calendar`：农历/节气/干支/宜忌，`lunar-javascript` 本机算——**她自己造的**（2026-10-14） |
 | `state/state.db` | 活动库（Hermes state.db 的最小兼容表） |
 | `bin/widget_snapshot.py` → `state/widget.json` | 宿主后台线程每 5 秒把活动库查询结果原子写成快照；Windows 桌面摆件每 5 秒读一次这份（超过 60 秒没更新就显示"上次成功 X 前"）。`--selftest` 自检 |
@@ -166,17 +166,36 @@ Pi（Node 程序）直连会稳定超时（`Request timed out.`）。转发把�
 实测直连 3 次全超时、走转发 3 次成功。上游还有 Cloudflare 按 UA 拦，转发带 `User-Agent: curl/8.5.0`。
 现在这条转发由 `albion-relay.ts` 提供：脑停着、两个端口都空着时直跑 `pi`，它会自己把 8798 起起来。
 
-## 主力模型（2026-10-14 起是 DeepSeek）
+## 主力模型（2026-10-30 起跟着 magpie 走）
 
-手动备选：`commandcode/reflection/beam:free`（已在 `agent/models.json` 注册，免费线路可能 429，用前查 `/models` 与 [官方模型目录](https://commandcode.ai/models)）；没有自动切换。
-翻译退路 `tts/irodori/bridge.py` 默认 `deepseek/deepseek-v4.1-flash`。
-不要用仓库的 `agent/models.json` 示例覆盖生产文件，生产文件保留私密 provider 与现有 key 引用。
-注意：生产 `models.json` 里 commandcode 的 `apiKey` 是明文写死的，pi 实际用它而不是 `.env`；换 key 要 `agent/.env` 和 `agent/models.json` 两处一起改，只改 `.env` 脑照样报额度不足。
+脑用哪个模型不再写死：每轮开跑前 `bin/follow_settings.py` 读 magpie 写给 pi 的默认设置
+（`/root/.pi/agent/settings.json` 的 `defaultProvider`/`defaultModel`，路径可用 `ALBION_FOLLOW_SETTINGS` 覆盖），
+把该 provider 的整段从同目录 `models.json` 合并进 `agent/models.json`（**只动这一个键**，原子写、LF），
+再把最终在用的 `provider/model` 回写 `agent/settings.json` 的 `defaultProvider`/`defaultModel`。
+**在 magpie 的「Pi · WSL Ubuntu」那一格换模型，脑下一轮就跟上**；不用改代码、不用重启。
+- 优先级：`ALBION_PROVIDER`/`ALBION_MODEL` > magpie 的设置 > 兜底 `commandcode/deepseek/deepseek-v4-flash`
+  （magpie 不在时脑照样说话）。
+- 换模型时活着的身子先试 Pi 的 RPC `set_model`；pi 只在启动时读一次 `models.json`，还不认识新 provider 就换身子重开
+  （新身子照常从活动库播种历史，见 `bin/server.py` 的 `_retarget_session`）。
+- 合并时去掉模型级 `api`/`baseUrl` 覆盖，统一成 provider 级 `openai-completions`：整理器（`albion-guard.ts`）的
+  context 钩子与「重说」只发 OpenAI 形状的 payload（`/chat/completions`），magpie 给 `antigravity/*` 写的覆盖是
+  `google-generative-ai` + `/v1beta`。
+- `cli.sh`、`delegate.ts` 也跟着脑走：**不再传 `--model`**，pi 用同一个 agent 目录 `settings.json` 的默认值。
+  临时单独换一次仍可 `ALBION_CLI_MODEL` / `ALBION_DELEGATE_MODEL`。
+- TTS 翻译（`tts/irodori/bridge.py`）也跟：问脑 `http://127.0.0.1:8650/health` 的 `provider`/`model`（缓存 60 秒），
+  `magpie` → 首腿打本机 magpie（思考压到 `low`，实测一句 2.4~2.8s；不压是 16s），`commandcode` → 首腿走现有
+  Command Code 腿 + 那个模型。原来的 DeepSeek 官方、Command Code、codex 三条退路顺序不变；`TTS_BRAIN_ROUTE=0` 关掉首腿。
+- 回 grok / 手动指定一次：`ALBION_PROVIDER=grokpool ALBION_MODEL=grok-4.7 bash start.sh`（这次覆盖也会写回 `settings.json`）。
+  另起一只对比脑：再加 `ALBION_BRAIN_PORT=8651`。
+- 手动备选：`commandcode/reflection/beam:free`（已在 `agent/models.json` 注册，免费线路可能 429，用前查 `/models` 与
+  [官方模型目录](https://commandcode.ai/models)）；没有自动切换。
+- 不要用仓库的 `agent/models.json` 示例覆盖生产文件，生产文件保留私密 provider 与现有 key 引用。
+  注意：生产 `models.json` 里 commandcode 的 `apiKey` 是明文写死的，pi 实际用它而不是 `.env`；换 key 要
+  `agent/.env` 和 `agent/models.json` 两处一起改，只改 `.env` 脑照样报额度不足。magpie 那段是本地占位 `magpie`。
+- 同一套真实接口实测（2026-10-14）：自己造工具 DS 一次做成、grok-4.7 五次全失败（复读、谎称造好、写出加载不了的扩展）；
+  聊天 DS 更自然、更快。换 magpie 的 Gemini 3.8 Flash 后（10-29 实测）聊天/工具/翻译都 200，但思考贵：不压提示词一句 16s，
+  压到 `reasoning_effort: low` 是 2.4~2.8s（脑的整理器钩子不受影响，见 `albion-guard.ts`）。
 
-- 脑本体默认 `commandcode/deepseek/deepseek-v4-flash`（`bin/server.py` 的 `PROVIDER`/`MODEL`；`agent/settings.json` 同步，v4 好调教语言）。
-  其余入口（`cli.sh`、`delegate.ts`、TTS 翻译退路）用 `deepseek/deepseek-v4.1-flash`。
-  同一套真实接口实测：自己造工具 DS 一次做成、grok-4.7 五次全失败（复读、谎称造好、写出加载不了的扩展）；聊天 DS 更自然、更快。
-- 回 grok：`ALBION_PROVIDER=grokpool ALBION_MODEL=grok-4.7 bash start.sh`。另起一只对比脑：再加 `ALBION_BRAIN_PORT=8651`。
 - 说出口之前只过一道**整理器**（`albion-guard.ts`，2026-10-16 起；原来的严格裁判、同路由重生成、哨兵、`ALBION_DS_PATCHES` 开关都撤了）：
   ACT 补竖线、心声标签收回括号、英文拒绝稿只留表情、泄漏的工具调用标记截掉、陪伴/等候姿态句每 8 条回复最多放过一次
   （`ALBION_POSTURE_EVERY` 可调）；闭合括号里的自身动作/身体反应每 6 条最多留一次，超额只删命中的小句、保留念头

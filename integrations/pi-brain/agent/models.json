@@ -1,5 +1,38 @@
 {
   "providers": {
+    "magpie": {
+      "baseUrl": "http://127.0.0.1:3425/v1",
+      "api": "openai-completions",
+      "apiKey": "magpie",
+      "models": [
+        {
+          "id": "antigravity/gemini-3.8-flash",
+          "name": "Gemini 3.8 Flash · Antigravity (via magpie)",
+          "reasoning": true,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 1048576,
+          "maxTokens": 65536,
+          "cost": {
+            "input": 0.75,
+            "output": 3.75,
+            "cacheRead": 0.075,
+            "cacheWrite": 0
+          },
+          "thinkingLevelMap": {
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "minimal": null,
+            "max": null,
+            "off": null,
+            "xhigh": null
+          }
+        }
+      ]
+    },
     "commandcode": {
       "baseUrl": "http://127.0.0.1:8798/v1",
       "api": "openai-completions",

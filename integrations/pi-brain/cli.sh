@@ -22,7 +22,10 @@ for raw in fh:
 PY
 )"
 
-MODEL="${ALBION_CLI_MODEL:-commandcode/deepseek/deepseek-v4.1-flash}"   # 只有脑本体用 v4-flash，其余用 v4.1-flash；换就 export ALBION_CLI_MODEL=provider/model（不叫 ALBION_MODEL：宿主那个只填模型名）
+# 模型跟着脑走：不传 --model，pi 就用 agent/settings.json 的 defaultProvider/defaultModel —— 脑每轮把
+# 自己在用的模型写回那份设置（bin/follow_settings.py）。临时换一次：export ALBION_CLI_MODEL=provider/model
+MODEL_ARGS=()
+if [ -n "${ALBION_CLI_MODEL:-}" ]; then MODEL_ARGS=(--model "$ALBION_CLI_MODEL"); fi
 SESSION="${ALBION_CLI_SESSION:-albion-cli}"
 
 EXT=()
@@ -31,6 +34,6 @@ for f in agent/extensions/*.ts; do [ -e "$f" ] && EXT+=(-e "$PWD/$f"); done
 
 # --tools "*" 不能省：RPC/print 模式不给这个参数就一件工具都没有
 if [ "$#" -gt 0 ]; then
-  exec pi -p "$*" --session-id "$SESSION" --tools "*" --model "$MODEL" "${EXT[@]}"
+  exec pi -p "$*" --session-id "$SESSION" --tools "*" "${MODEL_ARGS[@]}" "${EXT[@]}"
 fi
-exec pi --session-id "$SESSION" --tools "*" --model "$MODEL" "${EXT[@]}"
+exec pi --session-id "$SESSION" --tools "*" "${MODEL_ARGS[@]}" "${EXT[@]}"

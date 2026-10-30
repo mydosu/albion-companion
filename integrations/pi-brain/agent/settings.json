@@ -1,7 +1,7 @@
 {
   "transport": "sse",
-  "defaultProvider": "commandcode",
-  "defaultModel": "deepseek/deepseek-v4-flash",
+  "defaultProvider": "magpie",
+  "defaultModel": "antigravity/gemini-3.8-flash",
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": true,
   "retry": {
