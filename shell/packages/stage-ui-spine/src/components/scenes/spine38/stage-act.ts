@@ -50,7 +50,7 @@ export const FACE_ANIMATION: Readonly<Record<string, string>> = Object.freeze({
 
 /**
  * AIRI 的 9 种情绪 → 默认脸（她没写 face 时用）。2026-10-30 对着截图和作者台词重排：
- * 难过用 3（歉疚）；闹小脾气用 11（皱眉鼓气）；惊讶和疑问都用 10（小吃惊的「嗯？」）；
+ * 难过用 3（歉疚）；闹小脾气用 11（皱眉鼓气）；疑问用 10（小吃惊的「嗯？」）；惊讶不换脸（10-30 用户看过全部脸，没有合适的）；
  * 思考用 7（平和抿嘴）；好奇用 2（睁大眼、愉快开口）。
  */
 const FACE_OF_EMOTION: Readonly<Record<string, string>> = Object.freeze({
@@ -58,7 +58,6 @@ const FACE_OF_EMOTION: Readonly<Record<string, string>> = Object.freeze({
   happy: '8',
   sad: '3',
   angry: '11',
-  surprised: '10',
   awkward: '5',
   question: '10',
   think: '7',

@@ -25,13 +25,12 @@ describe('resolveFace', () => {
 })
 
 describe('emotion default faces', () => {
-  // 2026-10-30 对着生产壳截图和作者台词重排；每个情绪都要有脸，且都是 FACE_ANIMATION 里存在的脸
+  // 2026-10-30 对着生产壳截图和作者台词重排；除惊讶外每个情绪都要有脸，且都是 FACE_ANIMATION 里存在的脸
   it.each([
     ['neutral', 'normal'],
     ['happy', '8'],
     ['sad', '3'],
     ['angry', '11'],
-    ['surprised', '10'],
     ['awkward', '5'],
     ['question', '10'],
     ['think', '7'],
@@ -39,6 +38,12 @@ describe('emotion default faces', () => {
   ])('%s -> %s', (emotion, face) => {
     expect(resolveFace({ emotion })).toBe(face)
     expect(Object.values(FACE_ANIMATION)).toContain(face)
+  })
+
+  // 10-30 用户看过全部脸：没有一张适合惊讶，所以惊讶不换脸（resolveFace 返回 undefined = 脸保持不动）
+  it('leaves the face alone for surprised', () => {
+    expect(resolveFace({ emotion: 'surprised' })).toBeUndefined()
+    expect(resolveFace({ emotion: ' SURPRISED ' })).toBeUndefined()
   })
 })
 
