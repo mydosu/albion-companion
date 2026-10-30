@@ -715,6 +715,40 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
     assert.equal(calls.length, 0);
     assert.equal(textOfResult(out as any), A + " 好，我收下了。");
   }
+  // Gemini：姿态句额度与括号动作额度也关掉——原样放过，两个计数不推进
+  {
+    const mixed = A + "嗯。阿尔比恩会在这里等您。（耳根烫，好害羞）";
+    writeFileSync(join(TMP, "voice.json"), JSON.stringify({ "s-quota-gm": { replies: 9, posture_at: 9, gesture_at: 9, tic_recent: {} } }));
+    const { calls, out } = await call(mixed, GM, [], "s-quota-gm");
+    assert.equal(calls.length, 0, "非 DS 不重说");
+    assert.equal(out, undefined, "非 DS 姿态句与括号动作原样留");
+    const st = JSON.parse(readFileSync(join(TMP, "voice.json"), "utf-8"))["s-quota-gm"];
+    assert.equal(st.replies, 10);
+    assert.equal(st.posture_at, 9, "非 DS 不动 posture_at");
+    assert.equal(st.gesture_at, 9, "非 DS 不动 gesture_at");
+  }
+  // DS：同一份状态照旧按额度删（额度用完：姿态句与动作小句都拿掉，念头留着）
+  {
+    const mixed = A + "嗯。阿尔比恩会在这里等您。（耳根烫，好害羞）";
+    writeFileSync(join(TMP, "voice.json"), JSON.stringify({ "s-quota-ds": { replies: 9, posture_at: 9, gesture_at: 9, tic_recent: {} } }));
+    const { out } = await call(mixed, DS, [fail()], "s-quota-ds");
+    const got = textOfResult(out as any);
+    assert.ok(!got.includes("在这里等您") && !got.includes("耳根烫"), `DS 该按额度删：${got}`);
+    assert.ok(got.includes("好害羞"), "念头留着");
+    const st = JSON.parse(readFileSync(join(TMP, "voice.json"), "utf-8"))["s-quota-ds"];
+    assert.equal(st.posture_at, 9);
+    assert.equal(st.gesture_at, 9);
+  }
+  // DS：额度到点就放过并推进计数（关额度只对非 DS）
+  {
+    const mixed = A + "嗯。阿尔比恩会在这里等您。（耳根烫，好害羞）";
+    writeFileSync(join(TMP, "voice.json"), JSON.stringify({ "s-quota-ds2": { replies: 8, posture_at: 0, gesture_at: 0, tic_recent: {} } }));
+    const { out } = await call(mixed, DS, [fail()], "s-quota-ds2");
+    assert.equal(out, undefined, "DS 额度到点：姿态句与动作描写原样留");
+    const st = JSON.parse(readFileSync(join(TMP, "voice.json"), "utf-8"))["s-quota-ds2"];
+    assert.equal(st.posture_at, 9, "DS 记下这次姿态放过");
+    assert.equal(st.gesture_at, 9, "DS 记下这次动作放过");
+  }
   // checkDraft 的两项 DS 口癖只对 DS 报；其余通用项照旧
   {
     const posture = A + "\n阿尔比恩会在这里等您。";
@@ -750,7 +784,7 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
     assert.ok(rows.some((r) => Array.isArray(r.actions) && r.ds === true), "actions 日志该带 ds:true");
     assert.ok(rows.some((r) => Array.isArray(r.actions) && r.ds === false), "actions 日志该带 ds:false");
   }
-  console.log("W 口癖清洗只对 DS：DS 重说+语料替换；gemini 不重说/不替换但 missing_reply、ACT 补竖线照旧；两项口癖检查不报；模型判定与 ds 日志 OK");
+  console.log("W 口癖清洗只对 DS：DS 重说+语料替换、姿态/动作按额度删；gemini 不重说/不替换、姿态句与动作描写原样留且两个计数不推进，但 missing_reply、ACT 补竖线照旧；两项口癖检查不报；模型判定与 ds 日志 OK");
 }
 rmSync(TMP, { recursive: true, force: true });
 console.log("GUARD_EXT SELFTEST OK");

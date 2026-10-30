@@ -451,21 +451,28 @@ function saveVoice(v: Record<string, VoiceSession>): void {
 	}
 }
 
-/** 整理一条定稿并记账：这一条算一条回复；姿态句只在离上次放过满 POSTURE_EVERY 条时放过。
- *  `skipTic`（非 DeepSeek 模型用）跳过口癖语料替换，其余确定性整理照旧。 */
-export function tidyAndCount(raw: string, source: string, session: string, opts: { skipTic?: boolean } = {}): TidyResult {
+/**
+ * 整理一条定稿并记账：这一条算一条回复；姿态句只在离上次放过满 POSTURE_EVERY 条时放过。
+ * `ds: false`（非 DeepSeek 模型）：口癖语料替换跳过（同 `skipTic`），姿态句与括号动作描述的额度也关掉
+ * ——原样放过、两个计数不推进（切回 DS 时额度还接着原来的算）。DS 与默认行为不变。
+ */
+export function tidyAndCount(raw: string, source: string, session: string, opts: { skipTic?: boolean; ds?: boolean } = {}): TidyResult {
+	const ds = opts.ds !== false;
 	const all = loadVoice();
 	const s: VoiceSession = all[session] ?? { replies: 0, posture_at: -1e9 };
 	const replies = (Number(s.replies) || 0) + 1;
 	const postureAt = Number.isFinite(Number(s.posture_at)) ? Number(s.posture_at) : -1e9;
 	const gestureAt = typeof s.gesture_at === "number" && Number.isInteger(s.gesture_at) && s.gesture_at >= 0 && s.gesture_at < replies ? s.gesture_at : -1e9;
 	const ticRecent = s.tic_recent && typeof s.tic_recent === "object" ? s.tic_recent : {};
-	const r = tidy(raw, source, replies - postureAt >= POSTURE_EVERY(), replies - gestureAt >= GESTURE_EVERY(),
-		{ recent: ticRecent, skipTic: opts.skipTic === true });
+	const r = tidy(raw, source,
+		!ds || replies - postureAt >= POSTURE_EVERY(),
+		!ds || replies - gestureAt >= GESTURE_EVERY(),
+		{ recent: ticRecent, skipTic: opts.skipTic === true || !ds });
 	all[session] = {
 		replies,
-		posture_at: r.actions.includes("posture_kept") ? replies : postureAt,
-		gesture_at: r.actions.includes("gesture_kept") ? replies : gestureAt,
+		// 非 DS 不动这两个额度指针，免得切回 DS 时计数乱掉
+		posture_at: !ds ? postureAt : r.actions.includes("posture_kept") ? replies : postureAt,
+		gesture_at: !ds ? gestureAt : r.actions.includes("gesture_kept") ? replies : gestureAt,
 		tic_recent: ticRecent,
 	};
 	saveVoice(all);
@@ -795,7 +802,7 @@ export async function tidyMessageRegen(message: any, source: string, request: an
 	}
 
 	const finalText = drafts.length ? drafts[drafts.length - 1] : raw;
-	const r = tidyAndCount(finalText, source, session, { skipTic: !ds });
+	const r = tidyAndCount(finalText, source, session, { skipTic: !ds, ds });
 	if (r.actions.length) log({ actions: r.actions, ds, dropped: r.dropped.length, fixed: r.fixed.length, aside_you: r.asideYou ?? 0, tic: r.tic ?? [], session });
 	return r.text === raw ? undefined : { message: withText(message, r.text) };
 }
