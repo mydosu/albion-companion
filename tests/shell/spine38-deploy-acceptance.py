@@ -27,7 +27,7 @@ import websockets
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 CDP = 9335
-OUT = Path(r"D:\AI\Wife\tests\output\promo-face-20261030\deploy")
+OUT = Path(__file__).resolve().parents[2] / "tests" / "output" / "promo-face-20261030" / "deploy"
 EMOTIONS = ["neutral", "happy", "sad", "angry", "surprised", "awkward", "question", "think", "curious"]
 
 # 页面里的公共取值：气泡/菜单按 Spine38.vue 里的内联样式认，不依赖 class 名。

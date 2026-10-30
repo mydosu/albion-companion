@@ -55,3 +55,13 @@ pwsh -NoProfile -File <工作树绝对路径>/tools/sync-shell-private-assets.ps
 
 壳的相关 Vitest 用 Node 25，选择 `scripts/godot-build.test.ts` 和
 `src/main/services/airi/godot-stage/launch-options.test.ts`；包含 electron-builder 原生配置校验，不产出平台包。
+
+## Spine38 部署验收
+
+`spine38-deploy-acceptance.py` 直接连**正在运行的生产壳**（CDP 9335，leader 页），需要 Python 的 `websockets`、桌面会话，壳里是 spine38 模型。
+它只走页面已有的调试出口：切 9 个情绪各截一张，poke 头/腰看气泡，逐帧记换脸前后的 `zui` 骨。不改设置、不发聊天；跑完把情绪切回 neutral，但 poke 会让她真的说一句作者台词。
+结果写入 `tests/output/promo-face-20261030/deploy/`。
+
+```powershell
+python tests/shell/spine38-deploy-acceptance.py
+```
