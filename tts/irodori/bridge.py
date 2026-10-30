@@ -31,6 +31,8 @@ for _s in (sys.stdout, sys.stderr):
 from fastapi.responses import StreamingResponse
 import uvicorn
 
+from json_body import read_json_body       # 请求体按 charset 解码，非 UTF-8 不再 500（2026-10-30）
+
 app = FastAPI()
 
 BACKEND = "http://127.0.0.1:9889/tts"          # Irodori-TTS（单进程，5 船，整条 wav）
@@ -1140,7 +1142,14 @@ async def models():
 
 @app.post("/v1/audio/speech")
 async def audio_speech(request: Request):
-    body = await request.json()
+    # 2026-10-30：原来 `await request.json()` 遇 GBK 请求体直接 UnicodeDecodeError → 500；
+    # 现在按 charset 解码、失败回退 gb18030，仍解不开就 400（详见 json_body.py）。
+    try:
+        body = await read_json_body(request)
+    except ValueError as e:
+        return Response(status_code=400, content="bad request body: %s" % str(e)[:200])
+    if not isinstance(body, dict):
+        return Response(status_code=400, content="bad request body: 需要 JSON 对象")
     text = (body.get("input") or "").strip()
     voice = (body.get("voice") or DEFAULT_VOICE).strip().lower().replace("-irodori", "")
     print(f"[{time.strftime('%Y-%m-%dT%H:%M:%S%z')}] [req] voice={voice if voice in VOICES else 'unknown'} {text_meta(text)}", flush=True)

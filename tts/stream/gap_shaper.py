@@ -11,6 +11,11 @@
 -45～-60dB，会被当成静音掐掉（生产实测 6/32 句裁掉 27–59ms 的可听尾音），且裁点硬拼数字零没有淡出
 （最大 -46dB 的台阶）。现在尾判据放到峰值 -55dB / 绝对 -65dBFS（把整段自然衰减留住），
 裁点前 30ms 做线性淡出；首判据与各种气口长度都不变。
+
+2026-10-30 截在响处：上游（Irodori）有时自己就把话停在响处（宣传片录制实测：结束前 2ms 还有
+-25～-28dBFS）。旧实现在这种时候**故意不淡出**，直接把还在响的样本接上数字零，听感是最后一个字
+被掐掉。现在改做 `LOUD_FADE_S`（12ms）短线性淡出：短到不会把响亮的句尾压成渐弱收尾，又足以
+消掉接零的台阶。安静收尾时的 30ms 淡出不变。
 """
 import io
 import os
@@ -40,8 +45,9 @@ TAIL_KEEP_S = 0.03        # 有声结束后保留的自然衰减
 # 所以尾静音用**更低的**判据找，把整段自然衰减留住；起始判据（VOICED_DB/FLOOR_DB）保持不变。
 TAIL_DB = 55.0            # 尾判据：比全段峰值低不到 55dB
 TAIL_FLOOR_DB = -65.0     # 且高于 -65dBFS（低于此是编码器/水印底噪，留住只是噪声）
-FADE_S = 0.03             # 裁点前的淡出：硬拼零会有台阶（实测裁点前 30ms 还有 -40dB），淡出后无台阶
-FADE_GATE_DB = 30.0       # 只在裁点前 30ms 已低于峰值 30dB 时淡出；还在大声时就别淡（那会变成新的「压尾」）
+FADE_S = 0.03             # 安静收尾时裁点前的淡出：硬拼零会有台阶（实测裁点前 30ms 还有 -40dB）
+FADE_GATE_DB = 30.0       # 裁点前 30ms 已低于峰值 30dB ⇒ 安静收尾，用 FADE_S 淡出
+LOUD_FADE_S = 0.012       # 还在响处被截时改用的短淡出：只消接零台阶，不把响亮的尾巴压成渐弱
 
 
 def tail_kind(text: str, reason: str = "") -> str:
@@ -59,16 +65,21 @@ def tail_kind(text: str, reason: str = "") -> str:
 
 
 def _fade_out(body, peak, sr):
-    """把 `body` 末尾 FADE_S 线性降到 0（原地改）。
+    """把 `body` 末尾线性降到 0（原地改）：安静收尾 30ms，上游截在响处 12ms。
 
-    只在**已经安静**时做：裁点前 30ms 仍高于「峰值 -FADE_GATE_DB」就说明上游把话截在了响处，
-    这时淡出等于替它压尾，反而更像被掐断 —— 不动，硬边留给上游修（本模块不猜）。
+    裁点前 30ms 仍高于「峰值 -FADE_GATE_DB」= 上游把话截在了响处。旧实现此时直接 return，
+    还在响的样本硬接数字零，听起来就是最后一个字被掐掉（2026-10-30 录制：结束前 2ms 还有
+    -25～-28dBFS，下一刻就是 0）。现在改做 LOUD_FADE_S 短淡出：够短，不至于替上游「压尾」成
+    渐弱收尾；又够长，接零时没有台阶。安静时的 30ms 淡出不变（那一段本来就是自然衰减）。
     """
-    n = min(int(FADE_S * sr), len(body))
-    if n <= 0 or peak <= 0:
+    if peak <= 0:
         return
-    seg = body[-n:]
-    if float(np.abs(seg).max()) / 32768.0 > peak * 10 ** (-FADE_GATE_DB / 20.0):
+    n = min(int(FADE_S * sr), len(body))
+    seg = body[-n:] if n > 0 else body[:0]
+    if n > 0 and float(np.abs(seg).max()) / 32768.0 > peak * 10 ** (-FADE_GATE_DB / 20.0):
+        n = min(int(LOUD_FADE_S * sr), len(body))      # 截在响处：短淡出，只消接零的台阶
+        seg = body[-n:] if n > 0 else body[:0]
+    if n <= 0:
         return
     ramp = np.linspace(1.0, 0.0, n, dtype="float32")[:, None]
     body[-n:] = np.rint(seg.astype("float32") * ramp).astype("<i2")

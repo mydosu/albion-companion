@@ -26,6 +26,7 @@ from fastapi.responses import JSONResponse, Response
 
 import cue_scope
 import voice_caption
+from json_body import read_json_body    # 非 UTF-8 请求体（GBK）不再 500，见模块注释
 
 KANA = re.compile(r"[\u3040-\u30ff]")
 HAN = re.compile(r"[\u4e00-\u9fff]")
@@ -554,7 +555,7 @@ def install(app, translate=None, translate_ex=None, cues=None, emotion_degraded=
     @app.post("/v2/prepare")
     async def v2_prepare(request: Request):
         try:
-            body = await request.json()
+            body = await read_json_body(request)
             req = parse_request(body)
         except Exception as e:
             return JSONResponse({"status": "failed", "stage": "prepare",

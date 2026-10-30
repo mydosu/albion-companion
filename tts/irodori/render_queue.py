@@ -22,6 +22,7 @@ import collections
 from contextlib import asynccontextmanager
 import os
 import re
+import secrets
 import shutil
 import tempfile
 import time
@@ -32,6 +33,18 @@ import scene_plan as SP          # family/caption/cfg 的标准表就在这里�
 import emotion_codebook as CB    # v3 白名单码本（同样纯 CPU）
 
 PLAN_VERSION = 2
+
+DEFAULT_SHIP = "albion"          # 与 irodori_serve.DEFAULT_SHIP 同值：单元没带 voice 时用于自检与日志
+
+# ---- 渲染后自检（2026-10-30）-----------------------------------------------------
+# 生产不传 `--seed` ⇒ 每句随机采样。宣传片录制时听到两件偶发的事：同一条回复里某几句基频掉到
+# 121–148Hz（正常 296–380Hz，听起来是男声），以及原始渲染把话截在响处（末 2ms 还有 -25～-28dBFS，
+# 下一刻就是数字零）。后者 gap_shaper 无法用 30ms 淡出接（门槛过不了），只能硬接零。
+# 这里渲完量两样，命中就换一个随机 seed 重渲**一次**，按「不男声 > 不截尾 > 原结果」取更好的那次。
+MALE_GUARD_SHIPS = ("albion",)   # 只查 albion：其他船的声线本来就不同，套这个阈值没意义
+MALE_F0_MAX_HZ = 200.0           # albion 参考音 337–368Hz；实测漂移 121–148Hz，200 是中间的空档
+TAIL_CLIP_DB = 30.0              # 原始 wav 末 30ms 峰值 > 全段峰值 -30dB ⇒ 上游把话截在响处
+TAIL_PROBE_S = 0.03              # 「末段」取多长（与 gap_shaper.FADE_GATE_DB 的 30ms 同口径）
 
 
 def run_infer_synth(unit, out_wav, run_infer, default_ship):
@@ -78,6 +91,132 @@ def _default_encode(wave, sr, fmt):
     if r.returncode != 0:
         raise RuntimeError("ffmpeg %s 失败: %s" % (fmt, r.stderr.decode("utf-8", "ignore")[:200]))
     return r.stdout
+
+
+# ---- 渲染结果自检：量尾电平与 F0 ------------------------------------------------
+# 纯 numpy（不加依赖），跑在 GPU 队列的合成线程里：一段几秒的音频只多几毫秒 CPU。
+
+def _random_seed():
+    """本模块自己挑 seed：`infer.py` 不传 `--seed` 时内部用 `secrets.randbits(63)` 随机采样，
+    外面看不到到底用了什么。这里显式传一个同范围的随机值，日志里的 seed 才是**真用过**的。"""
+    return secrets.randbelow(2 ** 31)          # 与 `_check_unit` 允许的 0..2^31-1 同范围
+
+
+def _mono(wave):
+    import numpy as np
+    a = np.asarray(wave, dtype="float64")
+    return a.mean(axis=1) if a.ndim > 1 else a
+
+
+def _tail_db(wave, sr):
+    """原始 wav 末 `TAIL_PROBE_S` 的峰值相对全段峰值（dB，≤0）；短于该窗或全零 → None。
+
+    > `-TAIL_CLIP_DB` 就是「上游把话截在响处」：gap_shaper 的 30ms 淡出门槛用的是同一判据
+    （`FADE_GATE_DB`），过不了门就只能硬接数字零，听起来是最后一个字被掐掉。
+    """
+    import numpy as np
+    a = _mono(wave)
+    n = int(TAIL_PROBE_S * sr) if sr > 0 else 0
+    if n <= 0 or len(a) < n:
+        return None
+    peak = float(np.abs(a).max())
+    if peak <= 0:
+        return None
+    return 20.0 * float(np.log10(max(float(np.abs(a[-n:]).max()), 1e-12) / peak))
+
+
+def _f0_median(wave, sr, voicing=0.5, lo_hz=70.0, hi_hz=450.0):
+    """自相关 F0 中位数（Hz）；无声段不计入，有效帧少于 5 个返回 None。
+
+    判据与 `tests/tts/probes/emotion_bench.f0_track` 一致（40ms 窗 / 10ms 步、归一化自相关峰
+    ≥ 0.5、比峰值低 40dB 的帧当无声）。自相关走 FFT：这段代码在生产里每句都要跑，
+    O(n²) 的 `np.correlate` 会把几秒的音频拖成秒级 CPU 开销，白占 GPU 队列。
+    """
+    import numpy as np
+    a = _mono(wave)
+    if sr <= 0 or hi_hz <= lo_hz:
+        return None
+    fl, hop = max(2, int(0.04 * sr)), max(1, int(0.01 * sr))
+    if len(a) <= fl:
+        return None
+    peak = float(np.abs(a).max())
+    if peak <= 0:
+        return None
+    silent = max(peak * 10 ** (-40.0 / 20.0), 1e-3)
+    lo = max(1, int(sr / hi_hz))
+    hi = min(fl, int(sr / lo_hz))
+    if hi - lo < 2:
+        return None
+    nfft = 1
+    while nfft < 2 * fl:
+        nfft <<= 1
+    out = []
+    for i in range(0, len(a) - fl, hop):
+        fr = a[i:i + fl]
+        if float(np.sqrt((fr ** 2).mean())) < silent:
+            continue
+        fr = fr - fr.mean()
+        spec = np.fft.rfft(fr, nfft)
+        ac = np.fft.irfft(spec * np.conj(spec), nfft)[:fl]
+        if ac[0] <= 0:
+            continue
+        seg = ac[lo:hi] / ac[0]
+        k = int(np.argmax(seg))
+        if seg[k] < voicing:
+            continue
+        out.append(sr / float(lo + k))
+    return float(np.median(out)) if len(out) >= 5 else None
+
+
+def _quality(sr, wave, ship):
+    """一段渲染结果的两项自检。`male` 只对 `MALE_GUARD_SHIPS` 里的船成立。"""
+    tail_db = _tail_db(wave, sr)
+    f0 = _f0_median(wave, sr)
+    return dict(tail_db=tail_db, f0_hz=f0,
+                male=bool(ship in MALE_GUARD_SHIPS and f0 is not None and f0 < MALE_F0_MAX_HZ),
+                clip=bool(tail_db is not None and tail_db > -TAIL_CLIP_DB))
+
+
+def _bad_reasons(q):
+    return ",".join(k for k in ("male", "clip") if q.get(k))
+
+
+def _rank(q):
+    """「不男声 > 不截尾 > 原结果」：元组逐项比较，平手保留原结果。"""
+    return (0 if q.get("male") else 1, 0 if q.get("clip") else 1)
+
+
+def _fmt_db(v):
+    return "—" if v is None else "%.1fdB" % v
+
+
+def _fmt_hz(v):
+    return "—" if v is None else "%.0fHz" % v
+
+
+def _quality_note(job, res):
+    """最终日志行里的自检字段：caption/cfg + 每次尝试的 seed/尾电平/F0 + 是否重渲及原因。"""
+    tries = res.get("quality")
+    if not tries:
+        return "seed=—"
+    parts = []
+    for i, t in enumerate(tries):
+        flags = _bad_reasons(t)
+        parts.append("try%d(seed=%s tail=%s f0=%s%s)"
+                     % (i + 1, t.get("seed"), _fmt_db(t.get("tail_db")),
+                        _fmt_hz(t.get("f0_hz")), " " + flags if flags else ""))
+    note = "caption=%r cfg=%s %s picked=%s" % ((job.unit.get("caption") or "")[:40],
+                                              job.unit.get("cfg"), " ".join(parts),
+                                              res.get("picked"))
+    if res.get("explicit_seed"):
+        note += " rerender=explicit_seed"
+    elif res.get("rerender"):
+        note += " rerender=%s" % res["rerender"]
+    else:
+        note += " rerender=none"
+    if res.get("retry_error"):
+        note += " retry_failed=%s" % res["retry_error"]
+    return note
 
 
 class _Job:
@@ -378,24 +517,63 @@ class RenderQueue:
                 # 最终状态（codex：S 断流后 I 侧继续跑的任务也必须有结局记录，否则看不出
                 # 后续请求是不是被一个已超时但仍在跑的任务堵住）。synth_ms 是**合成调用墙钟耗时**，
                 # 含 `_run_infer` 与其文件读写，不是纯 GPU 时间。
-                print("[render_queue] %s unit=%s final=%s synth_ms=%s wall_ms=%d cancelled=%s"
+                print("[render_queue] %s unit=%s final=%s synth_ms=%s wall_ms=%d cancelled=%s %s"
                       % (job.session_id, _uid, res.get("status"), res.get("synth_ms"),
                          int((time.monotonic() - _t_run) * 1000),
-                         self.is_cancelled(job.session_id, job.generation)), flush=True)
+                         self.is_cancelled(job.session_id, job.generation),
+                         _quality_note(job, res)), flush=True)
                 job.future.set_result(res)
             self._release(job.session_id, job.generation)
 
     # ---------------- 单段渲染 ----------------
     def _render_one(self, job):
-        """一段 = 一个唯一临时目录；读完立刻删（两个会话不会互相覆盖文件）。"""
+        """一段 = 一个唯一临时目录；读完立刻删（两个会话不会互相覆盖文件）。
+
+        渲完先自检（2026-10-30）：原始 wav 截在响处、或 albion 的 F0 中位掉进男声区，就换一个
+        随机 seed 重渲**一次**，按「不男声 > 不截尾 > 原结果」取更好的那次。
+        单元显式带 seed（听测配对）时原样透传、**不重渲**：那是别人量过的条件，不能偷偷换。
+        日志里的 seed 是真正传给 `_run_infer` 的值（见 `_random_seed`）。
+        """
         d = tempfile.mkdtemp(prefix="irodori_%s_" % _safe_name(job.unit.get("unit_id") or "u"),
                              dir=self._tmp_root)
         try:
-            out = os.path.join(d, "seg.wav")
+            unit = job.unit
+            ship = str(unit.get("voice") or DEFAULT_SHIP).strip().lower()
+            fixed = unit.get("seed")
+            tries = []
             _t_synth = time.monotonic()
-            sr, wave = self._synth(job.unit, out)
-            return {"status": "ok", "sr": sr, "wave": wave,
-                    "synth_ms": int((time.monotonic() - _t_synth) * 1000)}
+
+            def attempt(n):
+                seed = fixed if (n == 1 and fixed is not None) else _random_seed()
+                sr, wave = self._synth(dict(unit, seed=seed), os.path.join(d, "seg%d.wav" % n))
+                q = _quality(sr, wave, ship)
+                tries.append(dict(q, seed=seed, sr=sr, wave=wave))
+                return tries[-1]
+
+            first = attempt(1)
+            reason = _bad_reasons(first)
+            picked = 0
+            retry_error = None
+            if fixed is None and reason:
+                try:
+                    second = attempt(2)
+                except Exception as e:      # noqa: BLE001 - 重渲失败不能连累已经拿到的那一次
+                    retry_error = "%s: %s" % (type(e).__name__, str(e)[:120])
+                    print("[render_queue] %s unit=%s rerender=%s 失败，保留原结果: %s"
+                          % (getattr(job, "session_id", "-"),
+                             job.unit.get("unit_id") or "-", reason, retry_error), flush=True)
+                else:
+                    if _rank(second) > _rank(first):
+                        picked = 1
+            best = tries[picked]
+            return {"status": "ok", "sr": best["sr"], "wave": best["wave"],
+                    "synth_ms": int((time.monotonic() - _t_synth) * 1000),
+                    "seed": best["seed"],
+                    "quality": [{k: t[k] for k in ("seed", "tail_db", "f0_hz", "male", "clip")}
+                                for t in tries],
+                    "picked": picked + 1, "rerender": reason,
+                    "retry_error": retry_error,
+                    "explicit_seed": fixed is not None}
         finally:
             shutil.rmtree(d, ignore_errors=True)
 

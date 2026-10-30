@@ -1,7 +1,8 @@
 # TTS 验证
 
 离线：`python -B -m unittest discover -s tests/tts -p 'test_*.py'`（要 numpy/httpx，
-系统 python 缺依赖，用 `D:\AI\Wife\tts\irodori\.venv\Scripts\python.exe`；当前 406 项）。
+系统 python 缺依赖，用 `D:\AI\Wife\tts\irodori\.venv\Scripts\python.exe`；当前 512 项）。
+注：本机 venv 没装 pytest，用项目一贯的 unittest discover 跑同一批用例。
 `test_first_packet_and_logs.py` 覆盖源句并发上限、顺序、异常排空、首单元预取及取消、日志脱敏与轮转。
 `test_longline_prepare.py` 覆盖 60s 准备预算、客户端超时/HTTP 断开后释放会话名额、重复等待者与重试去重，
 以及默认 Command Code 路由、显式 API 情绪翻译路由、凭据来源优先级和启动器覆盖；不联网、不读取真实密钥。
@@ -53,8 +54,17 @@
 `test_stream_rhythm.py` 覆盖流式节奏（离线）：切单元策略（首单元软切、后续只在句末、爬坡、退到最近逗号）、
 半句译文以「、」收尾、气口整形的 wav 单测（首静音定长、按末尾标点定尾静音、立体声、不适用输入原样返回）、
 `……` 符号段并回上一句、`Config` 的环境变量。
-`test_gap_shaper_tail.py` 只管句尾不被掐（2026-10-26）：-20→-70dB 的噪声收尾要留住（高于 -60dB 的样本
-不许丢）、裁点前 30ms 线性淡出到 0（不留硬台阶）、还在大声时**不**淡出、气口长度与首静音不变。
+`test_gap_shaper_tail.py` 只管句尾不被掐：-20→-70dB 的噪声收尾要留住（高于 -60dB 的样本
+不许丢）、裁点前 30ms 线性淡出到 0（不留硬台阶）、气口长度与首静音不变；上游自己把话截在响处时
+（裁点前 30ms 仍高于峰值 -30dB）改做 12ms 短淡出（末样本为 0、无台阶，不把响亮的尾巴压成渐弱）。
+`test_render_quality_guard.py` 锁 2026-10-30 的渲后自检：原始渲染「截在响处」（末 30ms > 峰值
+-30dB）或 albion「男声漂移」（F0 中位 < 200Hz）时换随机 seed 重渲**一次**，按「不男声 > 不截尾 >
+原结果」取舍；显式带 seed 的听测不重渲；男声判据只对 albion；重渲失败保留原结果。
+`test_bridge_json_body.py` 锁非 UTF-8 请求体：`/v1/audio/speech` 与 `/v2/prepare` 收到 GBK 体
+按 charset 解码（失败回退 gb18030）后照常处理，解不开回 400 而不是 500。
+`probes/tts_male_guard_probe.py --out <tests/output 下目录> [--rounds 20]` 复现男声漂移/句尾截断：
+对生产 :9889 用录制时那两段的日语译文、albion + neutral/weak（cfg=3.0）渲 N 轮随机 seed，逐段落
+原始 wav 并量 F0 中位、末 30ms 电平、时长；只读。
 `probes/tts_tail_probe.py --out <tests/output 下目录> --shape-dir shape-before [--from-raw] [--texts-file x.json]`
 直接问生产 :9889 渲染一批日语短句（只读），存**整形前原始 wav** 与 `GS.shape` 之后的 wav，逐句量：末 50ms 还有没有声
 （判断模型有没有截）、裁点前 30ms 的电平、被切掉的高于 -60dBFS 的尾音时长；`--report` 从 `shape-before.json` /

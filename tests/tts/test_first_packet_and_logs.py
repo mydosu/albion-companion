@@ -141,9 +141,9 @@ class FirstPacket(unittest.IsolatedAsyncioTestCase):
 class Logs(unittest.IsolatedAsyncioTestCase):
     async def test_request_log_contains_metadata_only(self):
         class Request:
-            headers = {}
-            async def json(self):
-                return {"input": "private-dialogue-私密", "voice": "unknown-private-voice"}
+            headers = {"content-type": "application/json; charset=utf-8"}
+            async def body(self):
+                return '{"input": "private-dialogue-私密", "voice": "unknown-private-voice"}'.encode("utf-8")
         with patch.object(bridge, "_file_log") as logged:
             await bridge.audio_speech(Request())
         message = logged.call_args.args[1]

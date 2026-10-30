@@ -4,6 +4,10 @@
 生产 :9889 实测 32 句：旧判据（峰值 -40dB）把 6 句的句尾裁在 -46～-54dB，去掉 27–59ms 高于 -60dBFS 的
 尾音（「です」的 す、「〜ですか」的气声收尾）。这里用合成波形复现那个形状：一个响元音 + 一段从 -20dB
 线性落到 -70dB 的噪声尾 + 一段底噪，然后检查整形结果。
+
+2026-10-30 补上另一半：上游自己把话截在响处（裁点前 30ms 仍高于峰值 -30dB）时，旧实现直接
+硬接数字零；现在改做 12ms 短淡出。`test_loud_ending_gets_short_fade` 用一段完全没有尾静音的
+正弦复现那个形状（末样本仍是响的）。
 """
 import io
 import pathlib
@@ -107,15 +111,32 @@ class TailReleaseTest(unittest.TestCase):
         for a, c in zip(env, env[1:]):
             self.assertLessEqual(c, a * 1.05 + 1, "淡出段包络在上升：%r" % env)
 
-    def test_loud_ending_is_left_alone(self):
-        """上游真把话截在响处时（-30dB 以上）不许淡出：那会变成新的「压尾」，硬边留给上游修。"""
+    def test_loud_ending_gets_short_fade(self):
+        """上游真把话截在响处（-30dB 以上）时改做 12ms 短淡出：末样本为 0，接零不再有台阶。
+
+        2026-10-30 之前这一步是直接 return（硬接数字零）；录制里听起来就是最后一个字被掐掉。
+        """
         loud = (0.8 * np.sin(2 * np.pi * 180 * np.arange(int(0.5 * SR)) / SR) * 32767).astype("<i2")
         src = wav_bytes(loud)                      # 没有任何尾静音，最后一个样本仍是响的
         out = GS.shape(src, "sentence")
         sr, a = read_pcm(src)
         _, b = read_pcm(out)
         body_end = len(b) - int(GS.TAIL_S["sentence"] * sr)
-        self.assertAlmostEqual(float(b[body_end - 1, 0]), float(a[-1, 0]), delta=2)
+        mono = np.abs(b[:, 0].astype("float32"))
+        n = int(GS.LOUD_FADE_S * sr)
+        self.assertGreater(n, 0)
+        self.assertLess(n, int(GS.FADE_S * sr))            # 比安静收尾的 30ms 更短：不替上游压尾
+        self.assertEqual(int(mono[body_end - 1]), 0)       # 末样本为 0
+        self.assertLess(int(mono[body_end - 1]), int(mono[body_end - 2]))   # 没有「一刀切」的台阶
+        # 淡出窗内的包络单调下降（是斜坡，不是硬切）
+        win = max(1, int(0.002 * sr))
+        env = [mono[body_end - n + i:body_end - n + i + win].max() for i in range(0, n - win, win)]
+        self.assertGreater(len(env), 3)
+        for x, y in zip(env, env[1:]):
+            self.assertLessEqual(y, x * 1.05 + 1, "淡出段包络在上升：%r" % env)
+        # 窗外一格样本还是原样的响度：短淡出只动最后 n 个样本
+        self.assertGreater(mono[body_end - n - 1], 0.5 * 32767)
+        self.assertAlmostEqual(float(b[body_end - n - 1, 0]), float(a[len(a) - n - 1, 0]), delta=2)
 
     def test_tail_gap_length_unchanged(self):
         """气口长度口径不变：补齐的静音仍是 TAIL_S[kind]，首静音仍是 LEAD_S。"""
