@@ -54,9 +54,12 @@ class GuardCase(unittest.TestCase):
             return SR, waves[min(len(calls) - 1, len(waves) - 1)]
         return RQ.RenderQueue(synth=synth, encode=lambda *a: b"wav"), calls
 
-    def render(self, waves, **extra):
+    def render(self, waves, cancel=False, **extra):
         q, calls = self.make(waves)
-        res = q._render_one(SimpleNamespace(unit=unit(**extra)))
+        sid, gen = q.open("albion")             # 真会话：取消判断走生产的 is_cancelled
+        if cancel:
+            q.cancel(sid, gen)
+        res = q._render_one(SimpleNamespace(unit=unit(**extra), session_id=sid, generation=gen))
         return res, calls
 
 
@@ -118,6 +121,14 @@ class RerenderTest(GuardCase):
         res, calls = self.render([MALE, FEMALE])
         self.assertNotEqual(calls[0]["seed"], calls[1]["seed"])
 
+    def test_cancelled_session_skips_rerender(self):
+        """会话/世代已取消：这一段结果本来就会被丢弃，不许再白烧一次 GPU 重渲。"""
+        res, calls = self.render([MALE, FEMALE], cancel=True)
+        self.assertEqual(len(calls), 1, "取消后只调用一次 _synth")
+        self.assertEqual(res["picked"], 1)
+        self.assertEqual(res["rerender"], "male")                    # 命中了什么仍记下来
+        self.assertEqual(res["rerender_skipped"], "skipped_cancelled")
+
     def test_failed_rerender_keeps_first_result(self):
         """重渲炸了不能连累已经拿到的第一段：照常出声，日志记下原因。"""
         calls = []
@@ -129,7 +140,8 @@ class RerenderTest(GuardCase):
             return SR, MALE
 
         q = RQ.RenderQueue(synth=synth, encode=lambda *a: b"wav")
-        res = q._render_one(SimpleNamespace(unit=unit(), session_id="s1"))
+        sid, gen = q.open("albion")
+        res = q._render_one(SimpleNamespace(unit=unit(), session_id=sid, generation=gen))
         self.assertEqual(len(calls), 2)
         self.assertEqual(res["picked"], 1)
         self.assertIn("RuntimeError: boom", res["retry_error"] or "")

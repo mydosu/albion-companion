@@ -208,7 +208,9 @@ def _quality_note(job, res):
     note = "caption=%r cfg=%s %s picked=%s" % ((job.unit.get("caption") or "")[:40],
                                               job.unit.get("cfg"), " ".join(parts),
                                               res.get("picked"))
-    if res.get("explicit_seed"):
+    if res.get("rerender_skipped"):
+        note += " rerender=%s" % res["rerender_skipped"]
+    elif res.get("explicit_seed"):
         note += " rerender=explicit_seed"
     elif res.get("rerender"):
         note += " rerender=%s" % res["rerender"]
@@ -554,17 +556,23 @@ class RenderQueue:
             reason = _bad_reasons(first)
             picked = 0
             retry_error = None
+            skipped = None
             if fixed is None and reason:
-                try:
-                    second = attempt(2)
-                except Exception as e:      # noqa: BLE001 - 重渲失败不能连累已经拿到的那一次
-                    retry_error = "%s: %s" % (type(e).__name__, str(e)[:120])
-                    print("[render_queue] %s unit=%s rerender=%s 失败，保留原结果: %s"
-                          % (getattr(job, "session_id", "-"),
-                             job.unit.get("unit_id") or "-", reason, retry_error), flush=True)
+                sid, gen = getattr(job, "session_id", None), getattr(job, "generation", None)
+                if sid is not None and self.is_cancelled(sid, gen):
+                    # 这一段已经取消了：重渲出来的结果照样会被丢弃，别再白烧一次 GPU（OBS 抢卡时尤其贵）
+                    skipped = "skipped_cancelled"
                 else:
-                    if _rank(second) > _rank(first):
-                        picked = 1
+                    try:
+                        second = attempt(2)
+                    except Exception as e:      # noqa: BLE001 - 重渲失败不能连累已经拿到的那一次
+                        retry_error = "%s: %s" % (type(e).__name__, str(e)[:120])
+                        print("[render_queue] %s unit=%s rerender=%s 失败，保留原结果: %s"
+                              % (getattr(job, "session_id", "-"),
+                                 job.unit.get("unit_id") or "-", reason, retry_error), flush=True)
+                    else:
+                        if _rank(second) > _rank(first):
+                            picked = 1
             best = tries[picked]
             return {"status": "ok", "sr": best["sr"], "wave": best["wave"],
                     "synth_ms": int((time.monotonic() - _t_synth) * 1000),
@@ -572,6 +580,7 @@ class RenderQueue:
                     "quality": [{k: t[k] for k in ("seed", "tail_db", "f0_hz", "male", "clip")}
                                 for t in tries],
                     "picked": picked + 1, "rerender": reason,
+                    "rerender_skipped": skipped,
                     "retry_error": retry_error,
                     "explicit_seed": fixed is not None}
         finally:

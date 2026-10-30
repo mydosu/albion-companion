@@ -59,7 +59,8 @@
 （裁点前 30ms 仍高于峰值 -30dB）改做 12ms 短淡出（末样本为 0、无台阶，不把响亮的尾巴压成渐弱）。
 `test_render_quality_guard.py` 锁 2026-10-30 的渲后自检：原始渲染「截在响处」（末 30ms > 峰值
 -30dB）或 albion「男声漂移」（F0 中位 < 200Hz）时换随机 seed 重渲**一次**，按「不男声 > 不截尾 >
-原结果」取舍；显式带 seed 的听测不重渲；男声判据只对 albion；重渲失败保留原结果。
+原结果」取舍；显式带 seed 的听测不重渲；男声判据只对 albion；重渲失败保留原结果；会话/世代
+已取消时不再重渲（只白烧一次 GPU 没有意义，日志记 `rerender=skipped_cancelled`）。
 `test_bridge_json_body.py` 锁非 UTF-8 请求体：`/v1/audio/speech` 与 `/v2/prepare` 收到 GBK 体
 按 charset 解码（失败回退 gb18030）后照常处理，解不开回 400 而不是 500。
 `probes/tts_male_guard_probe.py --out <tests/output 下目录> [--rounds 20]` 复现男声漂移/句尾截断：
