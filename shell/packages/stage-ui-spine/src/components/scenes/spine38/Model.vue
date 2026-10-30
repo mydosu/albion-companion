@@ -34,7 +34,7 @@ import costumeAUrl from '../../../assets/author-models/albion-spine-38-costume-a
 import { loadSpineZip } from '../../../utils/spine-zip-loader'
 import { AuthorState, parseCommand, selfTest } from './author-engine'
 import { erasableFacesIn, eraseMaskedPixels, EYE_SLOT_NAMES, stripSlotTimelines } from './face-eye-mask'
-import { faceFadeStep, faceOverlayAlpha, faceSwayDeg, idleSwingDeferMs, MOUTH_CLOSED_SCALE, MOUTH_LEVEL_TIMEOUT_MS, mouthLevelFromRms, mouthScaleForFace, smoothMouth } from './face-motion'
+import { faceFadeStep, faceOverlayAlpha, faceSwayDeg, idleSwingDeferMs, MOUTH_CLOSED_SCALE, MOUTH_LEVEL_TIMEOUT_MS, mouthLevelFromRms, mouthScaleForFace, rmsOfByteTimeDomain, smoothMouth } from './face-motion'
 import { asHeadMotion, FaceHoldTimer, headMotionOffset, parseHold, resolveFace } from './stage-act'
 
 import '@pixi/loaders'
@@ -167,14 +167,9 @@ function playVoice(name: string) {
       if (!analyser)
         return
       analyser.getByteTimeDomainData(buf)
-      let sum = 0
-      for (const v of buf) {
-        const d = (v - 128) / 128
-        sum += d * d
-      }
       // 噪声门和斜率在 mouthLevelFromRms 里，TTS 那条路用的是同一份：spec 的 lip_sync.gain=5
       // 正是当初校出斜率 6 的那个值，所以这里不再乘 gain。
-      setMouthLevel(mouthLevelFromRms(Math.sqrt(sum / buf.length)))
+      setMouthLevel(mouthLevelFromRms(rmsOfByteTimeDomain(buf)))
       lipRaf = requestAnimationFrame(tick)
     }
     tick()
@@ -187,6 +182,8 @@ function playVoice(name: string) {
 }
 
 function stopVoice() {
+  // 被新台词打断时旧的那条也要停，否则两条 wav 叠着放，电平只跟最新一条
+  audioEl?.pause()
   cancelAnimationFrame(lipRaf)
   lipRaf = 0
   analyser = undefined
@@ -695,14 +692,12 @@ function installControllers() {
         touched = true
       }
       if (hasLip && zui) {
-        // 姿势播放中（轨道 2 有动画）不驱动嘴：作者的姿势是用整张脸图表达表情的，
-        // 再缩 zui 骨会把脸图拉变形（实测脸图在时缩嘴骨仍有 44.5 万像素变化）。
-        const posing = !!model?.state.getCurrent(poseTrack)?.animation
         // 电平有看门狗：TTS 会话断开或 Stage 的循环停掉时，超过 250ms 没新值就当静音，
         // 保证说完/打断/静音后一定回到闭嘴，不会停在张开。
         const level = now - mouthLevelAt > MOUTH_LEVEL_TIMEOUT_MS ? 0 : mouthLevelRef.value
-        // 脸图的嘴和无脸的嘴按脸图 alpha 插值，换脸/撤脸时 zui 不会一两帧内跳 0.35
-        const want = posing ? 1 : mouthScaleForFace(level, faceOn ? faceAlpha : 0)
+        // 触摸反应的 pose 脸图期间也跟着电平动（作者 wav 的电平由 playVoice 推进来），
+        // 不再钉在 1.0。脸图的嘴和无脸的嘴按脸图 alpha 插值，换脸/撤脸时 zui 不会一两帧内跳。
+        const want = mouthScaleForFace(level, faceOn ? faceAlpha : 0)
         mouthNow = smoothMouth(mouthNow, want, (dt || 0.016) * 1000)
         zui.scaleX = mouthNow
         touched = true
