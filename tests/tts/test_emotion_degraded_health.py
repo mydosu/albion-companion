@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """/v2/health 的 emotion_degraded：情绪翻译主路没有可用 key（如两把都在额度冷却）时为 true；全部离线。"""
 from pathlib import Path
+import os
 import sys
 import unittest
 from unittest.mock import patch
@@ -12,6 +13,13 @@ import httpx
 
 
 class EmotionDegradedHealth(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        # 翻译首腿现在先问脑的 /health（跟着脑的模型走）；这一组要离线判「有没有可用 key」，先关掉那条腿。
+        self._offline = patch.dict(os.environ, {"TTS_BRAIN_ROUTE": "0"})
+        self._offline.start()
+        self.addCleanup(self._offline.stop)
+        bridge.reset_brain_route()
+
     async def health(self):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=bridge.app), base_url="http://t") as c:
             r = await c.get("/v2/health")

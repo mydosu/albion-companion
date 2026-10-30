@@ -125,6 +125,14 @@ class PrepareSlots(unittest.IsolatedAsyncioTestCase):
 
 
 class ApiTranslation(unittest.TestCase):
+    def setUp(self):
+        # 2026-10-30：翻译首腿改成「跟着脑的模型走」（问 127.0.0.1:8650/health）。这些用例要离线，
+        # 把那条腿关掉，断言的就是老链（Command Code → codex / DeepSeek 官方）。
+        self._offline = patch.dict(os.environ, {"TTS_BRAIN_ROUTE": "0"})
+        self._offline.start()
+        self.addCleanup(self._offline.stop)
+        bridge.reset_brain_route()
+
     def test_codex_is_default_and_api_can_be_selected(self):
         # 只执行配置赋值，避免重载全局 app 或读取任何真实凭据。
         import ast

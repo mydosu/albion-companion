@@ -243,9 +243,12 @@ def to_japanese_ex(text: str, context: str = ""):
     else:
         key = _translate_key()
         model, endpoint = TRANSLATE_MODEL, TRANSLATE_BASE
-    if key and EMOTION_HINT:                 # 只在**主路**（同一次调用顺带出情绪）上开
-        got = _ask(key, t, model, endpoint, prompt=TRANSLATE_PROMPT + EMOTION_PROMPT)
-        ja, emo = _parse_emotion_json(got)
+    if EMOTION_HINT:                         # 只在**主路**（同一次调用顺带出情绪）上开
+        # 首腿跟着脑的模型走；脑没起/没回还是老规矩用 Command Code（或 TTS_TRANSLATE_BACKEND=api 的 DeepSeek）
+        got = ask_brain(t, prompt=TRANSLATE_PROMPT + EMOTION_PROMPT)
+        if not got and key:
+            got = _ask(key, t, model, endpoint, prompt=TRANSLATE_PROMPT + EMOTION_PROMPT)
+        ja, emo = _parse_emotion_json(got) if got else ("", None)
         if ja and _complete(t, ja):
             # 中文原文里的明示线索由**我们自己的规则**抽（确定性、不依赖模型回抄），
             # 它们在日语译文里已经看不到了（`（小声）` 会被译成日语、emoji 会被丢掉）。
@@ -256,10 +259,11 @@ def to_japanese_ex(text: str, context: str = ""):
                     emo["src"] = cues
                 print("[emotion] %s fields=%s" % (text_meta(ja), ",".join(sorted(emo))), flush=True)
                 return ja, emo
-        global _EMO_MISS
-        _EMO_MISS += 1
-        print("[emotion] 情绪 JSON 没救回来或译文缺句（累计 %d 次），退回老翻译路径" % _EMO_MISS,
-              flush=True)
+        if got or key:
+            global _EMO_MISS
+            _EMO_MISS += 1
+            print("[emotion] 情绪 JSON 没救回来或译文缺句（累计 %d 次），退回老翻译路径" % _EMO_MISS,
+                  flush=True)
     ja = to_japanese(t)                      # 用剥好的文本：字数闸 `_complete` 比的也是它
     if ja and not _complete(t, ja) and len(_clauses(t)) > 1:
         print("[translate] 译文疑似漏分句（%s -> %s），逐分句重译" % (text_meta(t), text_meta(ja)), flush=True)
@@ -380,6 +384,10 @@ def to_japanese(text: str, by_clause: bool = False) -> str:
         # 2026-09-24 指挥官定：主路 = Command Code 直连的 ds-v4.1（关思考，实测 ~2s）；
         # codex(GPT) 退为退路。分支名保留 "codex"（历史包袱），语义以本行为准。
         def one(seg: str) -> str:
+            # 首腿：脑现在用的模型（2026-10-30 起翻译跟着脑走，见 ask_brain）
+            got = ask_brain(seg)
+            if got:
+                return got
             # 三重回退（2026-10-02 指挥官定）：HTTP 退路里先 key#1 再 key#2，最后 codex luna。
             # 额度用完的 key 在冷却期内直接跳过：白打一次 400 要 1~2s，
             # 情绪路径 + 老路径各打两次就把 prepare 的 10s 吃光了（2026-10-14 中文整句哑掉）
@@ -400,15 +408,17 @@ def to_japanese(text: str, by_clause: bool = False) -> str:
         with ThreadPoolExecutor(max_workers=2) as ex:
             outs = list(ex.map(one, segs))
         ja = _join_all(outs) if len(segs) > 1 else (outs[0] if outs else "")
-    elif not key:
-        print("[translate] 没拿到 API key，跳过翻译", flush=True)
-        return ""
-    elif len(parts) > 1:      # 逐句译：多句一次送，模型会整句漏掉（朗读就是漏台词）
-        with ThreadPoolExecutor(max_workers=4) as ex:
-            outs = list(ex.map(lambda x: _ask(key, x, TRANSLATE_MODEL), parts))
-        ja = _join_all(outs)
     else:
-        ja = _ask(key, text, TRANSLATE_MODEL)
+        ja = ask_brain(text)     # 首腿：脑现在用的模型
+        if not ja and not key:
+            print("[translate] 没拿到 API key，跳过翻译", flush=True)
+            return ""
+        if not ja and len(parts) > 1:      # 逐句译：多句一次送，模型会整句漏掉（朗读就是漏台词）
+            with ThreadPoolExecutor(max_workers=4) as ex:
+                outs = list(ex.map(lambda x: _ask(key, x, TRANSLATE_MODEL), parts))
+            ja = _join_all(outs)
+        elif not ja:
+            ja = _ask(key, text, TRANSLATE_MODEL)
     if ja:
         print(f"[{time.strftime('%H:%M:%S')}] [translate] {_sent_count(text)}句->{_sent_count(ja)}句 source={text_meta(text)} target={text_meta(ja)}", flush=True)
     return ja
@@ -438,6 +448,112 @@ FALLBACK_BASE = os.environ.get("TTS_TRANSLATE_FALLBACK_BASE", "https://api.comma
 # 退路走 Command Code 线路，key#1 先、key#2 后。
 FALLBACK_MODEL = os.environ.get("TTS_TRANSLATE_FALLBACK_MODEL", "deepseek/deepseek-v4.1-flash")
 _FALLBACK_KEY: list[str] = []
+
+
+# ---- 跟着脑的模型走（2026-10-30）：翻译首腿 = 脑现在用的那个模型 ---------------------------
+# 脑的 HTTP 口在 Windows 侧直接可达（壳就是这么连的）；/health 里有 provider 与 model。
+# 缓存 BRAIN_TTL 秒：一轮对话里十几句翻译不必每句都问一次；问不到就沿用上一次（一次都没问到就退回老链）。
+# provider=magpie → 打本机 magpie 的 OpenAI 口；provider=commandcode → 走现有 Command Code 腿 + 该模型；
+# 其它 provider（grokpool 等）不猜，直接退回老链。DeepSeek 官方 / Command Code / codex 三条退路顺序不变。
+BRAIN_HEALTH = os.environ.get("TTS_BRAIN_HEALTH_URL", "http://127.0.0.1:8650/health")
+BRAIN_TTL = float(os.environ.get("TTS_BRAIN_ROUTE_TTL", "60"))
+MAGPIE_BASE = os.environ.get("TTS_TRANSLATE_MAGPIE_BASE", "http://127.0.0.1:3425/v1").rstrip("/")
+MAGPIE_KEY = os.environ.get("TTS_TRANSLATE_MAGPIE_KEY", "magpie")   # 回环口不校验，占位即可（不是凭据）
+# Gemini 的思考：不压的话实测一句 16s（1348 个 reasoning token），压到 low 是 2.4~2.8s，译文逐字够用。
+# magpie 的 thinkingLevelMap 里 low/medium/high 有效、off/minimal 是 null，所以默认 low；空串 = 不加这个字段。
+MAGPIE_EFFORT = os.environ.get("TTS_TRANSLATE_MAGPIE_EFFORT", "low").strip()
+MAGPIE_TIMEOUT = float(os.environ.get("TTS_TRANSLATE_MAGPIE_TIMEOUT", "40"))
+MAGPIE_DOWN_SEC = float(os.environ.get("TTS_TRANSLATE_MAGPIE_COOLDOWN", "60"))
+_magpie_down_until = 0.0
+_brain_lock = threading.Lock()
+_brain_route: dict = {"at": 0.0, "provider": "", "model": ""}
+
+
+def brain_route(now: float | None = None) -> dict:
+    """脑现在在用的 {"provider", "model"}；缓存 BRAIN_TTL 秒，问不到就用上一次的结果。
+
+    TTS_BRAIN_ROUTE=0 可整条关掉（离线测试、或不想让翻译依赖脑的时候）。
+    """
+    if os.environ.get("TTS_BRAIN_ROUTE", "1").strip().lower() in ("0", "false", "no", "off"):
+        return {"at": 0.0, "provider": "", "model": ""}
+    now = time.time() if now is None else now
+    with _brain_lock:
+        cached = dict(_brain_route)
+    if cached["model"] and now - cached["at"] < BRAIN_TTL:
+        return cached
+    try:
+        with urllib.request.urlopen(BRAIN_HEALTH, timeout=3) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        provider = str(data.get("provider") or "").strip()
+        model = str(data.get("model") or "").strip()
+    except Exception:                       # noqa: BLE001 - 脑没起/没回，退回上一次
+        return cached
+    if not provider or not model:
+        return cached
+    with _brain_lock:
+        _brain_route.update(at=now, provider=provider, model=model)
+        return dict(_brain_route)
+
+
+def reset_brain_route() -> None:
+    """测试用：忘掉缓存（下次 brain_route 重新问脑）。"""
+    with _brain_lock:
+        _brain_route.update(at=0.0, provider="", model="")
+
+
+def _ask_magpie(text: str, model: str, prompt: str | None = None) -> str:
+    """走 magpie 的 OpenAI 口（/chat/completions）。先把思考压到 MAGPIE_EFFORT，失败再不带重试一次。"""
+    global _magpie_down_until
+    if time.time() < _magpie_down_until:
+        return ""
+    base = {"model": model, "stream": False,
+            "messages": [{"role": "system", "content": prompt or TRANSLATE_PROMPT},
+                         {"role": "user", "content": text}]}
+    variants = []
+    if MAGPIE_EFFORT and MAGPIE_EFFORT.lower() not in ("0", "off", "default"):
+        variants.append(dict(base, reasoning_effort=MAGPIE_EFFORT))
+    variants.append(base)
+    last = ""
+    for payload in variants:
+        req = urllib.request.Request(MAGPIE_BASE + "/chat/completions",
+                                     data=json.dumps(payload).encode("utf-8"),
+                                     headers={"Content-Type": "application/json",
+                                              "Authorization": "Bearer " + MAGPIE_KEY})
+        try:
+            with urllib.request.urlopen(req, timeout=MAGPIE_TIMEOUT) as resp:
+                out = json.loads(resp.read().decode("utf-8"))
+            msg = ((out.get("choices") or [{}])[0] or {}).get("message") or {}
+            txt = str(msg.get("content") or "").strip()
+            if txt:
+                return txt
+            last = "空译文"
+        except Exception as e:              # noqa: BLE001 - 翻译失败不该让整条链路 500
+            last = type(e).__name__
+            _tlog(f"magpie {model} source={text_meta(text)} : {last}")
+        if payload is variants[0] and len(variants) > 1:
+            print("[translate] magpie 压思考那次没成，退回原样重试", flush=True)
+    _magpie_down_until = time.time() + MAGPIE_DOWN_SEC
+    print(f"[translate] magpie {model} 失败（{last}），{MAGPIE_DOWN_SEC:.0f}s 内先走老腿", flush=True)
+    _tlog(f"magpie {model} 最终失败 source={text_meta(text)} : {last}")
+    return ""
+
+
+def ask_brain(text: str, prompt: str | None = None) -> str:
+    """翻译首腿：用脑现在用的模型译这一句。拿不到脑的路由就返回空串（调用方走老链）。"""
+    route = brain_route()
+    model = route.get("model") or ""
+    provider = route.get("provider") or ""
+    if not model:
+        return ""
+    if provider == "magpie":
+        return _ask_magpie(text, model, prompt)
+    if provider == "commandcode":
+        # 脑在 commandcode 上跑的模型（如 deepseek/deepseek-v4-flash）走同一条 Command Code 腿
+        for k in _cc_keys():
+            got = _ask(k, text, model, FALLBACK_BASE, prompt=prompt)
+            if got:
+                return got
+    return ""
 
 
 def _fallback_key() -> str:
@@ -501,6 +617,8 @@ def emotion_degraded() -> bool:
     """情绪翻译主路是否不可用（没有可用 key，如两把都在额度冷却）：此时译文照出，情绪提示整段跳过。"""
     if not (TRANSLATE_ENABLED and EMOTION_HINT):
         return False                         # 主动关掉不算降级
+    if brain_route().get("model"):
+        return False                         # 首腿跟着脑走，脑在就不算降级
     return not (_cc_keys() if TRANSLATE_BACKEND == "codex" else _translate_key())
 
 
