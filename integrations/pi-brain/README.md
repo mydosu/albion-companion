@@ -180,7 +180,10 @@ Pi（Node 程序）直连会稳定超时（`Request timed out.`）。转发把�
 - 合并时去掉模型级 `api`/`baseUrl` 覆盖，统一成 provider 级 `openai-completions`：整理器（`albion-guard.ts`）的
   context 钩子与「重说」只发 OpenAI 形状的 payload（`/chat/completions`），magpie 给 `antigravity/*` 写的覆盖是
   `google-generative-ai` + `/v1beta`。
-- `cli.sh`、`delegate.ts` 也跟着脑走：**不再传 `--model`**，pi 用同一个 agent 目录 `settings.json` 的默认值。
+- `cli.sh` 也跟着脑走，但**必须显式传 `--model`**：它读同一个 agent 目录 `settings.json` 的
+  `defaultProvider`/`defaultModel` 再拼成 `provider/model` 传给 pi —— 续会话（`--session-id`）时 pi 会沿用会话文件里
+  记着的旧模型，省略 `--model` 不等于跟设置走（2026-10-30 实测：`albion-cli` 还停在 `grokpool/grok-chat-fast`，回出乱码英文）。
+  `delegate.ts` 的子进程带 `--no-session`，不传 `--model`，pi 直接吃那份 `settings.json` 的默认值。
   临时单独换一次仍可 `ALBION_CLI_MODEL` / `ALBION_DELEGATE_MODEL`。
 - TTS 翻译（`tts/irodori/bridge.py`）也跟：问脑 `http://127.0.0.1:8650/health` 的 `provider`/`model`（缓存 60 秒），
   `magpie` → 首腿打本机 magpie（思考压到 `low`，实测一句 2.4~2.8s；不压是 16s），`commandcode` → 首腿走现有

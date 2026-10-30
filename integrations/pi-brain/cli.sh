@@ -22,10 +22,22 @@ for raw in fh:
 PY
 )"
 
-# 模型跟着脑走：不传 --model，pi 就用 agent/settings.json 的 defaultProvider/defaultModel —— 脑每轮把
-# 自己在用的模型写回那份设置（bin/follow_settings.py）。临时换一次：export ALBION_CLI_MODEL=provider/model
+# 模型跟着脑走：读 agent/settings.json 的 defaultProvider/defaultModel —— 脑每轮把它实际在用的模型写回那份设置
+# （bin/follow_settings.py）。这里必须显式传 --model：只省略的话，pi 会沿用会话文件里记着的旧模型
+# （2026-10-30 实测：albion-cli 还停在 grokpool/grok-chat-fast，回出来是乱的英文）。临时换一次：ALBION_CLI_MODEL。
 MODEL_ARGS=()
-if [ -n "${ALBION_CLI_MODEL:-}" ]; then MODEL_ARGS=(--model "$ALBION_CLI_MODEL"); fi
+if [ -n "${ALBION_CLI_MODEL:-}" ]; then
+  MODEL_ARGS=(--model "$ALBION_CLI_MODEL")
+else
+  CLI_MODEL="$(python3 -c 'import json
+try:
+    d = json.load(open("/root/albion-pi/agent/settings.json", encoding="utf-8"))
+except Exception:
+    raise SystemExit(0)
+p, m = d.get("defaultProvider") or "", d.get("defaultModel") or ""
+print("%s/%s" % (p, m) if p and m else "")' 2>/dev/null)"
+  if [ -n "$CLI_MODEL" ]; then MODEL_ARGS=(--model "$CLI_MODEL"); fi
+fi
 SESSION="${ALBION_CLI_SESSION:-albion-cli}"
 
 EXT=()
