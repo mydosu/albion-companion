@@ -14,5 +14,7 @@ if not defined TTS_TRANSLATE_MODEL set "TTS_TRANSLATE_MODEL=deepseek-flash"
 rem Controlled voice caption and sentence-final emoji: on by default, 2026-10-26.
 if not defined ALBION_VOICE_CAPTION set "ALBION_VOICE_CAPTION=1"
 if not defined ALBION_VOICE_EMOJI set "ALBION_VOICE_EMOJI=1"
+rem 2026-10-30: keep the zh/ja text of each translated unit in the log so a bad line can be traced
+if not defined TTS_LOG_TEXT set "TTS_LOG_TEXT=1"
 "%~dp0.venv\Scripts\python.exe" bridge.py
 if not defined ALBION_SILENT pause

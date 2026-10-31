@@ -36,6 +36,26 @@ PLAN_VERSION = 2
 
 DEFAULT_SHIP = "albion"          # 与 irodori_serve.DEFAULT_SHIP 同值：单元没带 voice 时用于自检与日志
 
+# ---- 每块念的日语进日志（2026-10-30）：默认关 ------------------------------------
+# 桥那边只记译文哈希；出事时要能对上"第几块音频念的是哪句日语"（上句尾巴有没有串过来）。
+# 后端 stdout 是 cp936（irodori.log 里的 caption 已经乱码），所以单独写 UTF-8 文件，共用同一个开关。
+_TEXT_LOG = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                         "logs", "tts", "_speech.log")
+
+
+def log_text_on() -> bool:
+    return os.environ.get("TTS_LOG_TEXT", "").strip().lower() in ("1", "true", "yes")
+
+
+def speech_log(unit_id: str, text: str) -> None:
+    try:
+        os.makedirs(os.path.dirname(_TEXT_LOG), exist_ok=True)
+        with open(_TEXT_LOG, "a", encoding="utf-8") as f:
+            f.write("%s [speech] unit=%s %s\n" % (time.strftime("%Y-%m-%dT%H:%M:%S"), unit_id, text))
+    except OSError:
+        pass                            # 日志写不进去也绝不影响合成
+
+
 # ---- 渲染后自检（2026-10-30）-----------------------------------------------------
 # 生产不传 `--seed` ⇒ 每句随机采样。宣传片录制时听到两件偶发的事：同一条回复里某几句基频掉到
 # 121–148Hz（正常 296–380Hz，听起来是男声），以及原始渲染把话截在响处（末 2ms 还有 -25～-28dBFS，
@@ -497,6 +517,8 @@ class RenderQueue:
             print("[render_queue] %s unit=%s queue_ms=%d%s"
                   % (job.session_id, _uid, int((_t_run - job.queued_at) * 1000),
                      " caption_mode=%s" % _mode if _mode else ""), flush=True)
+            if log_text_on():                  # 块序号 → 这块实际念的日语（默认关）
+                speech_log(_uid, job.unit.get("text") or "")
             try:
                 res = await asyncio.to_thread(self._render_one, job)
             except Exception as e:

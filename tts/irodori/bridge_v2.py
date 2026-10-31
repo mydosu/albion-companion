@@ -38,6 +38,33 @@ SPEAKABLE = re.compile(r"[\w\u3040-\u30ff\u4e00-\u9fff]")
 SENT = cue_scope.SENT            # 切句判据的唯一来源（归属侧必须与翻译腿同一套，否则坐标会漂）
 ASIDE = re.compile(r"（[^）]*）|\([^)]*\)|【[^】]*】|\[[^\]]*\]|<\|[^|]*\|>")
 
+# ---- 译文全文进日志（2026-10-30）：默认关 ----------------------------------------
+# 事故背景：日志只记 `len=` + sha256 ⇒ 「翻译偶尔译错」和「TTS 把上一句尾巴串过来」分不开。
+# 公开仓库的用户默认**不落聊天原文**，只有显式 TTS_LOG_TEXT=1/true/yes 才写这一行。
+def log_text_on() -> bool:
+    return os.environ.get("TTS_LOG_TEXT", "").strip().lower() in ("1", "true", "yes")
+
+
+def _brain_model() -> str:
+    """首腿模型名（脑的 /health 决定的那个）。取不到就不写，绝不因此让翻译失败。"""
+    try:
+        import bridge
+        return str((bridge.brain_route() or {}).get("model") or "")
+    except Exception:                       # noqa: BLE001 - 日志永远不许影响主路
+        return ""
+
+
+def _log_translated(req, srcs, outs, emos, via_ex: bool) -> None:
+    """一个单元一行：中文原文 → 日语译文 + 首腿模型 + 有没有走退路。"""
+    if via_ex:
+        # 情绪结构为 None ⇒ to_japanese_ex 没用上 JSON 那次结果，落回了 to_japanese（退路）
+        fb = ",".join("no" if e else "yes" for e in emos)
+    else:
+        fb = "n/a"
+    print("[translate-text] unit=%s model=%s fallback=%s zh=%s ja=%s"
+          % (getattr(req, "unit_id", "") or "-", _brain_model() or "-", fb,
+             " | ".join(srcs), " | ".join(outs)), flush=True)
+
 
 # ---------------- 纯函数（无状态，可离线测） ----------------
 def is_japanese(text: str) -> bool:
@@ -350,6 +377,8 @@ class PrepareService:
             return self._failed(req, "translation", "empty_translation", t0)
         if CONTINUE_TAIL and continues(text, req.unit_reason):
             outs = (*outs[:-1], continue_tail(outs[-1]))      # 只动单元最后一段：前面的段是完整句子
+        if log_text_on():
+            _log_translated(req, inputs, outs, emos, self._translate_ex is not None)
         return self._ready(req, outs, t0, translated=True, emotions=emos)
 
     # ---- 内部 ----
