@@ -3001,5 +3001,89 @@
     "new": "logs/history/tts-p8/",
     "category": "local-cleanup-20261024",
     "note": "Git 忽略区（已关闭服务日志）；2026-10-24 迁入 logs/history/tts-p8/（prod_irodori、prod_stream、prod_bridge 三个日志），原目录已删除"
-  }
+  },
+{
+  "old": "教程/05-口癖和人设.md",
+  "new": "教程/03-口癖和人设.md",
+  "category": "tutorial-renumber-20261031",
+  "note": "2026-10-31 教程按复现顺序重新编号，旧篇号链接失效"
+},
+{
+  "old": "教程/03-训练角色声音.md",
+  "new": "教程/04-训练角色声音.md",
+  "category": "tutorial-renumber-20261031",
+  "note": "2026-10-31 教程按复现顺序重新编号，旧篇号链接失效"
+},
+{
+  "old": "教程/04-流式语音.md",
+  "new": "教程/05-流式语音.md",
+  "category": "tutorial-renumber-20261031",
+  "note": "2026-10-31 教程按复现顺序重新编号，旧篇号链接失效"
+},
+{
+  "old": "教程/08-语音输入.md",
+  "new": "教程/06-语音输入.md",
+  "category": "tutorial-renumber-20261031",
+  "note": "2026-10-31 教程按复现顺序重新编号，旧篇号链接失效"
+},
+{
+  "old": "教程/09-长期记忆.md",
+  "new": "教程/07-长期记忆.md",
+  "category": "tutorial-renumber-20261031",
+  "note": "2026-10-31 教程按复现顺序重新编号，旧篇号链接失效"
+},
+{
+  "old": "教程/06-让她自己开口.md",
+  "new": "教程/08-让她自己开口.md",
+  "category": "tutorial-renumber-20261031",
+  "note": "2026-10-31 教程按复现顺序重新编号，旧篇号链接失效"
+},
+{
+  "old": "教程/10-她的眼睛.md",
+  "new": "教程/09-她的眼睛.md",
+  "category": "tutorial-renumber-20261031",
+  "note": "2026-10-31 教程按复现顺序重新编号，旧篇号链接失效"
+},
+{
+  "old": "教程/11-状态挂件.md",
+  "new": "教程/10-状态挂件.md",
+  "category": "tutorial-renumber-20261031",
+  "note": "2026-10-31 教程按复现顺序重新编号，旧篇号链接失效"
+},
+{
+  "old": "教程/assets/03-train.png",
+  "new": "教程/assets/04-train.png",
+  "category": "tutorial-renumber-20261031",
+  "note": "2026-10-31 教程按复现顺序重新编号，旧篇号链接失效"
+},
+{
+  "old": "教程/assets/03-voice-compare.mp4",
+  "new": "教程/assets/04-voice-compare.mp4",
+  "category": "tutorial-renumber-20261031",
+  "note": "2026-10-31 教程按复现顺序重新编号，旧篇号链接失效"
+},
+{
+  "old": "教程/assets/04-pause-compare.mp4",
+  "new": "教程/assets/05-pause-compare.mp4",
+  "category": "tutorial-renumber-20261031",
+  "note": "2026-10-31 教程按复现顺序重新编号，旧篇号链接失效"
+},
+{
+  "old": "教程/assets/05-chat-compare.png",
+  "new": "教程/assets/03-chat-compare.png",
+  "category": "tutorial-renumber-20261031",
+  "note": "2026-10-31 教程按复现顺序重新编号，旧篇号链接失效"
+},
+{
+  "old": "教程/assets/06-wake-log.png",
+  "new": "教程/assets/08-wake-log.png",
+  "category": "tutorial-renumber-20261031",
+  "note": "2026-10-31 教程按复现顺序重新编号，旧篇号链接失效"
+},
+{
+  "old": "教程/assets/06-wake-week.svg",
+  "new": "教程/assets/08-wake-week.svg",
+  "category": "tutorial-renumber-20261031",
+  "note": "2026-10-31 教程按复现顺序重新编号，旧篇号链接失效"
+}
 ]
