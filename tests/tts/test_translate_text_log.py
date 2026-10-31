@@ -12,6 +12,7 @@ import os
 import sys
 import tempfile
 import time
+import types
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tts", "irodori"))
@@ -105,6 +106,52 @@ class SpeechLogTest(unittest.TestCase):
         os.environ["TTS_LOG_TEXT"] = "0"
         self.assertFalse(render_queue.log_text_on())
         os.environ.pop("TTS_LOG_TEXT", None)
+
+
+class BrainModelTest(unittest.TestCase):
+    """`_brain_model()` 只能读已加载的模块：生产是 `python bridge.py`（模块名 `__main__`），
+    这里 import bridge 会把整个 bridge.py 再导一份、顶层代码重跑。"""
+
+    def test_从__main__取且不触发新import(self):
+        fake = types.ModuleType("__main__")
+        fake.brain_route = lambda: {"model": "fake/main-9"}
+        old_main = sys.modules.get("__main__")
+        had_bridge = "bridge" in sys.modules
+        old_bridge = sys.modules.pop("bridge", None)     # 别靠已有的 bridge 蒙对
+        sys.modules["__main__"] = fake
+        try:
+            self.assertEqual(bridge_v2._brain_model(), "fake/main-9")
+            self.assertNotIn("bridge", sys.modules, "_brain_model 不许 import bridge")
+        finally:
+            sys.modules["__main__"] = old_main
+            if had_bridge and old_bridge is not None:
+                sys.modules["bridge"] = old_bridge
+            else:
+                sys.modules.pop("bridge", None)
+
+    def test_拿不到就回空串(self):
+        old_main = sys.modules.get("__main__")
+        old_bridge = sys.modules.pop("bridge", None)
+        sys.modules["__main__"] = types.ModuleType("__main__")     # 没有 brain_route
+        try:
+            self.assertEqual(bridge_v2._brain_model(), "")
+        finally:
+            sys.modules["__main__"] = old_main
+            if old_bridge is not None:
+                sys.modules["bridge"] = old_bridge
+
+    def test_brain_route抛异常也不影响(self):
+        class Boom:
+            @staticmethod
+            def brain_route():
+                raise RuntimeError("脑没起")
+
+        old_main = sys.modules.get("__main__")
+        sys.modules["__main__"] = Boom
+        try:
+            self.assertEqual(bridge_v2._brain_model(), "")
+        finally:
+            sys.modules["__main__"] = old_main
 
 
 if __name__ == "__main__":

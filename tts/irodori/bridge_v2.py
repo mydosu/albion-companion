@@ -46,12 +46,20 @@ def log_text_on() -> bool:
 
 
 def _brain_model() -> str:
-    """首腿模型名（脑的 /health 决定的那个）。取不到就不写，绝不因此让翻译失败。"""
-    try:
-        import bridge
-        return str((bridge.brain_route() or {}).get("model") or "")
-    except Exception:                       # noqa: BLE001 - 日志永远不许影响主路
-        return ""
+    """首腿模型名（脑的 /health 决定的那个）。取不到就不写，绝不因此让翻译失败。
+
+    **只从已加载的模块里取，绝不 `import bridge`**：9881 跑的是 `python bridge.py`，模块名是
+    `__main__`，这里 import 会把 bridge.py 再完整导入一份、顶层代码（含 `bridge_v2.install`）重跑
+    一遍 —— 与 `install()` 文档里那条警告同一个坑。
+    """
+    for name in ("bridge", "__main__"):
+        fn = getattr(sys.modules.get(name), "brain_route", None)
+        if callable(fn):
+            try:
+                return str((fn() or {}).get("model") or "")
+            except Exception:               # noqa: BLE001 - 日志永远不许影响主路
+                return ""
+    return ""
 
 
 def _log_translated(req, srcs, outs, emos, via_ex: bool) -> None:
