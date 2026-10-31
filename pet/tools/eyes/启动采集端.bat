@@ -59,5 +59,5 @@ if not defined PY (
 set "PYTHONUNBUFFERED=1"
 rem --lan：同一局域网时直连（照 MWB 的做法），不走 Tailscale 中继；仍要 token
 rem token 走 --token-file 从 token.txt 读，不进进程命令行（值以 - 开头也不会被 argparse 误当选项）
-"%PY%" capture_agent.py --port 8790 --token-file "%~dp0token.txt" --max-width 1920 --lan >>"%LOG%" 2>&1
+"%PY%" capture_agent.py --port 8790 --token-file "%~dp0token.txt" --max-width 0 --lan >>"%LOG%" 2>&1
 exit /b 0
