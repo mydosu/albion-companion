@@ -105,9 +105,9 @@ class TestVocab(unittest.TestCase):
     def test_rejects_out_of_vocab(self):
         bad = [
             ("恥ずかしそうに、声を潜めて、話す。", "词表外实词"),      # 抽象情绪词
-            ("低い声で、鼻歌まじりで、話す。", "词表外实词"),          # 词表外动作
-            ("低い声で、語尾を下げて。", "结构不对"),                  # 只有两段
-            ("低い声で、語尾を下げて、呟く。", None),                  # 正确样例（对照）
+            ("落ち着いた声で、鼻歌まじりで、話す。", "词表外实词"),          # 词表外动作
+            ("落ち着いた声で、語尾を下げて。", "结构不对"),                  # 只有两段
+            ("落ち着いた声で、語尾を下げて、呟く。", None),                  # 正确样例（对照）
         ]
         for text, why in bad:
             err = VC.validate_caption(text)
@@ -120,9 +120,9 @@ class TestVocab(unittest.TestCase):
         self.assertEqual(VC.validate_caption(""), "空描述")
         self.assertEqual(VC.validate_caption("   "), "空描述")
         self.assertEqual(VC.validate_caption(None), "不是字符串")
-        self.assertIn("过长", VC.validate_caption("低い声で、語尾を下げて、" + "呟く" * 20))
-        self.assertIn("过短", VC.validate_caption("低い声で、"))
-        self.assertIn("控制字符", VC.validate_caption("低い声で、\u200b語尾を下げて、呟く。"))
+        self.assertIn("过长", VC.validate_caption("落ち着いた声で、語尾を下げて、" + "呟く" * 20))
+        self.assertIn("过短", VC.validate_caption("落ち着いた声で、"))
+        self.assertIn("控制字符", VC.validate_caption("落ち着いた声で、\u200b語尾を下げて、呟く。"))
 
 
 class TestSceneOf(unittest.TestCase):
