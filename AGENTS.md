@@ -17,3 +17,4 @@
 - 提交前用 `python tools/check_repository.py` 检查分类/旧路径，再用 Gitleaks 扫描暂存区。`git add` 指定路径；禁止 `git add -f` 私密/备份目录。发现真实凭据先停止推送并修复，不通过宽泛忽略规则绕过扫描。
 - 审计任务只读：开始记录目标 MD5，结束核对。收尾任务按任务目标做（包括提交、推送）。实现任务记录基线、验证命令、通过/失败数字和未验证项。
 - push 按用户本轮要求或同席项目长期授权进行；禁止 force push 或擅自重写历史。
+- 重启 start_all 里的服务（9889/9881/9885 等）必须无窗口——用 WMI 起 `powershell -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File D:\AI\Wife\_silent_run.ps1 -Bat <对应 start_*.bat> -Log <原日志>`，和 start_all.bat 用的是同一套；禁止 `start /min`、裸 cmd、自写包装 bat；起完确认桌面没有新的控制台窗口；重启前先 taskkill 卡在 pause 上的外层 cmd。
