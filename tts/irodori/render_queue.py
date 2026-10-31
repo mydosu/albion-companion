@@ -60,7 +60,8 @@ def speech_log(unit_id: str, text: str) -> None:
 # 生产不传 `--seed` ⇒ 每句随机采样。宣传片录制时听到两件偶发的事：同一条回复里某几句基频掉到
 # 121–148Hz（正常 296–380Hz，听起来是男声），以及原始渲染把话截在响处（末 2ms 还有 -25～-28dBFS，
 # 下一刻就是数字零）。后者 gap_shaper 无法用 30ms 淡出接（门槛过不了），只能硬接零。
-# 这里渲完量两样，命中就换一个随机 seed 重渲**一次**，按「不男声 > 不截尾 > 原结果」取更好的那次。
+# 这里渲完量两样，命中就换随机 seed 再渲，最多重渲**两次**（共 3 次尝试）；一旦干净就停，
+# 三次都不达标时按「不男声 > 不截尾 > F0 更高」取最好的那次。
 MALE_GUARD_SHIPS = ("albion",)   # 只查 albion：其他船的声线本来就不同，套这个阈值没意义
 MALE_F0_MAX_HZ = 260.0           # 正常最低 274Hz；10-31 一句 226Hz 的半句漂移没拦住，260 取空档
 TAIL_CLIP_DB = 30.0              # 原始 wav 末 30ms 峰值 > 全段峰值 -30dB ⇒ 上游把话截在响处
@@ -202,8 +203,13 @@ def _bad_reasons(q):
 
 
 def _rank(q):
-    """「不男声 > 不截尾 > 原结果」：元组逐项比较，平手保留原结果。"""
-    return (0 if q.get("male") else 1, 0 if q.get("clip") else 1)
+    """「不男声 > 不截尾 > F0 更高」：元组逐项比较，平手保留原结果。
+
+    male 平手时取 F0 中位最高的那次（三次都男声时至少别挑最低的）；F0 缺失排最后。
+    """
+    f0 = q.get("f0_hz")
+    return (0 if q.get("male") else 1, 0 if q.get("clip") else 1,
+            -1.0 if f0 is None else float(f0))
 
 
 def _fmt_db(v):
@@ -553,8 +559,9 @@ class RenderQueue:
     def _render_one(self, job):
         """一段 = 一个唯一临时目录；读完立刻删（两个会话不会互相覆盖文件）。
 
-        渲完先自检（2026-10-30）：原始 wav 截在响处、或 albion 的 F0 中位掉进男声区，就换一个
-        随机 seed 重渲**一次**，按「不男声 > 不截尾 > 原结果」取更好的那次。
+        渲完先自检（2026-10-30）：原始 wav 截在响处、或 albion 的 F0 中位掉进男声区，就换随机
+        seed 再渲，最多重渲**两次**（共 3 次尝试）；哪次既不男声也不截尾就立刻停。三次都不达标
+        时按「不男声 > 不截尾 > F0 更高」取最好的那次。
         单元显式带 seed（听测配对）时原样透传、**不重渲**：那是别人量过的条件，不能偷偷换。
         日志里的 seed 是真正传给 `_run_infer` 的值（见 `_random_seed`）。
         """
@@ -576,25 +583,26 @@ class RenderQueue:
 
             first = attempt(1)
             reason = _bad_reasons(first)
-            picked = 0
             retry_error = None
             skipped = None
             if fixed is None and reason:
                 sid, gen = getattr(job, "session_id", None), getattr(job, "generation", None)
                 if sid is not None and self.is_cancelled(sid, gen):
-                    # 这一段已经取消了：重渲出来的结果照样会被丢弃，别再白烧一次 GPU（OBS 抢卡时尤其贵）
+                    # 这一段已经取消了：重渲出来的结果照样会被丢弃，别再白烧 GPU（OBS 抢卡时尤其贵）
                     skipped = "skipped_cancelled"
                 else:
-                    try:
-                        second = attempt(2)
-                    except Exception as e:      # noqa: BLE001 - 重渲失败不能连累已经拿到的那一次
-                        retry_error = "%s: %s" % (type(e).__name__, str(e)[:120])
-                        print("[render_queue] %s unit=%s rerender=%s 失败，保留原结果: %s"
-                              % (getattr(job, "session_id", "-"),
-                                 job.unit.get("unit_id") or "-", reason, retry_error), flush=True)
-                    else:
-                        if _rank(second) > _rank(first):
-                            picked = 1
+                    for n in (2, 3):
+                        try:
+                            cur = attempt(n)
+                        except Exception as e:      # noqa: BLE001 - 重渲失败不能连累已经拿到的那几次
+                            retry_error = "%s: %s" % (type(e).__name__, str(e)[:120])
+                            print("[render_queue] %s unit=%s rerender=%s 失败，保留已拿到的结果: %s"
+                                  % (getattr(job, "session_id", "-"),
+                                     job.unit.get("unit_id") or "-", reason, retry_error), flush=True)
+                            break
+                        if not _bad_reasons(cur):
+                            break                   # 不男声也不截尾：立刻停，不再往下渲
+            picked = max(range(len(tries)), key=lambda i: _rank(tries[i]))
             best = tries[picked]
             return {"status": "ok", "sr": best["sr"], "wave": best["wave"],
                     "synth_ms": int((time.monotonic() - _t_synth) * 1000),

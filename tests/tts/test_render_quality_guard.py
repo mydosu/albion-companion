@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""渲完自检与重渲（2026-10-30）：截在响处 / albion 男声漂移 → 换随机 seed 重渲一次。
+"""渲完自检与重渲（2026-10-30）：截在响处 / albion 男声漂移 → 换随机 seed 重渲，最多两次。
 
 背景（宣传片录制）：同一条回复里偶发几句 F0 中位 121–148Hz（正常 296–380Hz），另外有些句子的
 原始渲染停在响处（末 2ms 还有 -25～-28dBFS）。`render_queue._render_one` 渲完量两样，命中就
-换一个随机 seed 重渲**一次**，按「不男声 > 不截尾 > 原结果」取更好的那次；显式带 seed 的听测
-请求不重渲。
+换随机 seed 再渲，最多重渲**两次**（共 3 次尝试）；哪次干净就立刻停，三次都不达标时按
+「不男声 > 不截尾 > F0 更高」取最好的那次；显式带 seed 的听测请求不重渲。
 
 不联网、不用 GPU：合成腿是假的，按调用次序返回事先做好的波形。判据本身（末 30ms 电平、
 FFT 自相关 F0 中位）就是生产实现，和 gap_shaper / 评测台同口径。
@@ -81,17 +81,25 @@ class RerenderTest(GuardCase):
         self.assertTrue(res["quality"][0]["male"])
         self.assertTrue(np.array_equal(res["wave"], FEMALE))
 
-    def test_at_most_one_rerender(self):
+    def test_at_most_two_rerenders(self):
         res, calls = self.render([MALE, tone(185.0), FEMALE])
-        self.assertEqual(len(calls), 2, "最多只重渲一次")
-        self.assertEqual(res["picked"], 1, "两次都命中时保留原结果")
+        self.assertEqual(len(calls), 3, "前两次都不达标，最多再渲第三次")
+        self.assertEqual(res["picked"], 3, "第三次干净就取第三次")
         self.assertEqual(res["rerender"], "male")
-        self.assertTrue(np.array_equal(res["wave"], MALE))
+        self.assertTrue(np.array_equal(res["wave"], FEMALE))
+
+    def test_all_three_male_picks_highest_f0(self):
+        """三次都男声：按 _rank 取 F0 中位最高的那次（180 < 200 < 230）。"""
+        res, calls = self.render([MALE, tone(230.0), tone(200.0)])
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(res["picked"], 2, "三次全男声时取 230Hz 那次")
+        self.assertEqual(res["rerender"], "male")
+        self.assertTrue(np.array_equal(res["wave"], tone(230.0)))
 
     def test_male_outranks_clip(self):
         """「不男声 > 不截尾」：重渲出来不男声但截尾，仍好过男声不截尾。"""
         res, calls = self.render([CLIPPED, MALE])
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(calls), 3, "两次重渲后仍不达标，按 rank 取最好")
         self.assertEqual(res["picked"], 1)
         self.assertTrue(np.array_equal(res["wave"], CLIPPED))
 
