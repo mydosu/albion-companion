@@ -121,7 +121,7 @@
    "unit_id": "u0"
   },
   "H4_refusal_whisper_negative": {
-   "caption": "低い声で、沈んだ調子に",
+   "caption": "落ち着いた声で、沈んだ調子に",
    "cfg": 3.5,
    "codebook_version": 2,
    "diagnostics": {
@@ -427,7 +427,7 @@
    "unit_id": "u0"
   },
   "V2_stop_sad": {
-   "caption": "低い声で、沈んだ調子に",
+   "caption": "落ち着いた声で、沈んだ調子に",
    "cfg": 3.5,
    "codebook_version": 2,
    "diagnostics": {

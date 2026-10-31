@@ -6,7 +6,7 @@
 生产情绪一直是「翻译桥顺手判的几个标量 → `emotion_codebook` 的 7 条训练锚」，整条回复一个族，
 neutral 占 83%，而 7 条锚彼此差异很小（`tests/output/tts-emotion-survey-20261026/SURVEY.md`）。
 自由描述实验（`tests/output/tts-emotion-free-20261026/REPORT.md`、`tests/output/tts-emotion-scene-20261026/REPORT.md`）
-证明现有 LoRA **只对声音动作词有反应**：早口 / 囁く / 息まじり / 声を震わせて / 低い声 /
+证明现有 LoRA **只对声音动作词有反应**：早口 / 囁く / 息まじり / 声を震わせて / 低い声（已弃用，见 MANNER）/
 優しく / ゆっくり / 語尾を下げて / 明るく弾んだ 这类能推时长和音高；抽象情绪词
 （恥ずかしそう / 甘えた / 得意げ）在噪声里；**cfg 不是强度旋钮**（2/4/6 时长一模一样）。
 
@@ -143,14 +143,14 @@ def voice_act_on():
 # （tests/tts/data/emotion_scene_20261026.json 的 free 条件）。
 MANNER = {
     "neutral": ("落ち着いた声で", "淡々と"),
-    "sad": ("低い声で", "語尾を下げて"),
+    "sad": ("落ち着いた声で", "語尾を下げて"),   # 10-31 起不用「低い声で」：它经 caption-CFG 放大会把音色拖进男声区（tests/output/tts-thick-rootcause-20261031/REPORT.md；旧 sad 12/50 漂，新 0/50）
     "cry": ("声を震わせて", "途切れがちに"),
     "sob": ("声を震わせて", "しゃくり上げて"),   # 真哭：措辞由 tests/output/tts-sob-20261026 实测选
     "whi": ("声を潜めて", "囁くように"),
     "shy": ("小さな声で", "語尾を消え入るように"),
     "coq": ("鼻にかけて", "柔らかく"),
     "exc": ("明るく弾んだ声で", "早口に"),
-    "ang": ("低い声で", "強く"),
+    "ang": ("抑えた声で", "強く"),   # 同上：旧「低い声で」+強く 20/50 漂到 <260Hz，新词 0/50
     "gen": ("優しく", "ゆっくりと"),
 }
 
@@ -797,10 +797,10 @@ def _selftest():
             assert CAPTION_MIN <= len(cap) <= CAPTION_MAX, (scene, level, cap, len(cap))
             assert validate_caption(cap) is None, (scene, level, cap)
     assert validate_caption("") == "空描述"
-    assert validate_caption("少し低い声で、語尾を下げて、呟く。") is None
+    assert validate_caption("少し落ち着いた声で、語尾を下げて、呟く。") is None
     assert validate_caption("恥ずかしそうに、声を潜めて、話す。") is not None      # 抽象情绪词
-    assert validate_caption("低い声で、語尾を下げて。") is not None                # 缺动词
-    assert validate_caption("低い声で、語尾を下げて、呟く。") is None
+    assert validate_caption("落ち着いた声で、語尾を下げて。") is not None                # 缺动词
+    assert validate_caption("落ち着いた声で、語尾を下げて、呟く。") is None
     # 快哭：normal/strong 定死旧措辞（两段结构），weak 仍走三段模板；别的两段句不放行
     _legacy = "今にも泣き出しそうに、声を震わせて話す。"
     assert compose_caption("cry", "normal") == compose_caption("cry", "strong") == _legacy
