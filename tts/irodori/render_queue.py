@@ -62,7 +62,7 @@ def speech_log(unit_id: str, text: str) -> None:
 # 下一刻就是数字零）。后者 gap_shaper 无法用 30ms 淡出接（门槛过不了），只能硬接零。
 # 这里渲完量两样，命中就换一个随机 seed 重渲**一次**，按「不男声 > 不截尾 > 原结果」取更好的那次。
 MALE_GUARD_SHIPS = ("albion",)   # 只查 albion：其他船的声线本来就不同，套这个阈值没意义
-MALE_F0_MAX_HZ = 200.0           # albion 参考音 337–368Hz；实测漂移 121–148Hz，200 是中间的空档
+MALE_F0_MAX_HZ = 260.0           # 正常最低 274Hz；10-31 一句 226Hz 的半句漂移没拦住，260 取空档
 TAIL_CLIP_DB = 30.0              # 原始 wav 末 30ms 峰值 > 全段峰值 -30dB ⇒ 上游把话截在响处
 TAIL_PROBE_S = 0.03              # 「末段」取多长（与 gap_shaper.FADE_GATE_DB 的 30ms 同口径）
 

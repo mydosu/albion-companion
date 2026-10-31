@@ -121,6 +121,18 @@ class RerenderTest(GuardCase):
         res, calls = self.render([MALE, FEMALE])
         self.assertNotEqual(calls[0]["seed"], calls[1]["seed"])
 
+    def test_male_threshold_catches_half_sentence_drift(self):
+        """10-31：门槛 260。中位 230 的半句漂移要拦下来，280 的正常句不许误伤。"""
+        res, calls = self.render([tone(230.0), FEMALE])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(res["rerender"], "male")
+        self.assertTrue(res["quality"][0]["male"])
+        self.assertFalse(res["quality"][1]["male"])
+        res, calls = self.render([tone(280.0)])
+        self.assertEqual(len(calls), 1, "280Hz 落在正常区，不重渲")
+        self.assertEqual(res["rerender"], "")
+        self.assertFalse(res["quality"][0]["male"])
+
     def test_cancelled_session_skips_rerender(self):
         """会话/世代已取消：这一段结果本来就会被丢弃，不许再白烧一次 GPU 重渲。"""
         res, calls = self.render([MALE, FEMALE], cancel=True)

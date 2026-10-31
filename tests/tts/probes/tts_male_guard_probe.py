@@ -22,7 +22,7 @@ neutral/weak 锚（`自然な声で、丁寧に`、cfg=3.0）。
                  `tests/tts/probes/emotion_bench.f0_track`）
   tail30_db      原始 wav 末 30ms 峰值相对全段峰值（dB；> -30 = 截在响处，gap_shaper 会硬接零）
   dur_s          时长
-  male           albion 且 f0_median_hz < 200（生产自检的判据）
+  male           albion 且 f0_median_hz < 260（生产自检的判据）
   clip           tail30_db > -30（生产自检的判据）
 
 输出：`raw/<轮>-<段>.wav`（整形前原始渲染）、`metrics.json`、`README.md`（汇总）。
@@ -88,7 +88,7 @@ def measure(sr, a):
     tail = tail30_db(a, sr)
     return dict(sr=sr, dur_s=round(len(a) / sr, 3), f0_median_hz=f0_med,
                 f0_frames=len(f0), tail30_db=tail,
-                male=bool(f0_med is not None and f0_med < 200.0),
+                male=bool(f0_med is not None and f0_med < 260.0),
                 clip=bool(tail is not None and tail > -30.0))
 
 
