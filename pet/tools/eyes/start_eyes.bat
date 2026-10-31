@@ -8,4 +8,4 @@ if not defined EYES_TOK (
   echo [eyes] missing or empty %~dp0token.txt - create it from token.txt.example, one line: the token 1>&2
   exit /b 1
 )
-"%~dp0..\..\..\tts\GPT-sovits\runtime\python.exe" -u capture_agent.py --port 8790 --token-file "%~dp0token.txt" --max-width 1920 --bind 127.0.0.1
+"%~dp0..\..\..\tts\GPT-sovits\runtime\python.exe" -u capture_agent.py --port 8790 --token-file "%~dp0token.txt" --max-width 0 --bind 127.0.0.1

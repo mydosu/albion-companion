@@ -78,7 +78,7 @@ if !PORTFREE!==1 (
     >>"%WIFE%\logs\eyes.err.log" 2>nul echo [%date% %time%] 眼睛采集端没起：缺 pet\tools\eyes\token.txt（或文件是空的）
   ) else (
     echo [5/6] 启动眼睛采集端 :8790 ...
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0_silent_run.ps1" !CONSOLE_FLAG! -Cmd "cd /d \"%WIFE%\pet\tools\eyes\" && \"%WIFE%\tts\GPT-sovits\runtime\python.exe\" capture_agent.py --port 8790 --token-file \"%WIFE%\pet\tools\eyes\token.txt\" --max-width 1920 --bind 127.0.0.1" -Log "%WIFE%\logs\eyes.out.log"
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0_silent_run.ps1" !CONSOLE_FLAG! -Cmd "cd /d \"%WIFE%\pet\tools\eyes\" && \"%WIFE%\tts\GPT-sovits\runtime\python.exe\" capture_agent.py --port 8790 --token-file \"%WIFE%\pet\tools\eyes\token.txt\" --max-width 0 --bind 127.0.0.1" -Log "%WIFE%\logs\eyes.out.log"
   )
 ) else (
   echo [5/6] 眼睛采集端已在运行, 跳过
