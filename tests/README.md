@@ -57,8 +57,7 @@ TTS 套件仍要求装了 fastapi 等依赖的解释器（见上面的 `--python
 | `tests/regression/run_batch.py` | 全部 pass（`skipped` 不算失败） | `1`：有套件 fail/timeout；`2`：`--out` 越界/建不出来（在启动套件之前返回）；超时会终止该套件的子进程树并继续后续套件 |
 | `integrations/pi-brain/bin/wake.py`、`server.py --selftest` | 打印 `WAKE SELFTEST OK` / `HOST SELFTEST OK` | 断言失败抛 `AssertionError` → `1`，没有部分成功一说 |
 | `integrations/pi-brain/bin/test_guard_ext.ts` | 打印 `GUARD_EXT SELFTEST OK` | 抛错 → `1` |
-
-`tests/pet/*.mjs` 这类探针是例外，见下面一段。
+| `tests/pet/*.mjs` | 结论通过 | `1`：断言不符、连不上 :9335、连接没得出结论就关闭、超时（默认 15s，`ALBION_PROBE_TIMEOUT_MS` 可改）或抛异常；`_verify_calib.mjs` 另用 `3` 表示模块未热更新（要刷新页面后重跑，不算通过） |
 
 `tests/tts/eval/` 真正运行时会请求 :9881/:9889，并可能触发翻译费用与 GPU 推理。
 `probes/emotion_bench.py` 同样只打生产 :9889（`/v2/render` 白名单内的锚），结果写
@@ -70,10 +69,10 @@ TTS 套件仍要求装了 fastapi 等依赖的解释器（见上面的 `--python
 少量探针还依赖原始角色素材。脚本可以解析不等于对应场景已通过。
 2026-10-24 整理后只留三个：`_look_tag_filter_check.mjs`、`_author_engine_check.mjs`、`_verify_calib.mjs`；
 其余一次性探针与 `spine-official/` 离线对照工程（含外部 sr38 依赖）已删除，回看用 git 历史。
-它们的**退出码不可靠**：多数只打印结论（如 `_verify_calib.mjs` 打 PASS/FAIL 和
-`结论：… ✓/✗`）后 `process.exit(0)`，FAIL 也是 0；只有 `_look_tag_filter_check.mjs`、
-`_author_engine_check.mjs` 发现不符才退 1，`_verify_calib.mjs` 在模块未热更新时退 3。
-判定探针结果要读输出里的结论，不能只看 `$LASTEXITCODE`。
+它们的**退出码可信**，可以直接用 `$LASTEXITCODE` 判定，和输出里的结论一致：
+`0` 只有结论通过才给；断言不符、连不上 :9335、连接在得出结论前关闭、超时、抛异常都是 `1`
+（2026-10-31 修了 `_verify_calib.mjs` 之前 FAIL 也退 0 的问题，另两个本来就退 1）。
+前置条件没满足同样是 `1`——连不上就是失败，不能当通过；只有拿到 `0` 才算这个场景验过。
 旧的会修改生产源码的校准脚本（`archive/legacy/pet/tests/`）已删除，见 git 历史。
 
 壳的 Vitest 仍由原 workspace 管理。在 `shell/` 执行：
