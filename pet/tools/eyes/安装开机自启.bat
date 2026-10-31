@@ -27,9 +27,7 @@ echo 探活（走 Tailscale 地址，探 127.0.0.1 会误判）...
 set "TS="
 for /f "delims=" %%T in ('powershell -NoProfile -Command "if (Test-Path 'C:\Program Files\Tailscale\tailscale.exe') { & 'C:\Program Files\Tailscale\tailscale.exe' ip -4 } else { tailscale ip -4 }" 2^>nul') do set "TS=%%T"
 if not defined TS ( echo   取不到 Tailscale 地址, 跳过探活 & pause & exit /b 0 )
-set "TOK="
-if exist "%~dp0token.txt" for /f "usebackq delims=" %%A in ("%~dp0token.txt") do if not defined TOK set "TOK=%%A"
-powershell -NoProfile -Command "try { $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 8 -Uri ('http://' + '%TS%' + ':8790/health') -Headers @{ Authorization = ('Bearer ' + '%TOK%') }; Write-Host ('   [成功] 采集端已就绪: ' + $r.Content) } catch { Write-Host '   [失败] 探活没通过 —— 把下面几行发我'; foreach ($f in '%~dp0眼睛.log','%~dp0眼睛2.log') { if (Test-Path $f) { Write-Host ('--- ' + $f + ' ---'); Get-Content $f -Tail 12 } } }"
+powershell -NoProfile -Command "try { $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 8 -Uri ('http://' + '%TS%' + ':8790/health'); Write-Host ('   [成功] 采集端已就绪: ' + $r.Content) } catch { Write-Host '   [失败] 探活没通过 —— 把下面几行发我'; foreach ($f in '%~dp0眼睛.log','%~dp0眼睛2.log') { if (Test-Path $f) { Write-Host ('--- ' + $f + ' ---'); Get-Content $f -Tail 12 } } }"
 echo.
 pause
 exit /b 0
