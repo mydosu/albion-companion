@@ -44,6 +44,7 @@ curl -H "Authorization: Bearer <TOKEN>" -o shot.jpg "http://<主力机 Tailscale
 ## 摄像头
 
 同一个进程还管摄像头（`/cam`）：用 ffmpeg 抓一帧，先转正（这台摄像头侧装，默认顺时针转 90°，`--cam-rotate 0/90/180/270` 可改），再按 `--max-width` 只缩不放。脑里 `look` 的 cam 那一路取的就是它，只交本地视觉模型转成文字。
+换机器不用改源码：`ALBION_FFMPEG` 改 ffmpeg 路径（不存在时仍退回 PATH 里的 `ffmpeg`），`ALBION_CAM` 改摄像头名，`ALBION_CAM_ROTATE` 改转正角度；不设时与这台机器原来的行为一致。
 （壳里原来的「在场检查」已于 2026-10-16 随壳端主动定时器一起撤掉。）
 
 ## 开机自启（可选）
