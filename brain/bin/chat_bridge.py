@@ -54,6 +54,7 @@ GROUP_PEER_NOTE = "可畏也在群里，群里说的话她都看得到。"
 GROUP_INVITE_NOTE = "这些你可以回，也可以不回，想说再说。"
 GROUP_BUDGET_LOW = "群里你们俩这一轮已经说了 %d 条，还能再说 %d 条，差不多该收尾了。"
 GROUP_BUDGET_EMPTY = "这一轮群里说得够多了，等指挥官再开口吧。"
+SAME_REPLY_S = 120.0                          # 同一轮连发几条时，这么久内都算「还在回他这一轮」
 
 _LOG = {"path": ""}
 
@@ -869,6 +870,7 @@ class Service:
         self._dm_worker = None
         self._group_worker = None
         self._budget_cache = (0.0, None)          # (取的时刻, 结果)：5 秒内复用，别每句话都翻频道历史
+        self._replied_at = {}                     # channel -> 刚回过他的时刻（同一轮她自己连发几条时用）
 
     async def start(self):
         await self.tg.start()
@@ -1048,7 +1050,10 @@ class Service:
                 log("group_send_rejected", remaining=0)
                 return False, GROUP_BUDGET_EMPTY
         pending = inbox.pending(channel)
-        proactive = not pending
+        # 同一轮机她自己分几条发：刚回过（SAME_REPLY_S 内）的第二、三条不算「主动找他」，
+        # 不受 wake.can_speak 的开口节奏约束（2026-11-02，分不分条由她自己决定）。
+        same_reply = (not pending) and (time.time() - self._replied_at.get(channel, 0.0) <= SAME_REPLY_S)
+        proactive = (not pending) and not same_reply
         if proactive:
             ok, why = proactive_gate(channel, 0)
             if not ok:
@@ -1089,6 +1094,7 @@ class Service:
         answered = 0
         if pending:
             answered = inbox.mark_answered([i["id"] for i in pending])
+        self._replied_at[channel] = time.time()          # 同一轮接下来的几条算「还在回他」
         if proactive and channel != "discord_group":
             wake.note_spoken()
         log("sent", channel=channel, voice=voiced, answered=answered, proactive=proactive,

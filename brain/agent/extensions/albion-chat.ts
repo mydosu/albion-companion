@@ -178,7 +178,8 @@ export default function albionChat(pi: ExtensionAPI) {
 			"给指挥官或 Discord 群发消息。只有用这个工具发出去的话，他才在手机上收得到。" +
 			"channel：telegram（他的 Telegram 私聊）、discord（他的 Discord 私信）、discord_group（Discord 群，大家都看得到）。" +
 			"voice=true 发语音条（仅 Telegram）：我的声音是日语，他听不懂日语，所以语音条会自动附上我写的中文原文。" +
-			"在 Telegram 和 Discord 上，偶尔可以用表情包代替或补充一句话；不必每条都发，意思对得上才发。",
+			"在 Telegram 和 Discord 上，偶尔可以用表情包代替或补充一句话；不必每条都发，意思对得上才发。" +
+			"要不要分成几条发、分几条，由我自己看着办：想分开发，就连着调用几次 send_message，每次一条，像平时连着发几条消息那样。",
 		promptSnippet: "send_message：把话发到他手机上（telegram/discord/discord_group；voice 只 Telegram）",
 		parameters: Type.Object({
 			channel: Type.Union(
