@@ -24,7 +24,7 @@
 | `9885` | **流式 TTS**：切句、播放时序与会话（壳现在走这里） | `tts\stream\start_stream.bat` |
 | `9881` | **桥**：OpenAI 兼容的语音接口 + 中文→日语翻译 ✓（流式与直连都走它） | `tts\irodori\start_bridge.bat` |
 | `9880` | Denia 专用的旧 GPT-SoVITS 后端（**可选**，平时不启 ✓） | `tts\gsv\start_denia.bat` |
-| `9882` | 耳朵：中文语音识别（paraformer） ✓ | `pet\start_ear.bat` |
+| `9882` | 耳朵：中文语音识别（paraformer） ✓ | `ear\start_ear.bat` |
 
 ---
 
@@ -151,7 +151,7 @@
 
 ## ⑦ 耳朵：`:9882`（听你说话）
 
-- `pet\start_ear.bat` → 中文语音识别（paraformer）✓
+- `ear\start_ear.bat` → 中文语音识别（paraformer）✓
 - 它是**中文**模型 ⇒ 拿日语去测当然识别不出来（我实测确认过，属正常）✓
 
 ---

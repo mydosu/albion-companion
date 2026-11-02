@@ -410,7 +410,7 @@ interface BoneLike {
  */
 /**
  * 脸图擦眼：把脸上画出来的眼睛(睫毛/眼线/眼白/虹膜/高光)从贴图上抠掉，底下的真眼槽就露出来了
- * —— 会眨、会看人。mask 是 `pet/tools/spine_face_eye_masks.py` 离线生成的本地文件，放在
+ * —— 会眨、会看人。mask 是 `tools/spine/spine_face_eye_masks.py` 离线生成的本地文件，放在
  * `stage-ui/src/assets/spine/models/albion-eye-masks/`（不入库）。
  *
  * 用 `import.meta.glob` 而不是 fetch：目录不存在时 glob 是空对象，打包不会失败；存在时 Vite 会把

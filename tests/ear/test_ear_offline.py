@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""耳朵（pet/whisper_serve.py）离线单测：mock 模型，不加载 funasr/whisper。
+"""耳朵（ear/whisper_serve.py）离线单测：mock 模型，不加载 funasr/whisper。
 
-用法（GSV runtime 自带 fastapi + httpx）:
-  D:/AI/Wife/tts/GPT-sovits/runtime/python.exe tests/pet/test_ear_offline.py -v
+用法（要 fastapi + httpx；用 tts/irodori/.venv 的解释器，ear/.venv 里没有 httpx）:
+  python tests/ear/test_ear_offline.py -v   （系统 Python 即可，mock 掉模型）
 
 覆盖：加载失败回 503 且 /health 带出错误；加载成功后正常识别；
 并发只加载一次；推理期间 /health 不被卡住。
@@ -17,7 +17,7 @@ import unittest
 from fastapi.testclient import TestClient
 
 os.environ['ALBION_STT_ENGINE'] = 'paraformer'
-_SRC = pathlib.Path(__file__).resolve().parents[2] / 'pet' / 'whisper_serve.py'
+_SRC = pathlib.Path(__file__).resolve().parents[2] / 'ear' / 'whisper_serve.py'
 _spec = importlib.util.spec_from_file_location('whisper_serve', _SRC)
 ear = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ear)

@@ -30,7 +30,7 @@ WM_RBUTTONUP, WM_TIMER, WM_READY = 0x205, 0x113, 0x8001
 WM_COPYDATA = 0x4A
 WM_SETCURSOR = 0x20
 
-# 脑宿主（integrations/pi-brain/bin/widget_snapshot.py）每 5 秒原子写一次；这里也只按 5 秒轮询，最坏延迟约 10 秒。
+# 脑宿主（brain/bin/widget_snapshot.py）每 5 秒原子写一次；这里也只按 5 秒轮询，最坏延迟约 10 秒。
 # WSL 发行版名不是 Ubuntu 时用 ALBION_WSL_DISTRO 覆盖；整个路径可用 ALBION_WIDGET_SNAPSHOT 覆盖。
 WSL_DISTRO = (os.environ.get("ALBION_WSL_DISTRO") or "").strip() or "Ubuntu"
 DEFAULT_SNAPSHOT = "\\\\wsl.localhost\\" + WSL_DISTRO + r"\root\albion-pi\state\widget.json"

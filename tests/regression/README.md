@@ -30,7 +30,7 @@ python tests/regression/run_batch.py --suite tts-unit
 | `repo-layout` | `python tools/check_repository.py` | `layout_errors == 0` |
 | `tts-unit` | `python -B -m unittest discover -s tests/tts -p 'test_*.py'` | 0 失败（允许 skip） |
 | `tts-translate-rules` | `python -I tests/tts/test_translate_rules.py` | 6 个 TestCase 全过 |
-| `pet-bat` | `python pet/tools/check_bat.py` | 根目录 .bat 全为 GBK + CRLF |
+| `pet-bat` | `python tools/check_bat.py` | 根目录 .bat 全为 GBK + CRLF |
 | `pi-brain-guard` | `node brain/bin/test_guard_ext.ts` | 输出 `SELFTEST OK` |
 | `pi-brain-shell-tools` | `python -B -m unittest discover -s tests/pi-brain -p test_shell_tools.py` | 0 失败（本机回环 HTTP；Windows 需 `pip install tzdata`） |
 | `pi-brain-shell-tools-ext` | `node tests/pi-brain/check_shell_tools_ext.ts` | 输出 `SELFTEST OK` |
@@ -58,9 +58,9 @@ TTS 两个套件要装好依赖的解释器（`--python .\tts\irodori\.venv\Scri
 
 ## 不纳入本入口的
 
-- 真实服务、模型、GPU：`tests/tts/eval/`、`tests/tts/probes/`、`tests/pet/check_ear.py`、`launch/check_all.py`
+- 真实服务、模型、GPU：`tests/tts/eval/`、`tests/tts/probes/`、`tests/ear/check_ear.py`、`launch/check_all.py`
   （要 :9882/:9889/:8650 或真实推理），改动后单独按 `tests/README.md` 跑。
-- 桌面/CDP 与 Electron 页面：`tests/pet/*.mjs`、`:9335` 调试端口相关探针。
+- 桌面/CDP 与 Electron 页面：`tests/ear/*.mjs`、`:9335` 调试端口相关探针。
 - 任何会启动/重启服务的命令。
 
 ## 加套件

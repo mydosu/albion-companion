@@ -9,7 +9,7 @@
     阶段（按顺序）：
       preflight  检查 git、node/pnpm、uv、nvidia-smi、wsl 和 WSL 发行版；
                  缺的列出来并给官方下载地址。uv / WSL 发行版是所选阶段的硬前提。
-      stt        调 tools/setup/setup_stt_runtime.ps1 建耳朵/眼睛的 Python 3.9。
+      stt        调 tools/setup/setup_stt_runtime.ps1 建耳朵的 uv 环境（ear\.venv，Python 3.10）。
       tts        调 tools/setup/setup_tts_env.ps1 建 tts/irodori/.venv。
       brain      在 WSL 里跑 brain/install.sh 和 deploy.sh。
                  install.sh 需要 root；默认 WSL 用户不是 root 时加 -WslUser root。
@@ -311,19 +311,16 @@ function Invoke-PreflightStage {
 }
 
 function Invoke-SttStage {
-    $runtime = Join-Path $RepoRoot 'tts\GPT-sovits\runtime\python.exe'
-    $runtimeOk = $false
-    if (Test-Path -LiteralPath $runtime) {
-        $probe = Invoke-ProbeSafe $runtime @('-c', 'import sys; assert sys.version_info[:2] == (3, 9)')
-        $runtimeOk = ($probe.Code -eq 0)
-    }
-    if ($runtimeOk) {
-        Write-Skip ('耳朵 runtime 已存在且能跑（Python 3.9）：' + $runtime)
+    # 耳朵用 ear\ 自己的 uv 环境（ear/pyproject.toml + uv.lock），不再用 tts\GPT-sovits\runtime
+    $venvPython = Join-Path $RepoRoot 'ear\.venv\Scripts\python.exe'
+    $modules = @('torch', 'funasr', 'kaldi_native_fbank', 'faster_whisper', 'fastapi', 'uvicorn', 'multipart')
+    if (Test-PythonModules $venvPython $modules) {
+        Write-Skip ('耳朵 venv 已存在且依赖可 import：' + $venvPython)
         Set-StageResult 'stt' 'skip'
         return
     }
-    if (Test-Path -LiteralPath $runtime) {
-        Write-WarnLine ('runtime 存在但跑不起来，交给 setup_stt_runtime.ps1（可能需要 -Force）：' + $runtime)
+    if (Test-Path -LiteralPath $venvPython) {
+        Write-WarnLine ('耳朵 venv 存在但依赖不齐，交给 setup_stt_runtime.ps1 补齐：' + $venvPython)
     }
 
     $arguments = @()
@@ -459,7 +456,7 @@ function Write-ManualChecklist {
     Write-InfoLine '2. 脑：在 WSL 里把 agent/.env.example 复制成 agent/.env（至少 API_SERVER_KEY，和壳一致）、SOUL.example.md 复制成 SOUL.md 并写人设；deploy.sh 只放模板，不覆盖已有文件。'
     Write-InfoLine '3. 环境变量：config/local.env 是 Windows 侧唯一配置处（模板 local.env.example，不入库），launch/load_env.bat 会自动加载，真环境变量优先。'
     Write-InfoLine '4. OpenViking：照 memory/templates/ov.conf.example 和 memory/templates/ov.conf.notes.md 建自己的 ov.conf（不入库），再按教程阶段 7 起服务。'
-    Write-InfoLine '5. 视觉机：照 deploy/vision/README.md 装驱动/容器、复制 .env.example 为 .env、下模型、开防火墙。'
+    Write-InfoLine '5. 视觉机：照 eyes/vision-server/README.md 装驱动/容器、复制 .env.example 为 .env、下模型、开防火墙。'
     Write-InfoLine '6. 权重：照 docs/REBUILD.md「权重与 Windows 环境」；自训权重在私有仓库 Releases，基础模型/角色包/参考音频按该节恢复，别用别处的下载地址替换。'
     Write-InfoLine '7. 验收：python tools/check_repository.py、python tools/check_pi_brain_sync.py，然后按 docs/REBUILD.md「启动与验收」用一键启动脚本拉服务并做端到端确认。'
 }

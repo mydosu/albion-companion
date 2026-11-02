@@ -12,6 +12,10 @@ if "%ALBION_SHOW_CONSOLES%"=="1" set "CONSOLE_FLAG=-Visible"
 if not defined CONSOLE_FLAG set "ALBION_SILENT=1"
 if not exist "%WIFE%\logs" mkdir "%WIFE%\logs"
 
+rem 系统 Python：眼睛采集端和自检只用标准库，ALBION_PYTHON 优先，否则 PATH 上的 python
+set "SYS_PY=python"
+if defined ALBION_PYTHON set "SYS_PY=%ALBION_PYTHON%"
+
 echo ==========================================
 echo   阿尔比恩桌宠 · 一键启动（构建版）
 echo   （已经在跑的服务会自动跳过，不会重复起）
@@ -65,7 +69,7 @@ rem 3) 耳朵 STT（paraformer，CPU，加载约 5 秒）
 call :check 9882
 if !PORTFREE!==1 (
   echo [3/6] 启动耳朵 :9882 ...
-  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0silent_run.ps1" !CONSOLE_FLAG! -Bat "%WIFE%\pet\start_ear.bat" -Log "%WIFE%\logs\ear.log"
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0silent_run.ps1" !CONSOLE_FLAG! -Bat "%WIFE%\ear\start_ear.bat" -Log "%WIFE%\logs\ear.log"
 ) else (
   echo [3/6] 耳朵已在运行, 跳过
 )
@@ -80,17 +84,17 @@ if !PORTFREE!==1 (
 )
 
 rem 4.5) 眼睛：本机采集端（截图 + 摄像头，同一个进程，只绑本机）
-rem token 从 pet\tools\eyes\token.txt 读第一行（不入库，照同目录 token.txt.example 建）；缺了就不起眼睛，不用任何写死的值
+rem token 从 eyes\token.txt 读第一行（不入库，照同目录 token.txt.example 建）；缺了就不起眼睛，不用任何写死的值
 set "EYES_TOK="
-if exist "%WIFE%\pet\tools\eyes\token.txt" for /f "usebackq delims=" %%A in ("%WIFE%\pet\tools\eyes\token.txt") do if not defined EYES_TOK set "EYES_TOK=%%A"
+if exist "%WIFE%\eyes\token.txt" for /f "usebackq delims=" %%A in ("%WIFE%\eyes\token.txt") do if not defined EYES_TOK set "EYES_TOK=%%A"
 call :check 8790
 if !PORTFREE!==1 (
   if not defined EYES_TOK (
-    echo [5/6] 眼睛采集端没起：缺 %WIFE%\pet\tools\eyes\token.txt（或文件是空的）。照同目录 token.txt.example 建，只写一行 token
-    >>"%WIFE%\logs\eyes.err.log" 2>nul echo [%date% %time%] 眼睛采集端没起：缺 pet\tools\eyes\token.txt（或文件是空的）
+    echo [5/6] 眼睛采集端没起：缺 %WIFE%\eyes\token.txt（或文件是空的）。照同目录 token.txt.example 建，只写一行 token
+    >>"%WIFE%\logs\eyes.err.log" 2>nul echo [%date% %time%] 眼睛采集端没起：缺 eyes\token.txt（或文件是空的）
   ) else (
     echo [5/6] 启动眼睛采集端 :8790 ...
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0silent_run.ps1" !CONSOLE_FLAG! -Cmd "cd /d \"%WIFE%\pet\tools\eyes\" && \"%WIFE%\tts\GPT-sovits\runtime\python.exe\" capture_agent.py --port 8790 --token-file \"%WIFE%\pet\tools\eyes\token.txt\" --max-width 0 --bind 127.0.0.1" -Log "%WIFE%\logs\eyes.out.log"
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0silent_run.ps1" !CONSOLE_FLAG! -Cmd "cd /d \"%WIFE%\eyes\" && \"%SYS_PY%\" capture_agent.py --port 8790 --token-file \"%WIFE%\eyes\token.txt\" --max-width 0 --bind 127.0.0.1" -Log "%WIFE%\logs\eyes.out.log"
   )
 ) else (
   echo [5/6] 眼睛采集端已在运行, 跳过
@@ -115,14 +119,14 @@ if !PORTFREE!==1 (
 )
 
 rem 状态挂件：自己占 :47654 单实例，重复启动会自己退出
-wscript "%WIFE%\pet\widget\AlbionStatus.vbs"
+wscript "%WIFE%\widget\AlbionStatus.vbs"
 
 echo ---- 等模型加载, 然后自检（最多 90 秒）----
-"%WIFE%\tts\GPT-sovits\runtime\python.exe" "%WIFE%\launch\check_all.py" 90
+"%SYS_PY%" "%WIFE%\launch\check_all.py" 90
 
 echo.
 echo 服务都在后台静默跑; 想全关掉, 双击 一键关闭.bat.
-echo 单独启动: 进 tts\irodori 或 pet 目录双击对应的 .bat.
+echo 单独启动: 进 tts\irodori 或 ear / eyes / widget 目录双击对应的 .bat.
 echo 可选: 想用 Denia 音色, 再双击 tts\gsv\start_denia.bat (:9880).
 echo.
 endlocal

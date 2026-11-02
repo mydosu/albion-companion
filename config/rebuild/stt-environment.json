@@ -1,4 +1,5 @@
 {
+  "_note": "耳朵已改用自己的 uv 项目（ear/pyproject.toml + ear/uv.lock：Python 3.10 + CPU 版 torch + funasr + kaldi-native-fbank，.venv 约 1.24 GB），这份旧清单只作 tts/GPT-sovits/runtime（Python 3.9.13，现在只给 GSV/Denia 用）的重建记录；tools/setup/setup_stt_runtime.ps1 已不读它。",
   "python": "3.9.13",
   "packages": {
     "absl-py": "1.4.0",

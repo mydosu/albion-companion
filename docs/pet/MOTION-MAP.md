@@ -51,7 +51,7 @@
 
 ## 模型侧的丝滑改造（想法2）
 
-补丁脚本：`pet/tools/patch_model.py`（可重复运行，幂等；备份在 `_albion_model_backup.zip`）。它做两件事：
+补丁脚本：`tools/spine/patch_model.py`（可重复运行，幂等；备份在 `_albion_model_backup.zip`）。它做两件事：
 
 1. **加一个大写 `Idle` 动作组**（含 6 个 idle 变体）——
    pixi-live2d-display 把空闲组名写死成 `"Idle"`（`dist/cubism4.js`: `this.groups = { idle: "Idle" }`），

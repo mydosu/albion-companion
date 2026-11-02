@@ -132,8 +132,8 @@ SUITES = [
     {
         "name": "pet-bat",
         "what": "根目录 .bat 的 GBK + CRLF 检查",
-        "cmd": lambda py: [py, "-I", "pet/tools/check_bat.py"],
-        "needs": ["pet/tools/check_bat.py"],
+        "cmd": lambda py: [py, "-I", "tools/check_bat.py"],
+        "needs": ["tools/check_bat.py"],
         "parse": parse_bat,
     },
     {

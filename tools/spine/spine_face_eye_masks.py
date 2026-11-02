@@ -11,11 +11,11 @@
   收尾   = 膨胀 2px → 高斯羽化 1.5px
 
 用法：
-  python pet/tools/spine_face_eye_masks.py
-  python pet/tools/spine_face_eye_masks.py --faces 1 2 5
+  python tools/spine/spine_face_eye_masks.py
+  python tools/spine/spine_face_eye_masks.py --faces 1 2 5
 输入：
   模型 zip（atlas + 页面 PNG）        默认 shell/packages/stage-ui/src/assets/spine/models/albion-spine-38.zip
-  几何 albion-eye-geometry.json       默认与 zip 同目录；由 pet/tools/spine_face_eye_geometry_dump.py 采
+  几何 albion-eye-geometry.json       默认与 zip 同目录；由 tools/spine/spine_face_eye_geometry_dump.py 采
 输出：
   <zip 同目录>/albion-eye-masks/manifest.json + mask-<face>.png
   tests/output/spine-eye-masks-20261026/face-<face>.png  （原 vs 擦后 5×，供人眼核对）

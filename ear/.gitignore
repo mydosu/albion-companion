@@ -1,0 +1,13 @@
+# 耳朵自己的忽略规则（模型与虚拟环境都不进库）
+
+# uv 建的运行环境（uv sync --directory ear）
+.venv/
+__pycache__/
+*.py[cod]
+
+# paraformer 三件套（约 1.1 GB，ModelScope 下载，见 docs/ASR路径清单.md）
+models/
+
+# 运行日志（正本在仓库根 logs/，这里只是本地直接跑时的兜底）
+logs/
+*.log

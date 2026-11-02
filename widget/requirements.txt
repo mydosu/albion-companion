@@ -3,7 +3,7 @@
 # 但本机那份 numpy 1.26.4 在 Python 3.13 上连 import 都会失败
 # （numpy.core.getlimits OverflowError: cannot convert longdouble infinity to integer），
 # 所以 3.13 按能用的 2.x 锁；旧解释器仍保留实际装过的 1.26.4。
-#   python -m pip install -r pet/widget/requirements.txt
+#   python -m pip install -r widget/requirements.txt
 numpy==1.26.4; python_version < "3.13"
 numpy==2.5.4; python_version >= "3.13"
 Pillow==12.3.0

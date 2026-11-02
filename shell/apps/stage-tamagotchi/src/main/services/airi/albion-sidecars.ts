@@ -68,16 +68,23 @@ function bundledRoot(): string | undefined {
   return existsSync(root) ? root : undefined
 }
 
+/** 开发时的仓库根：app.getAppPath() = <repo>/shell/apps/stage-tamagotchi（打包后走 bundled 约定，不靠这个）。 */
+function repoRoot(): string {
+  return join(app.getAppPath(), '..', '..', '..')
+}
+
 export function sidecarDirs(): SidecarDirs {
   const cfg = readSidecarConfig()
   const bundled = bundledRoot()
+  const earDir = process.env.ALBION_EAR_DIR || cfg.earDir
+    || (bundled && existsSync(join(bundled, 'ear')) ? join(bundled, 'ear') : join(repoRoot(), 'ear'))
   return {
     irodoriDir: process.env.ALBION_IRODORI_DIR || cfg.irodoriDir
       || (bundled && existsSync(join(bundled, 'irodori')) ? join(bundled, 'irodori') : 'D:/AI/Wife/tts/irodori'),
-    earDir: process.env.ALBION_EAR_DIR || cfg.earDir
-      || (bundled && existsSync(join(bundled, 'ear')) ? join(bundled, 'ear') : 'D:/AI/Wife/pet'),
-    pythonExe: process.env.ALBION_GSV_PYTHON || cfg.pythonExe
-      || 'D:/AI/Wife/tts/GPT-sovits/runtime/python.exe',
+    earDir,
+    // 耳朵用自己的 uv 环境（CPU 版 torch + funasr，见 ear/pyproject.toml），不再借 GSV 的 runtime
+    pythonExe: process.env.ALBION_EAR_PYTHON || process.env.ALBION_GSV_PYTHON || cfg.pythonExe
+      || join(earDir, '.venv', 'Scripts', 'python.exe'),
   }
 }
 

@@ -5,12 +5,12 @@
 | 根入口（`一键启动.bat` / `一键启动-dev.bat` / `一键关闭.bat` / `一键安装.bat`） | 一两行转发到 `launch/`，不放实现 | 跟踪 |
 | `launch/` | 启动实现：`start_all.bat`、`stop_all.bat`、`silent_run.ps1`、`start_brain.ps1`、`close_consoles.ps1`、`hidden.vbs`、`load_env.bat`、`brain_watch.ps1`、`check_all.py`、`install_autostart.ps1` | 跟踪 |
 | `config/local.env` | Windows 侧唯一环境变量文件（KEY=VALUE）；模板 `local.env.example` | 忽略，只入库模板 |
-| `shell/`、`pet/`、`tts/` | 当前生产源码、构建配置、运行入口、许可 | 跟踪源码；模型、环境、构建产物忽略 |
-| `tests/pet/`、`tests/tts/`、`tests/pi-brain/` | 独立测试、诊断、复现支持脚本 | 跟踪 |
-| `tests/pet/data/`、TTS golden JSON | 经过审查的固定输入/预期值 | 跟踪；不放真实私密会话 |
+| `shell/`、`ear/`、`eyes/`、`widget/`、`tts/` | 当前生产源码、构建配置、运行入口、许可 | 跟踪源码；模型、环境、构建产物忽略 |
+| `tests/ear/`、`tests/tts/`、`tests/pi-brain/` | 独立测试、诊断、复现支持脚本 | 跟踪 |
+| `tests/ear/data/`、TTS golden JSON | 经过审查的固定输入/预期值 | 跟踪；不放真实私密会话 |
 | `tests/tts/eval/`、`tests/tts/probes/` | 需真实服务的 A/B 与语音探针 | 脚本跟踪，产物忽略 |
 | `tests/output/<组件>/<运行名>/` | 截图、录音、测量结果 | 全部忽略 |
-| `tools/`、`pet/tools/` | 可重复使用的维护、校验、模型处理工具 | 跟踪，使用前阅读副作用 |
+| `tools/`、`tools/` | 可重复使用的维护、校验、模型处理工具 | 跟踪，使用前阅读副作用 |
 | `教程/` | 面向他人的搭建教程（只讲方法，不含模型、声音、人设和凭据） | 跟踪 |
 | `docs/history/` | 已确认失效、只作考古的设计与上线记录 | 跟踪；不当作现行说明，引用前先看文件头的失效说明 |
 | `archive/legacy/` | 旧补丁、旧发布工具、过期实验脚本 | 仅不含凭据的历史参考；2026-10-24 已清空现有内容（回看用 git 历史），今后新的一次性脚本才放这里 |
@@ -28,7 +28,7 @@
 它们是测试源码，不是启动入口。搬动这类测试涉及大量相对 import 与上游 workspace 约定，
 本次不改变它们的发现机制。未来独立探针必须放 `tests/`，不要散进 `src/`。
 
-原 `pet/archive/` 是忽略的本地历史资产区，已于 2026-10-24 删除（不在 Git 内，无法从历史恢复）；
+原 `pet` 目录下的 `archive/`（2026-11-02 拆目录前的旧位置）是忽略的本地历史资产区，已于 2026-10-24 删除（不在 Git 内，无法从历史恢复）；
 新的代码备份统一进根 `backup/code/`。
 已有 `_tmp/`、`tts/_tmp/`、`shell/_tmp/` 是隔离的本地工作区，不把其全部内容当正式测试。
 被正式测试调用的 `credit_repro.py` 已从临时区迁入 `tests/tts/support/`。

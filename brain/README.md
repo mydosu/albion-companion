@@ -122,7 +122,7 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
   `ALBION_EYES_HIS_URL/ALBION_EYES_HIS_TOKEN`、`ALBION_EYES_MINE_URL/ALBION_EYES_MINE_TOKEN`、`ALBION_EYES_VLM`。
   `ALBION_EYES_HIS_URL` 可写多个、逗号分隔（局域网在前、Tailscale 在后），每次取图前 TCP 探 3 秒挑第一个通的，
   都不通就用最后一个。
-- 敏感窗口在采集端（`pet/tools/eyes/capture_agent.py`）就涂黑了，交给谁看的都是涂过的图。
+- 敏感窗口在采集端（`eyes/capture_agent.py`）就涂黑了，交给谁看的都是涂过的图。
 - 壳里原来的 `[[LOOK:his]]` 标记退路已于 2026-10-16 撤掉，只剩 `look` 工具这一条路。
 
 ## 启停

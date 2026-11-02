@@ -31,13 +31,13 @@
 - `-Distro`（默认 `Ubuntu`）、`-WslUser`、`-BrainHome`（默认 `/root/albion-pi`）按需覆盖。
 - 脑阶段用 `/mnt/<盘>/...` 路径调 WSL 里的脚本。如果 WSL 的 `/etc/wsl.conf` 关了 `automount`（`/mnt/c`、`/mnt/d` 不是 Windows 盘），脚本会先警告/报错；先从 Windows 路径能访问的位置跑，或打开自动挂载。
 - 任一阶段失败会打印 `[FAIL] 阶段 <名字>：<原因>` 并停住，不继续后面的阶段。
-- 脚本不装 Git/Node/WSL/显卡驱动，不构建桌面壳，也不拉起服务。收尾会打印还要手动做的事：壳看 `docs/SHELL_FIRST_RUN.md`，OpenViking 看 `memory/templates/ov.conf.example`，视觉机看 `deploy/vision/README.md`，权重看 `docs/REBUILD.md`。
+- 脚本不装 Git/Node/WSL/显卡驱动，不构建桌面壳，也不拉起服务。收尾会打印还要手动做的事：壳看 `docs/SHELL_FIRST_RUN.md`，OpenViking 看 `memory/templates/ov.conf.example`，视觉机看 `eyes/vision-server/README.md`，权重看 `docs/REBUILD.md`。
 - `config/local.env` 是 Windows 侧唯一环境变量文件（不入库）：`launch/load_env.bat` 会在每个服务启动 bat 开头加载它，真环境变量优先；改完重启对应服务即可（细节见 `docs/REBUILD.md`）。
 - `一键安装.bat` 不带参数时就是真装；只想演练务必带 `-DryRun`。
 
 ## 耳朵/眼睛的 Python 3.9（阶段 6）
 
-`tts/GPT-sovits/runtime/python.exe` 是耳朵 `pet/whisper_serve.py` 和眼睛启动器共用的解释器（参考部署 Python 3.9.13）。重建：
+`tts/GPT-sovits/runtime/python.exe` 是耳朵 `ear/whisper_serve.py` 和眼睛启动器共用的解释器（参考部署 Python 3.9.13）。重建：
 
 ```powershell
 # 先看要做什么，不下载、不写文件
@@ -80,11 +80,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/setup/setup_tts_env.ps
 
 | 文件 | 变量 | 默认 |
 |---|---|---|
-| `pet/widget/AlbionStatus.vbs` | `ALBION_PYTHONW` | 先找 PATH 里的 `pythonw.exe`/`pyw.exe`/`py.exe`，再退回 `%LOCALAPPDATA%\Programs\Python\Python313\pythonw.exe` |
-| `pet/widget/albion_status_widget.pyw` | `ALBION_WSL_DISTRO` | `Ubuntu`（拼成 `\\wsl.localhost\<发行版>\root\albion-pi\state\widget.json`） |
+| `widget/AlbionStatus.vbs` | `ALBION_PYTHONW` | 先找 PATH 里的 `pythonw.exe`/`pyw.exe`/`py.exe`，再退回 `%LOCALAPPDATA%\Programs\Python\Python313\pythonw.exe` |
+| `widget/albion_status_widget.pyw` | `ALBION_WSL_DISTRO` | `Ubuntu`（拼成 `\\wsl.localhost\<发行版>\root\albion-pi\state\widget.json`） |
 | 同上 | `ALBION_WIDGET_SNAPSHOT` | 整个快照路径，优先于 `ALBION_WSL_DISTRO` |
-| `pet/tools/eyes/capture_agent.py` | `ALBION_FFMPEG` | `D:/ffmpeg-2026-03-22-git-9c63742425-full_build/bin/ffmpeg.exe`（不存在时用 PATH 里的 `ffmpeg`） |
+| `eyes/capture_agent.py` | `ALBION_FFMPEG` | `D:/ffmpeg-2026-03-22-git-9c63742425-full_build/bin/ffmpeg.exe`（不存在时用 PATH 里的 `ffmpeg`） |
 | 同上 | `ALBION_CAM` | `FHD Camera` |
 | 同上 | `ALBION_CAM_ROTATE` | `90`（只接受 0/90/180/270） |
 
-挂件的 Python 依赖见 `pet/widget/requirements.txt`：Pillow 与参考部署一致（12.3.0）；numpy 本机装的是 1.26.4，但它在 Python 3.13 上连 import 都会失败，所以清单里按解释器分叉——3.13 用 2.5.4（已实测 `--check` 通过），旧解释器仍锁 1.26.4。
+挂件的 Python 依赖见 `widget/requirements.txt`：Pillow 与参考部署一致（12.3.0）；numpy 本机装的是 1.26.4，但它在 Python 3.13 上连 import 都会失败，所以清单里按解释器分叉——3.13 用 2.5.4（已实测 `--check` 通过），旧解释器仍锁 1.26.4。
