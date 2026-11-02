@@ -10,22 +10,24 @@
 
 想要少点事、就能有人类感，就买 Gemini Pro 反代出来用，Gemini 3.8 Flash 在角色扮演里面还是顶尖的。
 
-我现在的各个功能分别由不同的模型承担，具体分工如下：
+我自己是几家混着用的，现在的分工：
 
-| 功能 | 用的模型 | 怎么接的 | 出处 |
-|---|---|---|---|
-| 脑：她说话、决定调哪个工具 | Gemini 3.8 Flash | Gemini Pro 订阅，用 Magpie 反代（WSL 里 `/root/.pi/agent/settings.json`：`defaultProvider=magpie`，`defaultModel=antigravity/gemini-3.8-flash`） | [教程 00 第 284 行](00-复现向导.md)、[教程 03](03-口癖和人设.md) |
-| 脑的兜底 | DeepSeek V4 Flash | Command Code（`commandcode/deepseek/deepseek-v4-flash`） | [教程 00 第 284 行](00-复现向导.md) |
-| 人设改写 | Gemini | 教程 03 | [教程 03](03-口癖和人设.md) |
-| TTS 翻译（中文转日语，她说日语） | 跟着脑当前用的模型走，关思考；退路是 Command Code | `tts/irodori/bridge.py` | [README 第 68 行](../README.md)、[教程 04 第 150 行](04-训练角色声音.md) |
-| 联网搜索 | grok-chat-fast | grok 号池（本机代理） | `brain/agent/extensions/grokweb-search.ts` |
-| 画图 | grok-imagine-image-2.0，改图用 grok-imagine-image-edit | grok 号池 | `brain/agent/extensions/albion-draw.ts` |
-| 看屏幕截图 | 主模型能收图就自己看；不收图时交号池的 grok-4.7 转述 | `brain/agent/extensions/albion-look.ts` | [教程 09](09-她的眼睛.md) |
-| 看摄像头 | 视觉机上的本地 Qwen3-VL 4B（llama.cpp）；照片不出局域网，也不进主模型（本地跑，不花 token） | `albion-look.ts` | [教程 09](09-她的眼睛.md)、[README 第 64 行](../README.md) |
-| 记忆的向量模型 | BAAI/bge-m3（1024 维） | OpenViking 的 embedding 配置 | [教程 07](07-长期记忆.md) |
-| 记忆抽取 | 中转站上几个免费模型轮换（minimax-m3.1-flash、beam、ornith），DeepSeek V4.1 Flash 兜底 | OpenViking 的 vlm 配置 | [教程 07 第 244 行](07-长期记忆.md) |
-| 语音识别 | 本地 paraformer，跑 CPU（本地跑，不花 token） | `ear/` | [教程 06](06-语音输入.md) |
-| 她的声音 | 本地 Irodori TTS + 自己训的 LoRA（本地跑，不花 token） | `tts/irodori` | [教程 04](04-训练角色声音.md) |
+| 功能 | 用的模型 | 怎么接的 / 详见 |
+|---|---|---|
+| 脑：她说话、决定调哪个工具 | Gemini 3.8 Flash | Gemini Pro 订阅，用 Magpie 反代；配置见 [00](00-复现向导.md) 阶段 3 |
+| 脑的兜底 | DeepSeek V4 Flash | Command Code 中转 |
+| 人设改写 | Gemini | [03](03-口癖和人设.md) |
+| TTS 翻译（中文转日语，她说日语） | 跟着脑当前用的模型走，关掉思考；退路是 Command Code | [04](04-训练角色声音.md) |
+| 联网搜索 | grok-chat-fast | grok 号池（本机代理） |
+| 画图 | grok-imagine-image-2.0，改图用 grok-imagine-image-edit | grok 号池 |
+| 看屏幕截图 | 主模型能收图就自己看；不收图时交号池里的 grok-4.7 转述 | [09](09-她的眼睛.md) |
+| 看摄像头 | 视觉机上的本地 Qwen3-VL 4B（llama.cpp），照片不出局域网，也不进主模型 | [09](09-她的眼睛.md) |
+| 记忆的向量模型 | BAAI/bge-m3（1024 维） | [07](07-长期记忆.md) |
+| 记忆抽取 | 中转站上几个免费模型轮换（minimax-m3.1-flash、beam、ornith），DeepSeek V4.1 Flash 兜底 | [07](07-长期记忆.md) |
+| 语音识别 | 本地 paraformer，跑 CPU | [06](06-语音输入.md) |
+| 她的声音 | 本地 Irodori TTS + 自己训的 LoRA | [04](04-训练角色声音.md) |
+
+看摄像头、语音识别和她的声音都在本地跑，不花 token。
 
 每个功能的模型都能单独换，各篇有写怎么配。
 
