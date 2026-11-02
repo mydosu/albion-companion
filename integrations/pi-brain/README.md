@@ -166,6 +166,34 @@ Pi（Node 程序）直连会稳定超时（`Request timed out.`）。转发把�
 实测直连 3 次全超时、走转发 3 次成功。上游还有 Cloudflare 按 UA 拦，转发带 `User-Agent: curl/8.5.0`。
 现在这条转发由 `albion-relay.ts` 提供：脑停着、两个端口都空着时直跑 `pi`，它会自己把 8798 起起来。
 
+## 从零安装与部署（陌生人路径）
+
+在 WSL(Ubuntu) 里，以 root 跑（仓库在 Windows 盘上就用 `/mnt/<盘符>/...` 路径）：
+
+```bash
+sudo bash integrations/pi-brain/install.sh          # 装 Node 26.9.0 和 Pi 1.0.4（钉的是作者生产机版本，幂等）
+bash integrations/pi-brain/deploy.sh                # 部署到 /root/albion-pi；换目录：deploy.sh /some/dir 或 ALBION_HOME=…
+```
+
+- `deploy.sh` 覆盖前先把旧文件备份到 `<目标>/backup/deploy-<时间>/`；`DRY_RUN=1` 只列不写。
+  `agent/.env`、`SOUL.md`、`models.json`、`settings.json`、`real-sessions.json`、`auth.json` 已存在就**不动**，不存在才放仓库里的版本；`SYSTEM.md` 是生成物，不部署。
+- 部署完它会尝试跑 `tools/check_pi_brain_sync.py`。检查器是 Windows 侧的 Python（里面调 `wsl`），WSL 调不回 Windows 时只提示，
+  到 Windows 上跑 `python tools/check_pi_brain_sync.py --prod <目标>` 即可。
+- 然后 `cp agent/.env.example agent/.env`、`cp agent/SOUL.example.md agent/SOUL.md`，填完再 `bash start.sh`、`bash accept.sh`。
+  `SOUL.example.md` 是骨架：人设各段自己写，「输出格式」一节（开头 `<|ACT:{"emotion":"…"}|>`）是壳依赖的，要保留。
+
+## 没有 Magpie 怎么配
+
+Magpie 只是作者的"模型管理器"：它往 `/root/.pi/agent/settings.json`（和 `models.json`）里写默认模型，脑每轮读到。没有它：
+
+1. 在 `agent/models.json` 的 `providers` 下加你自己的 OpenAI 兼容 provider（`baseUrl`、`apiKey` 写环境变量名或值、`models` 列表），格式照仓库里那份示例。
+2. 在 `agent/.env` 写 `ALBION_PROVIDER=<上面 providers 里的键>` 和 `ALBION_MODEL=<模型 id>`，provider 的 key 也写在这里（变量名同 `models.json` 里引用的）。
+3. 重启脑（`bash stop.sh && bash start.sh`）。`.env` 里的这两项重启后依然有效，`_启动脑Pi.ps1` 和看门狗不用带环境变量。
+   一次性覆盖仍可 `ALBION_PROVIDER=… ALBION_MODEL=… bash start.sh`（进程环境优先于 `.env`）。
+
+两项都不写、也没有 Magpie 的设置文件时，兜底 `commandcode/deepseek/deepseek-v4-flash`（需要 `COMMANDCODE_API_KEY`）。有 Magpie 的作者生产机不设这两项，行为不变。
+`follow_settings.py` 自检：`python3 tests/pi-brain/check_follow_settings.py`（含 `.env` 有/无变量的用例）。
+
 ## 主力模型（2026-10-30 起跟着 magpie 走）
 
 脑用哪个模型不再写死：每轮开跑前 `bin/follow_settings.py` 读 magpie 写给 pi 的默认设置

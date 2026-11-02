@@ -180,7 +180,19 @@ def main():
         write(pref, {"defaultProvider": "magpie", "defaultModel": "magpie/antigravity/gemini-3.8-flash"})
         r6 = fs.resolve(dict(env, ALBION_FOLLOW_SETTINGS=pref))
         check(r6.model == "antigravity/gemini-3.8-flash", r6.model)
-        print("FOLLOW SETTINGS CHECK OK (8 cases)")
+
+        # 9) agent/.env 里的 ALBION_PROVIDER/ALBION_MODEL：进程环境没有时生效，有时进程环境优先；.env 没写 = 照旧
+        env_file = os.path.join(agent, ".env")
+        with open(env_file, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write('# c\nALBION_PROVIDER=commandcode\nALBION_MODEL="deepseek/deepseek-v4-flash"\n')
+        r7 = fs.resolve(dict(env))
+        check((r7.provider, r7.model, r7.source) == ("commandcode", "deepseek/deepseek-v4-flash", "env"), r7)
+        r8 = fs.resolve(dict(env, ALBION_PROVIDER="magpie", ALBION_MODEL="antigravity/gemini-3.8-flash"))
+        check((r8.provider, r8.model) == ("magpie", "antigravity/gemini-3.8-flash"), r8)
+        os.remove(env_file)
+        r9 = fs.resolve(dict(env))
+        check(r9.source == "settings" and r9.provider == "magpie", r9)
+        print("FOLLOW SETTINGS CHECK OK (9 cases)")
     finally:
         shutil.rmtree(d, ignore_errors=True)
 
