@@ -36,8 +36,9 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
 | `agent/shell-tools-bridge.ts` + `agent/extensions/albion-shell-tools.ts` | 每轮开跑前取清单：新插件注册成代理工具、卸载的改成 hidden（Pi 工具不能注销），不用换身子。和她自己的工具重名时插件那件改叫 `shell_<名>`，她的永远优先；插件规则按壳提供的 owner/id 各放一个系统提示区块，不再混入工具描述；取不到清单就全部撤下。自定义 SYSTEM.md 下额外补入当前可见工具的 promptGuidelines 与全局规则，不改人格正文 |
 | `bin/voice_tidy.ts` | 整理器的命令行壳（给 Python 探针 `tests/pi-brain/check_speech.py` 用；规则直接 import 扩展，不另写一份） |
 | `bin/memory.py` | OpenViking 回忆 / 写入 / 检索（格式与 Hermes 时代逐字一致） |
-| `bin/wake.py` | 她自己醒来：三条底线（夜里安静、他刚说过话不打断、连着不回就退避）+ 落实她定的开口节奏；门铃问的就是它 |
+| `bin/wake.py` | 她自己醒来：两条计时（说话轮/生活轮）+ 三条底线（夜里安静、他刚说过话不打断、连着不回就退避）+ 落实她定的开口节奏；门铃问的就是它 |
 | `bin/test_guard_ext.ts` | 整理器与每轮约定自检（钩子接线、r35 多轮姿态序列、英文拒绝、表态小句删除与误删面、0 次网络请求、约定拼装；Windows/WSL 都能跑） |
+| `bin/test_self_look.ts` | `next_wake` 两条计时与 `look` 生活轮闸门的自检（kind/分钟数夹取、self.json 新旧结构、did 与 life.json 20 条、拒绝/轮结束放行/超时放行；Windows/WSL 都能跑） |
 | `bin/test_loopguard.ts` | 复读断路/坏工具/快照账本自检（39 项，临时目录里造文件，不写生产日志） |
 | `bin/check_extensions.ts` | 用 Pi 自己的加载器整批加载 `agent/extensions/*.ts`，查加载错误和工具 `parameters` 形状；不叫模型 |
 | `bin/test_brain.py` | 端到端自检：两个回合 + 多轮连续性 + ACT 标记 |
@@ -47,8 +48,8 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
 | `agent/skills/*/SKILL.md` | Pi 原生技能：系统提示里只放名字和"什么时候用"，用到才读全文。`albion-work`（干活的规矩与交付）、`albion-teaching`（讲功课、给做法）、`albion-build-tool`（给自己写扩展）。2026-10-17 从 SOUL/APPEND 里拆出来，人格那份只留她是谁、怎么说话、想给他什么 |
 | `agent/extensions/albion-turn.ts` | `context` 钩子注入约定+回忆+处境（处境放最末尾）；`tool_result` 每调完一个工具就写一行活动库，`agent_end` 再写 user/assistant 和账本补记的路径；写类工具按工具结果是否报错记 `verified`（精度限制见源码 `shortcut:` 注释） |
 | `agent/extensions/albion-loopguard.ts` | 复读断路（同一调用 + 文件没变才算复读）、坏工具摘除、一轮前后目录快照账本（给摆件和下一轮约定） |
-| `agent/extensions/albion-self.ts` | `next_wake`（下次什么时候醒、想做什么）、`notebook`（心事本） |
-| `agent/extensions/albion-look.ts` | `look`：his/mine 取屏幕原图交主模型（主模型不收图就原图交 grok 转述）；cam 只交本地视觉模型转文字 |
+| `agent/extensions/albion-self.ts` | `next_wake`（下次什么时候醒——说话轮/生活轮两条计时、想做什么、这次做了什么）、`notebook`（心事本） |
+| `agent/extensions/albion-look.ts` | `look`：his/mine 取屏幕原图交主模型（主模型不收图就原图交 grok 转述）；cam 只交本地视觉模型转文字；生活轮里不取图 |
 | `agent/extensions/albion-guard.ts` | `message_end` 钩子上的说话整理器：ACT 补竖线、心声收括号、英文拒绝只留表情、泄漏标记截掉、姿态句与括号动作小句各自计额度、对他的话表态的整句/整小句删掉（`pledge_dropped`） |
 | `agent/extensions/albion-relay.ts` | 本机转发 :8798（见下"为什么要转发"）；Pi 一启动它就起 |
 | `agent/extensions/openviking.ts` | 一行薄壳：加载官方 OpenViking 记忆扩展（自动捕获 + 16 个 `openviking_*` 工具）。主体在 `agent/openviking/`，来源与配置见那里的说明 |
@@ -59,7 +60,8 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
 | `state/state.db` | 活动库（Hermes state.db 的最小兼容表） |
 | `bin/widget_snapshot.py` → `state/widget.json` | 宿主后台线程每 5 秒把活动库查询结果原子写成快照；Windows 桌面摆件每 5 秒读一次这份（超过 60 秒没更新就显示"上次成功 X 前"）。`--selftest` 自检 |
 | `state/last-context.json` | 每轮最终注入的内容（可复核"回忆/约定真进了消息"） |
-| `state/self.json` | 她自己定的下次醒来时间、想做的事、开口节奏 `speak_every_hours`（`albion-self.ts` 写，`bin/wake.py` 读） |
+| `state/self.json` | 她自己定的两条计时（`speak` / `life` 各自的 `wake_at`、`intent`、`set_at`）和开口节奏 `speak_every_hours`（`albion-self.ts` 写，`bin/wake.py` 读；旧格式顶层 `wake_at` 当成 speak） |
+| `state/life.json` | 生活记录：她自己那一轮做完用 `did` 记的一句「做了什么」，每条带时间，只留最近 20 条；醒来时念最近 3 条 |
 | `state/voice.json` | 整理器的姿态句与括号动作额度（每会话的 replies、posture_at、gesture_at；旧状态兼容） |
 | `state/notebook.json` | 心事本：没划掉的惦记，醒来时念给她 |
 | `logs/brain.log` | 每轮请求、耗时 |
@@ -93,18 +95,26 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
 
 ## 她自己的时间（醒来循环）
 
-- **时间由她自己定**：一轮里调用 `next_wake`（10–360 分钟、醒来想做什么）→ `state/self.json`；
+- **时间由她自己定**：一轮里调用 `next_wake`（醒来想做什么）→ `state/self.json`；
   `notebook`（`state/notebook.json`）是她的心事本，醒来时宿主把没划掉的念给她。
+- **两条计时分开走**（2026-11-02）：`next_wake` 的 `kind` 分说话轮（`speak`，默认，10–360 分钟后）和生活轮
+  （`life`，她自己的时间，30–180 分钟后）；`self.json` 里 `speak` / `life` 各有自己的 `wake_at`/`intent`/`set_at`
+  （旧格式顶层 `wake_at` 当 speak）。生活轮不吃「他没回」的退避，不跟他说话，`after_wake` 一律只留一个表情；
+  两条同时到点时说话轮优先，生活轮顺延至少 `MIN_GAP_S`。生活轮里 `look` 不取图（`wake.json` 的 `round_kind`，
+  `after_wake` 清掉，15 分钟超时兜底）。
 - **壳只当门铃**：每 30 秒问一次 `GET /albion/wake`；到点了壳发一条只有标记的消息（不带内容），
-  宿主把它换成她醒来时该看到的：现在几点、他多久没说话、她自己定的事、心事本、这次能不能出声。
+  宿主按门铃记下的种类（`wake.json` 的 `ring_kind`）换成这一轮该看到的：说话轮有现在几点、他多久没说话、
+  她自己定的事、心事本、最近自己做过的事、这次能不能出声；生活轮只有她自己的那几行。
   看不看、说不说、做什么都由她；她的回复照常走流式 → 字幕／表情／语音／聊天记录。
+- **生活记录**：她自己那一轮做完用 `next_wake` 的 `did` 记一句（≤120 字）→ `state/life.json`（只留最近 20 条，
+  每条带时间）；说话轮醒来时把最近 3 条按「今天／昨天／N天前」念给她，想分享就挑一件说。
 - **多久主动开口一次也由她定**（2026-10-16 起）：`next_wake` 的 `speak_every_hours`（1–6 小时，不填沿用上次，
   从没定过是 3 小时——10-15 指挥官嫌每小时都出声太勤时定的）。没到她定的间隔，这轮只留表情、心声也不显示；
   说多说少不再卡字数。
 - **三条底线（为他的作息，她改不了，常量在 `bin/wake.py`）**：北京时间 00:30–09:00 不醒（顺延到早上）；
   他 5 分钟内说过话不醒（别打断对话）；她主动说的话他连着没回就退避（间隔按 2 的幂拉长，最多 8 倍；
-  连着 3 次没回至少隔 3 小时）。两次醒来至少隔 10 分钟是 `next_wake` 的下限。
-- 没定下次醒来就按 30 分钟后算；宿主不再补问（原来的【定下次醒来】已撤）。
+  连着 3 次没回至少隔 3 小时；生活轮不适用这条）。两次醒来至少隔 10 分钟。
+- 没定下次醒来就按 30 分钟后算（生活轮是一小时后）；宿主不再补问（原来的【定下次醒来】已撤）。
 - 壳端原来那套主动定时器（`settings/albion/self-wake = '0'` 退路）已于 2026-10-16 撤掉，主动对话只走这条门铃。
 
 ## 她自己的眼睛（`look`）
@@ -118,6 +128,8 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
   `/usr/local/bin/docker-user-rules.sh` 会在 Docker 启动时重写 `DOCKER-USER`，8080 只放行局域网和 tailnet
   （100.64.0.0/10，2026-10-15 补上；之前重启后 tailnet 被挡，她报「摄像头坏了」）。
 - 硬底线（她改不了）：同一路 60 秒内不重复取；摄像头永远只走本地视觉模型。
+- 她自己的时间（生活轮）里不看他：`look` 执行前读 `state/wake.json` 的 `round_kind`，这一轮没结束时直接回
+  「这是我自己的时间，先不看他。」；`after_wake` 清掉当前轮，另有 15 分钟超时兜底。
 - 配置在 `agent/.env`（不进仓库），每次调用现读、改了不用重启：
   `ALBION_EYES_HIS_URL/ALBION_EYES_HIS_TOKEN`、`ALBION_EYES_MINE_URL/ALBION_EYES_MINE_TOKEN`、`ALBION_EYES_VLM`。
   `ALBION_EYES_HIS_URL` 可写多个、逗号分隔（局域网在前、Tailscale 在后），每次取图前 TCP 探 3 秒挑第一个通的，

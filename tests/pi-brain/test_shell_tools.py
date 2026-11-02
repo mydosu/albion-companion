@@ -20,7 +20,7 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(ROOT, "integrations", "pi-brain", "bin"))
+sys.path.insert(0, os.path.join(ROOT, "brain", "bin"))
 
 import shell_tools  # noqa: E402
 

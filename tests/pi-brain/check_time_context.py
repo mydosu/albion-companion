@@ -18,7 +18,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-BRAIN = os.path.join(ROOT, "integrations", "pi-brain")
+BRAIN = os.path.join(ROOT, "brain")
 sys.path.insert(0, os.path.join(BRAIN, "bin"))
 
 import memory  # noqa: E402

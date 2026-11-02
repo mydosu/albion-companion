@@ -23,7 +23,7 @@ import tempfile
 from datetime import date, datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-BRAIN = os.path.join(ROOT, "integrations", "pi-brain")
+BRAIN = os.path.join(ROOT, "brain")
 sys.path.insert(0, os.path.join(BRAIN, "bin"))
 
 import server  # noqa: E402  （规则只在 bin/server.py 里放一份）

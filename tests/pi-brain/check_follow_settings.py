@@ -21,7 +21,7 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(ROOT, "integrations", "pi-brain", "bin"))
+sys.path.insert(0, os.path.join(ROOT, "brain", "bin"))
 
 import follow_settings as fs  # noqa: E402
 
