@@ -189,13 +189,43 @@ def messages_path(session_dir: str) -> str:
     return os.path.join(session_dir, "messages.jsonl")
 
 
+ACT_RE = re.compile(r"<\|ACT:.*?\|>", re.S)
+
+
+def strip_act(text: str) -> str:
+    """去掉她的动作标记 <|ACT:{...}|>；只剩标记的那种「话」不算话。"""
+    cleaned = ACT_RE.sub(" ", text or "")
+    return re.sub(r"[ \t]{2,}", " ", cleaned).strip()
+
+
+def spoken_text(rec: dict) -> str:
+    """一条 pi 消息里「人说的话」。
+
+    平台会话（TG/Discord）里她的回复不在 text part 上，而在 `send_message` 工具的
+    `tool_input.text` 里（宿主把话交给桥去发）；不带上这段，重提取时她整轮都是哑的。
+    其余工具调用（browser/draw/read…）一律不算她说过的话，照旧丢掉。
+    """
+    role = rec.get("role") or ""
+    chunks = []
+    for part in rec.get("parts") or []:
+        kind = part.get("type")
+        if kind == "text":
+            text = part.get("text") or ""
+        elif kind == "tool" and part.get("tool_name") == "send_message" and role == "assistant":
+            text = (part.get("tool_input") or {}).get("text") or ""
+        else:
+            continue
+        if text:
+            chunks.append(text)
+    return strip_act("\n\n".join(chunks))
+
+
 def filter_transcript(records: list, rules) -> tuple:
-    """只留文字：丢掉 tool part、丢掉被规则整条剔除的消息、丢掉过滤后没字的消息。"""
+    """只留人话：丢掉 tool part（send_message 除外）、丢掉被规则整条剔除的消息、丢掉过滤后没字的消息。"""
     kept, dropped, raw_chars, kept_chars = [], 0, 0, 0
     for rec in records:
         role = rec.get("role") or ""
-        text_parts = [p.get("text") or "" for p in (rec.get("parts") or []) if p.get("type") == "text"]
-        text = "\n\n".join(t for t in text_parts if t)
+        text = spoken_text(rec)
         raw_chars += len(text)
         filtered = apply_rules(text, rules, role) if text else None
         if filtered is None or not filtered.strip():
