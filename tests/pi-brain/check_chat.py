@@ -668,6 +668,62 @@ def check_stickers():
         shutil.rmtree(root, ignore_errors=True)
 
 
+def check_repeat_send():
+    """同一轮她自己连着调用几次 send_message：每一条都要发得出去（2026-11-02）。
+
+    分不分条由她自己决定，桥不再替她拆；要保证第二次、第三次不会被
+    「主动找他」的开口节奏（wake.can_speak）拦掉。
+    """
+    import asyncio as _asyncio
+    import time as _time
+    reset()
+    cfg = chat_bridge.load_config(environ={"API_SERVER_KEY": "k"}, home=os.path.join(_STATE, "nohome"))
+    svc = chat_bridge.Service(cfg)
+
+    class FakeTG:
+        def __init__(self):
+            self.texts = []
+
+        async def send_text(self, text):
+            self.texts.append(text)
+            return 1
+
+    class FakeDC:
+        def __init__(self):
+            self.texts = []
+
+        async def send_dm(self, text, sticker=None):
+            self.texts.append(("dm", text))
+
+        async def send_group(self, text, sticker=None):
+            self.texts.append(("group", text))
+
+    async def budget():
+        return {"remaining": 8, "used": 1, "owner_last_at": None}
+
+    svc.tg = FakeTG()
+    svc.dc = FakeDC()
+    svc.refresh_budget = budget
+    # 把「主动找他」的闸门钉死：只要走了 proactive 分支就必被拦。
+    # 同一轮的第 2、3 条因此必须走「还在回他这一轮」的分支才算通过。
+    orig_gate = chat_bridge.proactive_gate
+    chat_bridge.proactive_gate = lambda *a, **k: (False, "节奏没到")
+    try:
+        inbox.add("telegram", "在忙吗", at=_time.time())
+        results = [_asyncio.run(svc.send("telegram", "第一段：在的")), ]
+        results.append(_asyncio.run(svc.send("telegram", "第二段：刚忙完")))
+        results.append(_asyncio.run(svc.send("telegram", "第三段：你说")))
+        inbox.add("discord_group", "群里有人说话", at=_time.time())
+        group_results = [_asyncio.run(svc.send("discord_group", "群里第一条")),
+                         _asyncio.run(svc.send("discord_group", "群里第二条")),
+                         _asyncio.run(svc.send("discord_group", "群里第三条"))]
+    finally:
+        chat_bridge.proactive_gate = orig_gate
+    ok(all(r[0] for r in results), "同一轮连发 3 次 send_message 都成功", results)
+    ok(len(svc.tg.texts) == 3, "三条都真的发出去了（TG）", svc.tg.texts)
+    ok(all(r[0] for r in group_results), "群里同一轮连发 3 次也都成功", group_results)
+    ok(len([t for t in svc.dc.texts if t[0] == "group"]) == 3, "群里三条都发出去了", svc.dc.texts)
+
 def main():
     check_inbox()
     check_owner_and_group()
@@ -678,6 +734,7 @@ def main():
     check_drain()
     check_budget()
     check_group_gate()
+    check_repeat_send()
     check_owner_identity()
     check_stickers()
     print("check_chat: %d passed, %d failed" % (PASS, FAIL))
