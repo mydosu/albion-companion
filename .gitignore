@@ -77,3 +77,6 @@ config/local.env
 # GPT-SoVITS 安装目录（上游代码/runtime/权重）与参考音：本机资产，不入库
 tts/GPT-sovits/
 tts/ref_audio/
+
+# 挂件运行期状态（窗口位置）
+widget/albion_status_widget_pos.json
