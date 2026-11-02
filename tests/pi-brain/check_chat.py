@@ -724,6 +724,122 @@ def check_repeat_send():
     ok(all(r[0] for r in group_results), "群里同一轮连发 3 次也都成功", group_results)
     ok(len([t for t in svc.dc.texts if t[0] == "group"]) == 3, "群里三条都发出去了", svc.dc.texts)
 
+def check_live_unread():
+    """她这一轮跑的时候又来的消息不能丢：只关「见过的」，新来的附在回话里（2026-11-02）。"""
+    import asyncio as _asyncio
+    import time as _time
+    reset()
+
+    class FakeHost:
+        def __init__(self):
+            self.calls = []
+
+        async def chat(self, session, text):
+            self.calls.append((session, text))
+            return "ok"
+
+    class FakeDC:
+        ready = True
+        client = object()
+
+        def channel_name(self):
+            return "albion"
+
+        def owner_name_set(self):
+            return set()
+
+    class FakeTG:
+        def __init__(self):
+            self.texts = []
+
+        async def send_text(self, text):
+            self.texts.append(text)
+            return 1
+
+    def service():
+        cfg = chat_bridge.load_config(environ={"API_SERVER_KEY": "k"}, home=os.path.join(_STATE, "nohome"))
+        svc = chat_bridge.Service(cfg)
+        svc.host = FakeHost()
+        svc.dc = FakeDC()
+        svc.tg = FakeTG()
+        return svc
+
+    now = _time.time()
+
+    # 1) 叫醒期间来的第二条：send() 之后还是 unread，drain 会再叫醒一轮
+    svc = service()
+    first = inbox.add("telegram", "在忙吗", at=now - 30)
+    _asyncio.run(svc._drain_dm())
+    ok(len(svc.host.calls) == 1, "私信：第一条叫醒一次", svc.host.calls)
+    second = inbox.add("telegram", "那晚上吃什么", at=now - 20)   # 她这一轮还在跑
+    sent_ok, reply = _asyncio.run(svc.send("telegram", "在的，刚忙完"))
+    ok(sent_ok, "回第一条：发出去了", reply)
+    states = {i["id"]: i["state"] for i in inbox.load()["items"]}
+    ok(states.get(first["id"]) == "answered", "第一条：她回过了 → answered", states)
+    ok(states.get(second["id"]) != "answered",
+       "她没见过的第二条：不算回过（不再被静默吃掉，等她自己决定回不回）", states)
+    ok(states.get(second["id"]) == "notified",
+       "第二条：附在回话里给她看了 → notified（这一轮想回就再发一条）", states)
+
+    # 2) 回话里带着新来的消息，并且这些被标成 notified
+    ok("他又发来了" in reply, "回话里带着「发这条的时候，他又发来了」", reply)
+    ok("那晚上吃什么" in reply, "回话里带着第二条的原话", reply)
+    states2 = {i["id"]: i["state"] for i in inbox.load()["items"]}
+    ok(states2.get(second["id"]) == "notified", "附在回话里之后：那条标成 notified", states2)
+
+    # 3) 她看到后再发一条：这些变 answered
+    sent_ok2, _ = _asyncio.run(svc.send("telegram", "吃面吧"))
+    ok(sent_ok2, "看到之后再发一条：发得出去")
+    states3 = {i["id"]: i["state"] for i in inbox.load()["items"]}
+    ok(states3.get(second["id"]) == "answered", "第二条：她回了 → answered", states3)
+
+    # 再来一轮 drain 不该有新叫醒（都回过了）
+    before = len(svc.host.calls)
+    _asyncio.run(svc._drain_dm())
+    ok(len(svc.host.calls) == before, "全部回过之后：不再叫醒", svc.host.calls)
+
+    # 4) 私信 1 秒内连来 3 条：只叫醒一次（合批窗口）
+    svc2 = service()
+    for i, text in enumerate(("一", "二", "三")):
+        inbox.add("telegram", "连发%s" % text, at=now - 10 + i)
+    wait = chat_bridge.dm_wait_seconds(inbox.pending("telegram"), now - 10 + 3)
+    ok(wait > 0, "最后一条还没安静 2.5 秒：先等", wait)
+    ok(chat_bridge.dm_wait_seconds([{"at": now - 100}, {"at": now - 99}], now) <= 6.0,
+       "从第一条算最多等 6 秒")
+    # 三条都在 2.5 秒安静窗口之后：一次叫醒，三条都在同一条通知里
+    _asyncio.run(svc2._drain_dm())
+    ok(len(svc2.host.calls) == 1, "1 秒内连来 3 条：只叫醒一次", svc2.host.calls)
+    notice = svc2.host.calls[0][1]
+    ok(all(("连发" + x) in notice for x in ("一", "二", "三")), "三条都在同一条通知里", notice[:120])
+
+    # 5) 群里同样不丢
+    svc3 = service()
+    cfg = svc3.cfg
+    svc3.cfg = dict(cfg, dc_owner="1508482140570914990", dc_channel="1566804961218666671")
+
+    class FakeDCGroup(FakeDC):
+        def __init__(self):
+            self.texts = []
+
+        async def send_group(self, text, sticker=None):
+            self.texts.append(text)
+
+    async def budget():
+        return {"remaining": 8, "used": 1, "owner_last_at": None}
+
+    svc3.dc = FakeDCGroup()
+    svc3.refresh_budget = budget
+    g1 = inbox.add("discord_group", "群里第一条", at=now - 30, author="指挥官")
+    _asyncio.run(svc3._drain_group())
+    ok(len(svc3.host.calls) == 1, "群里：第一条叫醒一次", svc3.host.calls)
+    g2 = inbox.add("discord_group", "群里第二条", at=now - 20, author="指挥官")
+    sent_ok3, reply3 = _asyncio.run(svc3.send("discord_group", "来了"))
+    ok(sent_ok3, "群里回一条：发出去了", reply3)
+    states4 = {i["id"]: i["state"] for i in inbox.load()["items"]}
+    ok(states4.get(g2["id"]) in ("unread", "notified"), "群里第二条没被静默吞掉", states4)
+    ok("群里又有人说话了" in reply3, "群里回话带着新消息提示", reply3)
+    ok("群里第二条" in reply3, "群里回话带着第二条原话", reply3)
+
 def main():
     check_inbox()
     check_owner_and_group()
@@ -735,6 +851,7 @@ def main():
     check_budget()
     check_group_gate()
     check_repeat_send()
+    check_live_unread()
     check_owner_identity()
     check_stickers()
     print("check_chat: %d passed, %d failed" % (PASS, FAIL))

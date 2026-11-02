@@ -46,7 +46,9 @@ import group_budget                             # noqa: E402
 PLATFORM_MARKER = wake.PLATFORM_MARKER
 SESSION_DM = "albion-desktop"                  # TG 私聊 / Discord 私信：和桌面同一个会话
 SESSION_GROUP = "albion-discord"               # Discord 群：自己的真会话（长期记忆共享）
-GROUP_BATCH_S = 10.0                           # 群里合批窗口（逐条限制已去掉，只留额度兜底）
+GROUP_BATCH_S = 10.0
+DM_QUIET_S = 2.5                                 # 私信合批：最后一条之后安静这么久再叫醒
+DM_MAX_WAIT_S = 6.0                              # 但从第一条算最多等这么久                           # 群里合批窗口（逐条限制已去掉，只留额度兜底）
 TTS_URL = "http://127.0.0.1:9881/v1/audio/speech"
 CHANNELS = ("telegram", "discord", "discord_group")
 # 群里还有可畏（Hermes 那边的 bot）。这句是她群聊说明的一部分，原文照定稿（2026-11-02 用户改）。
@@ -347,6 +349,49 @@ def _hhmm(ts):
     return datetime.fromtimestamp(float(ts or 0), wake.TZ).strftime("%H:%M")
 
 
+def dm_wait_seconds(items, now=None):
+    """私信合批还要等多久：最后一条之后 2.5 秒没有新的，就从第一条算最多等 6 秒。
+
+    他连着发几条（间隔很短）时，这些会合成一轮叫醒，而不是一条一轮。
+    """
+    if not items:
+        return 0.0
+    now = time.time() if now is None else now
+    first = min(float(i.get("at") or 0) for i in items)
+    last = max(float(i.get("at") or 0) for i in items)
+    return max(0.0, min(last + DM_QUIET_S, first + DM_MAX_WAIT_S) - now)
+
+
+def dm_line(channel, item):
+    """通知里的一行（dm_notice 与「发这条的时候他又发来了」共用，格式不变）。"""
+    where = {"telegram": "Telegram", "discord": "Discord 私信"}.get(channel, inbox.channel_label(channel))
+    return "（%s）#%s %s 指挥官：%s" % (where, item["id"], _stamp(item.get("at")), item.get("text"))
+
+
+def group_line(item, owner_names=()):
+    """群里通知的一行（group_notice 与流式补话共用）。"""
+    return "（Discord 群）#%s %s %s：%s" % (item["id"], _hhmm(item.get("at")),
+                                            render_author(item.get("author"), owner_names),
+                                            item.get("text"))
+
+
+def live_note(channel, items, owner_names=()):
+    """她刚发完一条，这期间又来了新消息：把新的附在 send_message 的回话里（2026-11-02）。
+
+    她可以在同一轮里再发一条回应；不回也行，这些已经算「叫醒过」，
+    不回的会在这一轮结束时由 wake 的 close() 兜住。
+    """
+    if not items:
+        return ""
+    if channel == "discord_group":
+        head = "发这条的时候，群里又有人说话了："
+        lines = [group_line(i, owner_names) for i in items]
+    else:
+        head = "发这条的时候，他又发来了："
+        lines = [dm_line(channel, i) for i in items]
+    return "\n".join([head] + lines + ["想回就再发一条，不回也可以。"])
+
+
 def dm_notice(channel, items):
     """TG / Discord 私信的通知轮（主脑定稿的文字，照抄）。
 
@@ -357,7 +402,7 @@ def dm_notice(channel, items):
     where = {"telegram": "Telegram", "discord": "Discord 私信"}.get(channel, inbox.channel_label(channel))
     lines = [PLATFORM_MARKER + "指挥官在%s上给我发了消息（写给自己看的，不用念）：" % where]
     for item in items:
-        lines.append("（%s）#%s %s 指挥官：%s" % (where, item["id"], _stamp(item.get("at")), item.get("text")))
+        lines.append(dm_line(channel, item))
     lines.append("想回就用 send_message 回他（channel=%s）；这一轮我在这里写的字他看不到。也可以先不回，下次醒来还会看到。"
                  % channel)
     return "\n".join(lines)
@@ -388,13 +433,9 @@ def group_notice(channel_name, items, context=None, budget=None, owner_names=())
         # 群里刚才还在聊的（别人的话）：只给她看个上下文，不改状态、不驱动叫醒
         lines.append("（刚才群里还在聊的：）")
         for item in context:
-            lines.append("（Discord 群）#%s %s %s：%s" % (item["id"], _hhmm(item.get("at")),
-                                                        render_author(item.get("author"), owner_names),
-                                                        item.get("text")))
+            lines.append(group_line(item, owner_names))
     for item in items:
-        lines.append("（Discord 群）#%s %s %s：%s" % (item["id"], _hhmm(item.get("at")),
-                                                    render_author(item.get("author"), owner_names),
-                                                    item.get("text")))
+        lines.append(group_line(item, owner_names))
     lines.append(GROUP_INVITE_NOTE)
     note = budget_note(budget)
     if note:
@@ -1003,14 +1044,22 @@ class Service:
             items = [i for i in self._unread() if i["channel"] in ("telegram", "discord")]
             if not items:
                 return
+            waited = False
             for channel in ("telegram", "discord"):
                 batch = [i for i in items if i["channel"] == channel]
                 if not batch:
                     continue
+                wait = dm_wait_seconds(batch, time.time())
+                if wait > 0:                       # 他还在连着发：等这个渠道安静下来再一起叫醒
+                    await asyncio.sleep(min(wait, 1.0))
+                    waited = True
+                    break
                 ok = await notify(self.cfg, self.host, SESSION_DM, dm_notice(channel, batch),
                                   [i["id"] for i in batch])
                 if not ok:
                     return                        # 宿主忙/挂了：留到下一次醒来，不在这里死等
+            if waited:
+                continue
             await asyncio.sleep(0)
 
     async def _drain_group(self):
@@ -1091,16 +1140,32 @@ class Service:
             return False, "没发出去：%s" % str(exc)[:200]
         if sent_sticker:
             notes.append("表情包 %s 发出去了" % sticker)
+        # 只把她「见过的」算作回了（notified）；她这一轮跑的时候才到的 unread 一律不动，
+        # 否则第二条会被悄悄吃掉（2026-11-02，间隔很短的连发丢消息）。
+        seen = [i for i in pending if i.get("state") == "notified"]
         answered = 0
-        if pending:
-            answered = inbox.mark_answered([i["id"] for i in pending])
+        if seen:
+            answered = inbox.mark_answered([i["id"] for i in seen])
         self._replied_at[channel] = time.time()          # 同一轮接下来的几条算「还在回他」
+        # 发这条的时候又来了新消息：附在回话里给她看，她可以同一轮再回一条
+        fresh = [i for i in inbox.pending(channel) if i.get("state") == "unread"]
+        live = ""
+        if fresh:
+            inbox.mark_notified([i["id"] for i in fresh])
+            try:
+                owner_names = self.dc.owner_name_set()
+            except Exception:                      # noqa: BLE001 - 假 dc / 没连上：用默认显示
+                owner_names = ()
+            live = live_note(channel, fresh, owner_names)
         if proactive and channel != "discord_group":
             wake.note_spoken()
         log("sent", channel=channel, voice=voiced, answered=answered, proactive=proactive,
             chars=len(text), sticker=sticker or None)
-        return True, send_result_text(channel, voiced=voiced, notes=notes,
-                                      answered=answered, proactive=proactive)
+        result = send_result_text(channel, voiced=voiced, notes=notes,
+                                  answered=answered, proactive=proactive)
+        if live:
+            result = result + "\n\n" + live
+        return True, result
 
 
 # ── 本地 HTTP（她/测试用）──────────────────────────────────────────────────
