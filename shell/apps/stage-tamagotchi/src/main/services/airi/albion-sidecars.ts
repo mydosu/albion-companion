@@ -77,7 +77,7 @@ export function sidecarDirs(): SidecarDirs {
     earDir: process.env.ALBION_EAR_DIR || cfg.earDir
       || (bundled && existsSync(join(bundled, 'ear')) ? join(bundled, 'ear') : 'D:/AI/Wife/pet'),
     pythonExe: process.env.ALBION_GSV_PYTHON || cfg.pythonExe
-      || 'D:/AI/Wife/tts/denia/runtime/python.exe',
+      || 'D:/AI/Wife/tts/GPT-sovits/runtime/python.exe',
   }
 }
 

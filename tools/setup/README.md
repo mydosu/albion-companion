@@ -1,6 +1,39 @@
 # Windows 复现脚本
 
-补 `教程/00-复现向导.md` 阶段 6 和阶段 4 里原来标「手动建环境」的两步。两个脚本都只建环境，不启动、不重启任何服务。
+补 `教程/00-复现向导.md` 阶段 6 和阶段 4 里原来标「手动建环境」的两步，外加一个把它们（和 WSL 脑）串起来的总入口。所有脚本都只准备环境，不启动、不重启任何服务。
+
+## 一键安装（先 `-DryRun` 演练）
+
+`tools/setup/install_all.ps1` 按阶段跑；根目录 `一键安装.bat` 是薄壳，只把参数原样转给这个 ps1（GBK + CRLF，和 `一键启动.bat` 一致）。生产机上也请先 `-DryRun`，确认要动哪些路径再真跑。
+
+| 阶段 | 做什么 | 已装好时 |
+|---|---|---|
+| `preflight` | 查 git、node/pnpm、uv、nvidia-smi、wsl 和 WSL 发行版；缺的给官方下载地址。uv 是 TTS 阶段的硬前提，WSL/发行版是脑阶段的硬前提 | 照常检查，不装系统软件 |
+| `stt` | 调 `setup_stt_runtime.ps1` 建 `tts/GPT-sovits/runtime` | 打印 `[skip]` |
+| `tts` | 调 `setup_tts_env.ps1` 建 `tts/irodori/.venv` | venv 依赖齐全时 `[skip]` |
+| `brain` | 在 WSL 里跑 `integrations/pi-brain/install.sh` 和 `deploy.sh` | 两个脚本自身幂等，会打印 `[skip]`/`未变` |
+| `templates` | `config/local.env.example` -> `.local/runtime.env`；脑模板由 `deploy.sh` 在目标缺失时放 | 目标已存在就 `[skip]`，不覆盖 |
+
+```powershell
+# 只演练：不下载、不写仓库文件、不执行 WSL 安装
+.\一键安装.bat -DryRun
+
+# 只跑部分阶段（逗号分隔；带空格的列表整体加引号；阶段名：preflight, stt, tts, brain, templates）
+.\一键安装.bat -DryRun -Only preflight,stt,tts
+.\一键安装.bat -DryRun -Skip brain
+
+# 真装（install.sh 要 root；默认 WSL 用户不是 root 时加 -WslUser root）
+.\一键安装.bat -WslUser root
+```
+
+- `-DryRun` 会把有 `-DryRun` 的子脚本真的以 `-DryRun` 调起，方便看它们的计划；`deploy.sh` 即使 `DRY_RUN=1` 也会 `mkdir` 目标目录，所以总入口在 `-DryRun` 下只打印脑的命令、不执行。
+- `-Only` / `-Skip` 同时给时，先取 `Only` 再减 `Skip`；`preflight` 也是可选阶段，用 `-Only` 时想检查就把它列进去。
+- `-Distro`（默认 `Ubuntu`）、`-WslUser`、`-BrainHome`（默认 `/root/albion-pi`）按需覆盖。
+- 脑阶段用 `/mnt/<盘>/...` 路径调 WSL 里的脚本。如果 WSL 的 `/etc/wsl.conf` 关了 `automount`（`/mnt/c`、`/mnt/d` 不是 Windows 盘），脚本会先警告/报错；先从 Windows 路径能访问的位置跑，或打开自动挂载。
+- 任一阶段失败会打印 `[FAIL] 阶段 <名字>：<原因>` 并停住，不继续后面的阶段。
+- 脚本不装 Git/Node/WSL/显卡驱动，不构建桌面壳，也不拉起服务。收尾会打印还要手动做的事：壳看 `docs/SHELL_FIRST_RUN.md`，OpenViking 看 `config/templates/ov.conf.example`，视觉机看 `deploy/vision/README.md`，权重看 `docs/REBUILD.md`。
+- `.local/runtime.env` 只是模板副本，现有启动器不会自动加载；变量要设成进程/用户环境变量（`docs/REBUILD.md`）。
+- `一键安装.bat` 不带参数时就是真装；只想演练务必带 `-DryRun`。
 
 ## 耳朵/眼睛的 Python 3.9（阶段 6）
 
