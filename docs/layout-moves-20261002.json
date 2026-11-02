@@ -3316,5 +3316,6 @@
   {"old":"shell/.agents","new":"","category":"reorg-C-shell-upstream-trim-20261101","note":"上游 AI 代理技能库，461 文件 / 1.3 MB；不在 pnpm workspace 内"},
   {"old":"shell/packages/font-departure-mono","new":"","category":"reorg-C-shell-upstream-trim-20261101","note":"字体包，无任何引用"},
   {"old":"shell/patches/mineflayer-pathfinder.patch","new":"","category":"reorg-C-shell-upstream-trim-20261101","note":"随 integrations/minecraft 一起删除（pnpm 报 UNUSED_PATCH）"},
-  {"old":"shell/patches/sponsorkit@17.1.0.patch","new":"","category":"reorg-C-shell-upstream-trim-20261101","note":"随 docs 的 sponsors 生成一起删除（pnpm 报 UNUSED_PATCH）"}
+  {"old":"shell/patches/sponsorkit@17.1.0.patch","new":"","category":"reorg-C-shell-upstream-trim-20261101","note":"随 docs 的 sponsors 生成一起删除（pnpm 报 UNUSED_PATCH）"},
+  {"old":"shell/.github","new":"","category":"reorg-C-shell-upstream-trim-20261102","note":"上游 AIRI 的 CI/发布/PR 分诊/社区模板，30 文件；不在仓库根，GitHub 从不执行"}
 ]
