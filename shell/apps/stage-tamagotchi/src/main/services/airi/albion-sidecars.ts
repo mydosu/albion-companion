@@ -98,7 +98,7 @@ function readLocalEnv(key: string): string | undefined {
 }
 
 /** TTS 引擎二选一：irodori（默认，:9889）或 gsv（Denia :9880）。认不出的值按 irodori。 */
-function ttsEngine(): 'irodori' | 'gsv' {
+export function ttsEngine(): 'irodori' | 'gsv' {
   const raw = process.env.ALBION_TTS_ENGINE ?? readLocalEnv('ALBION_TTS_ENGINE') ?? 'irodori'
   return raw.trim().toLowerCase() === 'gsv' ? 'gsv' : 'irodori'
 }
@@ -247,6 +247,9 @@ export async function sidecarStatus(): Promise<Array<{ name: string, port: numbe
   const out: Array<{ name: string, port: number, up: boolean }> = []
   for (const s of sidecars())
     out.push({ name: s.name, port: s.port, up: await portOpen(s.port) })
+  // gsv 模式的 :9880 不归壳拉起，但托盘要能看到它的状态
+  if (ttsEngine() === 'gsv')
+    out.push({ name: 'Denia 后端', port: 9880, up: await portOpen(9880) })
   return out
 }
 

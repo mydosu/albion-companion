@@ -27,7 +27,7 @@ import macOSTrayIcon from '../../../resources/tray-icon-macos.png?asset'
 import { electronStageLayoutChanged, electronStageLayoutRequest } from '../../shared/eventa'
 import { findDominantDisplayArea } from '../../shared/utils/electron/display'
 import { onAppBeforeQuit } from '../libs/bootkit/lifecycle'
-import { sidecarConfigPath, sidecarStatus, startAlbionSidecars, writeSidecarConfig } from '../services/airi/albion-sidecars'
+import { sidecarConfigPath, sidecarStatus, startAlbionSidecars, ttsEngine, writeSidecarConfig } from '../services/airi/albion-sidecars'
 import { setupInlayWindow } from '../windows/inlay'
 import { Animator } from '../windows/shared/animator'
 import { computeResizedBoundsAnchoredToDominantDisplay } from '../windows/shared/display'
@@ -399,7 +399,9 @@ export function setupTray(params: {
         {
           label: '语音服务',
           submenu: [
-            { label: `Irodori 后端 :9889  ${sidecarUp[9889] ? '就绪' : '未就绪'}`, enabled: false },
+            ttsEngine() === 'gsv'
+              ? { label: `Denia(GSV) 后端 :9880  ${sidecarUp[9880] ? '就绪' : '未就绪'}`, enabled: false }
+              : { label: `Irodori 后端 :9889  ${sidecarUp[9889] ? '就绪' : '未就绪'}`, enabled: false },
             { label: `TTS 桥 :9881  ${sidecarUp[9881] ? '就绪' : '未就绪'}`, enabled: false },
             { label: `耳·STT :9882  ${sidecarUp[9882] ? '就绪' : '未就绪'}`, enabled: false },
             { type: 'separator' },
