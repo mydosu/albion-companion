@@ -1,6 +1,6 @@
 /**
  * next_wake 的开口节奏（speak_every_hours，2026-10-16 起由她自己定）：夹在 1～6 小时、不填沿用上次、从没定过是 3 小时。
- * 2026-11-02 起 self.json 分成两条计时（speak / life），这里顺带验生活轮不冲掉说话轮的设置。
+ * 2026-11-02 起只有一条计时（self.json 顶层 wake_at/intent/set_at），旧的 speak / life 两线格式写回时摊成一条。
  * 不叫模型、不碰生产 state/（写进临时目录）。bin/wake.py 读同一个字段，它那头的口径在 wake.py 自检里。
  * Windows/WSL 都能跑（没有 typebox 时用桩，见下）。
  *
@@ -44,27 +44,34 @@ const plan = () => JSON.parse(readFileSync(join(dir, "self.json"), "utf-8"));
 
 await wake({ minutes: 30, intent: "看看书" });
 assert.equal(plan().speak_every_hours, 3, "从没定过：3 小时");
-const r = await wake({ minutes: 20, intent: "x", speak_every_hours: 2 });
+const r = await wake({ minutes: 45, intent: "x", speak_every_hours: 2 });
 assert.equal(plan().speak_every_hours, 2);
 assert.match(r.content[0].text, /每 2 小时/);
-await wake({ minutes: 20, intent: "y" });
+await wake({ minutes: 45, intent: "y" });
 assert.equal(plan().speak_every_hours, 2, "不填就沿用上次定的");
-await wake({ minutes: 20, intent: "z", speak_every_hours: 0.1 });
+await wake({ minutes: 45, intent: "z", speak_every_hours: 0.1 });
 assert.equal(plan().speak_every_hours, 1, "低于 1 小时夹到 1");
-await wake({ minutes: 20, intent: "z", speak_every_hours: 24 });
+await wake({ minutes: 45, intent: "z", speak_every_hours: 24 });
 assert.equal(plan().speak_every_hours, 6, "高于 6 小时夹到 6");
-await wake({ minutes: 20, intent: "z", speak_every_hours: "" });
+await wake({ minutes: 45, intent: "z", speak_every_hours: "" });
 assert.equal(plan().speak_every_hours, 6, "空串当没填");
 writeFileSync(join(dir, "self.json"), JSON.stringify({ speak_every_hours: null }));
-await wake({ minutes: 20, intent: "z" });
+await wake({ minutes: 45, intent: "z" });
 assert.equal(plan().speak_every_hours, 3, "上次的值坏了（null）：回到默认 3 小时，不夹成 1");
-assert.ok(Math.abs(plan().speak.wake_at - (Date.now() / 1000 + 20 * 60)) < 5, "醒来时间照旧");
-// 生活轮：单独一条计时，不冲掉说话轮和开口节奏（2026-11-02）
+assert.ok(Math.abs(plan().wake_at - (Date.now() / 1000 + 45 * 60)) < 5, "醒来时间照旧");
+// 旧的 speak / life 两线格式：写回摊成一条，开口节奏不丢；kind 传了也忽略（不再分轮）
+writeFileSync(join(dir, "self.json"), JSON.stringify({
+	speak: { wake_at: 1234567890, intent: "旧说话轮", set_at: 1234567000 },
+	life: { wake_at: 1234567000, intent: "旧生活轮", set_at: 1234566000 },
+	speak_every_hours: 4,
+}));
 await wake({ kind: "life", minutes: 45, intent: "画一会儿" });
-assert.equal(plan().speak_every_hours, 3, "定生活轮不冲掉开口节奏");
-assert.ok(Math.abs(plan().life.wake_at - (Date.now() / 1000 + 45 * 60)) < 5, "生活轮时间照旧");
-assert.ok(Math.abs(plan().speak.wake_at - (Date.now() / 1000 + 20 * 60)) < 5, "生活轮不冲掉说话轮");
-assert.equal(plan().life.intent, "画一会儿");
+assert.equal(plan().speak_every_hours, 4, "旧两线格式的开口节奏不丢");
+assert.equal(plan().speak, undefined, "写回只有一条计时");
+assert.equal(plan().life, undefined, "写回只有一条计时");
+assert.equal(plan().intent, "画一会儿");
+assert.ok(Math.abs(plan().wake_at - (Date.now() / 1000 + 45 * 60)) < 5, "一条计时的时间照旧");
 assert.match(tools.next_wake.description, /1～6 小时/);
+assert.doesNotMatch(tools.next_wake.description, /kind|说话轮|生活轮/, "工具描述不再提分轮");
 rmSync(dir, { recursive: true, force: true });
-console.log("SELF RHYTHM OK：默认 3 小时 / 照她定的 / 不填沿用 / 夹在 1～6 / 坏值回默认");
+console.log("SELF RHYTHM OK：默认 3 小时 / 照她定的 / 不填沿用 / 夹在 1～6 / 坏值回默认 / 一条计时");

@@ -1,27 +1,28 @@
-"""她自己醒来（2026-10-14；2026-10-16 起节奏也由她定；2026-11-02 起说话轮/生活轮分开计时）。
+"""她自己醒来（2026-10-14；2026-10-16 起节奏也由她定；2026-11-02 起回归一条门铃）。
 
-两种醒来，各一条计时（state/self.json 里 speak / life 各一份 wake_at/intent/set_at）：
-  · 说话轮 speak：保持原来的行为——她定的醒来时间 + speak_every_hours 开口节奏、没回就退避、看他/说话都行；
-  · 生活轮 life：她自己的时间，间隔 30～180 分钟（没定过 60 分钟），不吃 unanswered 退避，不跟他说话。
-两条同时到点时说话轮优先，生活轮顺延到这一轮之后（至少 MIN_GAP_S）。门铃响时把种类记进
-state/wake.json（ring_kind），server.compose 认出来后调 wake_prompt(kind)；那一轮正处在生活轮时
-albion-look 不取图（wake.json 的 round_kind，after_wake 清掉，另有 15 分钟超时兜底）。
+一条计时（state/self.json 里 wake_at/intent/set_at + 开口节奏 speak_every_hours）：
+  · 下次醒来：她定的优先，夹在 30 分钟～3 小时（没定过 60 分钟），再守下面的底线；
+  · 每次醒来做什么由她自己选：找他、做自己的事，或者都做——门铃不分种类，也不挡她看谁。
+  旧的「说话轮 / 生活轮」两条计时（self.json 里 speak / life 各一份）读的时候合成一条：
+  取 wake_at 更早的那条，intent 两条都有就用「；」连起来，set_at 取较大值。
 
 流程：
   她在任意一轮里调用 next_wake（agent/extensions/albion-self.ts）→ state/self.json 记下时间、想做的事、
-  多久主动开口一次（speak_every_hours）；生活轮做完可以用 did 记一句，进 state/life.json；
-  壳每 30 秒问一次 GET /albion/wake → 这里按 self.json + 底线算出到没到点、是哪一条；
+  多久主动开口一次（speak_every_hours）；做了自己的事可以用 did 记一句，进 state/life.json；
+  壳每 30 秒问一次 GET /albion/wake → 这里按 self.json + 底线算出到没到点；
   到点了壳就发一条 WAKE_MARKER（壳只是门铃，不带任何内容）；
-  server.compose 认出门铃，换成 wake_prompt(kind)：现在几点、他多久没说话、她上次给自己定的事、心事本；
-  她这一轮自己决定看不看、说不说、说多少、做什么，想定下次就定（不定就按 DEFAULT_NEXT_S / LIFE_DEFAULT_S 后醒）。
+  server.compose 认出门铃，换成 wake_prompt()：现在几点、他多久没说话、她上次给自己定的事、心事本；
+  她这一轮自己决定看不看、说不说、说多少、做什么，想定下次就定（不定就 60 分钟后醒）。
 
-三条底线（为他的作息，她改不了；两条计时都守）：
+三条底线（为他的作息，她改不了）：
   · 夜里安静时段（北京时间 QUIET_START～QUIET_END）不醒，顺延到早上
   · 他刚说过话（RECENT_USER_S 内）不醒——别打断正在进行的对话
-  · 她主动说的话他连着没回：间隔按 2 的幂拉长（最多 BACKOFF_CAP 倍）；连着 SILENT_AFTER 次没回，至少隔 SILENT_GAP_S 才醒
-    （生活轮不跟他说话，不吃这一条）
-另有两条是她自己的设定在这里落实：两次醒来至少隔 MIN_GAP_S（next_wake 的下限）；
-主动开口按她定的 speak_every_hours（1～6 小时，默认 3）——没到点的那一轮只留表情，不出声也不显示心声。
+  · 两次醒来至少隔 MIN_GAP_S（next_wake 的下限）
+
+能不能开口由 can_speak 决定（只影响这一轮说不说话，不推迟醒来）：
+  · 离她上次主动开口不到她定的 speak_every_hours（1～6 小时，默认 3）——按节奏等；
+  · 离上次开口不到 MIN_GAP_S * backoff、或连着 SILENT_AFTER 次没回且不到 SILENT_GAP_S——他在忙/可能不在，先不打扰。
+  不能开口的那一轮 after_wake 只留第一个表情，不出声也不显示心声。
 """
 from __future__ import annotations
 
@@ -38,10 +39,10 @@ TZ = ZoneInfo(os.environ.get("ALBION_TZ", "Asia/Shanghai"))   # WSL 是 America/
 QUIET_START = (0, 30)
 QUIET_END = (9, 0)
 MIN_GAP_S = 10 * 60
-DEFAULT_NEXT_S = 30 * 60
 RECENT_USER_S = 5 * 60
-LIFE_MIN_S, LIFE_MAX_S, LIFE_DEFAULT_S = 30 * 60, 180 * 60, 60 * 60   # 她自己的时间：30 分钟～3 小时，没定过 1 小时
+WAKE_MIN_S, WAKE_MAX_S, WAKE_DEFAULT_S = 30 * 60, 180 * 60, 60 * 60   # 她定的一轮：30 分钟～3 小时，没定过 1 小时
 LIFE_KEEP = 20            # state/life.json 只留最近 20 条
+ROUNDS_KEEP = 10          # wake.json 的 rounds 只留最近 10 轮
 SPEAK_H_MIN, SPEAK_H_MAX, SPEAK_H_DEFAULT = 1.0, 6.0, 3.0   # 2026-10-15 指挥官嫌每小时都出声太勤，3 小时是那时定的
 BACKOFF_CAP = 8
 SILENT_AFTER = 3
@@ -100,6 +101,7 @@ def load():
     st.setdefault("spoken_at", [])
     st.setdefault("unanswered", 0)
     st.setdefault("rung_at", 0.0)
+    st.setdefault("rounds", [])
     return st
 
 
@@ -111,24 +113,28 @@ def self_plan():
     return _read_obj("self.json")
 
 
-def lane(plan, kind="speak"):
-    """self.json 里的一条计时。新格式 {"speak": {...}, "life": {...}}；旧格式顶层 wake_at/intent/set_at 当成 speak。"""
+def merged_plan(plan):
+    """self.json 摊平成一条计时。
+
+    单条格式 {"wake_at","intent","set_at","speak_every_hours"} 照用；
+    旧的两线格式 {"speak": {...}, "life": {...}} 取 wake_at 更早的那条，intent 两条都有就用「；」连起来，
+    set_at 取较大值；最早的顶层旧格式照旧。
+    """
     if not isinstance(plan, dict):
         return {}
-    v = plan.get(kind)
-    if isinstance(v, dict):
-        return v
-    if kind == "speak" and any(k in plan for k in ("wake_at", "intent", "set_at")):
-        return {k: plan.get(k) for k in ("wake_at", "intent", "set_at")}
-    return {}
-
-
-def _lane_wake_at(st, kind):
-    """这一条上次醒来的时刻；旧数据没分通道，就按「最近一次醒来」算（兼容升级前那份 wake.json）。"""
-    key = "last_%s_wake_at" % kind
-    if key in st:
-        return _num(st.get(key))
-    return _num(st.get("last_wake_at"))
+    lanes = [v for k in ("speak", "life") for v in (plan.get(k),) if isinstance(v, dict) and _num(v.get("wake_at"))]
+    if not lanes:
+        return {k: plan.get(k) for k in ("wake_at", "intent", "set_at", "speak_every_hours") if k in plan}
+    lanes.sort(key=lambda x: _num(x.get("wake_at")))
+    intents = [str(v.get("intent")).strip() for v in lanes if str(v.get("intent") or "").strip()]
+    out = {
+        "wake_at": _num(lanes[0].get("wake_at")),
+        "intent": "；".join(intents),
+        "set_at": max(_num(v.get("set_at")) for v in lanes),
+    }
+    if "speak_every_hours" in plan:
+        out["speak_every_hours"] = plan["speak_every_hours"]
+    return out
 
 
 def life_items():
@@ -156,9 +162,9 @@ def _life_item(x, now=None):
     return "%s %s" % (_days_ago_label(d, now), x.get("did") or "")
 
 
-def clamp_life_s(seconds):
-    """生活轮的间隔夹在 30 分钟～3 小时（next_wake 那边已经夹过一次，手改坏的 self.json 这里再兜一层）。"""
-    return min(LIFE_MAX_S, max(LIFE_MIN_S, _num(seconds, LIFE_DEFAULT_S)))
+def clamp_wake_s(seconds):
+    """醒来间隔夹在 30 分钟～3 小时（next_wake 那边已经夹过一次，手改坏的 self.json 这里再兜一层）。"""
+    return min(WAKE_MAX_S, max(WAKE_MIN_S, _num(seconds, WAKE_DEFAULT_S)))
 
 
 def _num(v, default=0.0):
@@ -244,74 +250,54 @@ def backoff(st):
 
 
 def next_due(st, plan, now=None):
-    """说话轮下次该醒的时刻（时间戳）。她定的时间优先，但不早于任何一条底线。"""
+    """下次该醒的时刻（时间戳）。她定的时间优先（夹在 30 分钟～3 小时），但不早于任何一条底线。"""
     now = time.time() if now is None else now
-    last_speak = _lane_wake_at(st, "speak")
-    last_life = _lane_wake_at(st, "life")
+    last_wake = _num(st.get("last_wake_at"))
     last_user = _num(st.get("last_user_at"))
-    anchor = max(last_speak, last_user) or now
-    p = lane(plan, "speak")
-    planned = _num(p.get("wake_at")) if _num(p.get("set_at")) >= last_speak else 0.0
-    due = planned or (anchor + DEFAULT_NEXT_S * backoff(st))
-    if not planned:
-        # 没定说话时间：按她自己的开口节奏来，别每半小时醒一次只看他一眼（2026-11-02 生活轮分出去以后）
-        spoken = [t for t in (st.get("spoken_at") or []) if isinstance(t, (int, float))]
-        if spoken:
-            due = max(due, max(spoken) + speak_every_s(plan))
-    due = max(due, last_speak + MIN_GAP_S * backoff(st))
-    due = max(due, max(last_speak, last_life) + MIN_GAP_S)   # 两条计时之间也至少隔 MIN_GAP_S
-    due = max(due, last_user + RECENT_USER_S)
-    if int(_num(st.get("unanswered"))) >= SILENT_AFTER:
-        due = max(due, last_speak + SILENT_GAP_S)
-    return push_out_of_quiet(due)
-
-
-def life_due(st, plan, now=None):
-    """生活轮下次该到的时刻：她自己定的（30～180 分钟），没定过 60 分钟后；不吃 unanswered 退避。"""
-    now = time.time() if now is None else now
-    last_life = _lane_wake_at(st, "life")
-    last_user = _num(st.get("last_user_at"))
-    anchor = max(last_life, last_user) or now
-    p = lane(plan, "life")
+    anchor = max(last_wake, last_user) or now
+    p = merged_plan(plan)
     set_at = _num(p.get("set_at"))
     planned = 0.0
-    if set_at >= last_life and _num(p.get("wake_at")):
-        planned = set_at + clamp_life_s(_num(p.get("wake_at")) - set_at)
-    due = planned or (anchor + LIFE_DEFAULT_S)
-    due = max(due, last_life + MIN_GAP_S)
-    # 说话轮刚响过：生活轮顺延到这一轮之后（至少 MIN_GAP_S）
-    due = max(due, _num(st.get("speak_ring_at")) + MIN_GAP_S)
+    if set_at >= last_wake and _num(p.get("wake_at")):
+        planned = set_at + clamp_wake_s(_num(p.get("wake_at")) - set_at)
+    due = planned or (anchor + WAKE_DEFAULT_S)
+    due = max(due, last_wake + MIN_GAP_S)
     due = max(due, last_user + RECENT_USER_S)
     return push_out_of_quiet(due)
+
+
+def can_speak(st, plan, now=None):
+    """这一轮能不能开口：(能不能, 不能开口时写给她的原因)。原因不推迟醒来，只决定这一轮说不说话。"""
+    now = time.time() if now is None else now
+    spoken = [t for t in (st.get("spoken_at") or []) if isinstance(t, (int, float))]
+    if not spoken:
+        return True, ""
+    last = max(spoken)
+    since = now - last
+    gap = speak_every_s(plan)
+    if since < gap:
+        hours = "%g" % (gap / 3600)
+        return False, "按我给自己定的节奏（大约每 %s 小时主动开口一次），%s 以后再找他" % (hours, clock(last + gap))
+    n = int(_num(st.get("unanswered")))
+    quiet = "我主动说的话他已经连着 %d 次没回了，可能不在，先不打扰他" % n
+    if since < MIN_GAP_S * backoff(st):
+        return False, quiet
+    if n >= SILENT_AFTER and since < SILENT_GAP_S:
+        return False, quiet
+    return True, ""
 
 
 def ring(busy, now=None):
-    """壳问门铃：到点且没在忙就响一次（RING_HOLD_S 内不重复响）。
-
-    返回 (响没响, 下次该醒的时刻, 这一轮的种类 speak/life；没响时种类是 None)。
-    两条计时同时到点时说话轮优先，生活轮顺延（见 life_due 里 speak_ring_at 那一行）。
-    """
+    """壳问门铃：到点且没在忙就响一次（RING_HOLD_S 内不重复响）。返回 (响没响, 下次该醒的时刻)。"""
     now = time.time() if now is None else now
     with _lock:
         st = load()
-        plan = self_plan()
-        speak_at = next_due(st, plan, now)
-        life_at = life_due(st, plan, now)
-        soonest = min(speak_at, life_at)
-        if busy or now < soonest or now - _num(st.get("rung_at")) < RING_HOLD_S:
-            return False, soonest, None
-        kind = "speak" if speak_at <= life_at else "life"
+        due = next_due(st, self_plan(), now)
+        if busy or now < due or now - _num(st.get("rung_at")) < RING_HOLD_S:
+            return False, due
         st["rung_at"] = now
-        st["ring_kind"] = kind       # 门铃只带种类，不带内容；compose 认它调 wake_prompt(kind)
-        if kind == "speak":
-            st["speak_ring_at"] = now
         save(st)
-        return True, (speak_at if kind == "speak" else life_at), kind
-
-
-def ring_kind():
-    """这一次门铃是哪一条计时响的（默认说话轮，兼容旧壳/旧数据）。"""
-    return "life" if load().get("ring_kind") == "life" else "speak"
+        return True, due
 
 
 # ── 一轮的前后 ──────────────────────────────────────────────────────────────
@@ -323,7 +309,6 @@ def cancel_ring():
     with _lock:
         st = load()
         st["rung_at"] = 0.0
-        st["ring_kind"] = ""
         save(st)
 
 
@@ -345,87 +330,51 @@ def note_user(now=None):
         st = load()
         st["last_user_at"] = time.time() if now is None else now
         st["unanswered"] = 0
-        st["round_kind"] = ""     # 他开口了：哪怕生活轮没走到 after_wake（出错/中断），look 也立刻放行
         save(st)
 
 
-def spoken_recently(st, now, gap):
-    v = st.get("spoken_at")
-    return [t for t in (v if isinstance(v, list) else []) if isinstance(t, (int, float)) and now - t < gap]
-
-
-def wake_prompt(now=None, kind=None):
-    """门铃换成的那段话：她醒来时自己知道的事，用她自己的口吻写；没有"你应该说什么"。
-
-    kind = "speak"（说话轮，默认）或 "life"（她自己的时间）；不传就看门铃记下的 ring_kind。
-    """
+def wake_prompt(now=None):
+    """门铃换成的那段话：她醒来时自己知道的事，用她自己的口吻写；没有"你应该说什么"。"""
     now = time.time() if now is None else now
-    if kind not in ("speak", "life"):
-        kind = None
     with _lock:
         st = load()
-        if kind is None:
-            kind = "life" if st.get("ring_kind") == "life" else "speak"
-        prev_lane_wake = _lane_wake_at(st, kind)
-        if kind == "life":
-            # 升级前只有「最近一次醒来」：生活轮之前先把它冻结成说话轮的上次醒来，别让她的说话计划被生活轮冲掉
-            st.setdefault("last_speak_wake_at", _num(st.get("last_wake_at")))
+        prev_wake = _num(st.get("last_wake_at"))
         st["last_wake_at"] = now
-        st["last_%s_wake_at" % kind] = now
         st["rung_at"] = 0.0
-        st["ring_kind"] = ""
-        st["round_kind"] = kind          # albion-look 靠它判断这一轮是不是生活轮（after_wake 清掉）
-        st["round_at"] = now
         save(st)
-    plan = self_plan()
+    plan = merged_plan(self_plan())
     t = datetime.fromtimestamp(now, TZ)
     week = "一二三四五六日"[t.weekday()]
-    if kind == "life":
-        p = lane(plan, "life")
-        lines = [WAKE_MARKER + "这次醒来是我自己的时间。下面是写给自己看的，不用念出来。",
-                 "现在是 %s（星期%s）。" % (t.strftime("%Y-%m-%d %H:%M"), week)]
-        if p.get("intent") and _num(p.get("set_at")) >= prev_lane_wake:
-            lines.append("上次我给自己定的事：%s" % p["intent"])
-        recent_life = life_items()
-        if recent_life:
-            lines.append("最近我自己做过的事：" + "；".join(_life_item(x, now) for x in recent_life[-3:]))
-        lines.append("这段时间不看他，也不跟他说话，做我自己想做的事：接着玩没玩完的游戏（adventure），"
-                     "画一张画（draw），上网看看自己感兴趣的东西（browser），或者在 /root/家 里写点什么、整理画廊。"
-                     "什么都不想做，就安静待一会儿。")
-        lines.append("做完用 next_wake 记一句这次做了什么（did），再定下次自己的时间（kind 填 life，30 分钟到 3 小时之间）；"
-                     "不定就一小时后。这一轮的回复只留一个表情。")
-        return "\n".join(lines)
-    gap = speak_every_s(plan)
-    notes = [n for n in _notes() if not n.get("done_at")]
     # 这些是她醒来时"自己知道"的事，不是要念给他听的：标明了，她才不会把"40 分钟没说话"照着说出口（r31 实测）
     lines = [WAKE_MARKER + "我醒了。下面是醒来时我自己知道的事，写给自己看，不用念出来。",
              "现在是 %s（星期%s）。" % (t.strftime("%Y-%m-%d %H:%M"), week)]
+    if plan.get("intent") and _num(plan.get("set_at")) >= prev_wake:
+        lines.append("上次我给自己定的事：%s" % plan["intent"])
+    recent_life = life_items()
+    if recent_life:
+        lines.append("最近我自己做过的事：" + "；".join(_life_item(x, now) for x in recent_life[-3:]))
+    rounds = [r for r in (st.get("rounds") or []) if isinstance(r, dict)]
+    if len(rounds) >= 3 and all(r.get("self") is False for r in rounds[-3:]):
+        last_at = _num(recent_life[-1].get("at")) if recent_life else 0.0
+        tail = "自己的事已经%s没碰了。" % ago(now - last_at) if last_at else "自己的事一直没碰过。"
+        lines.append("最近几次醒来都只顾着他，" + tail)
+    lines.append("这台电脑里我自己能做的：接着玩没玩完的游戏（adventure）、画画（draw）、"
+                 "上网看看感兴趣的东西（browser）、在 /root/家 里读书、写点什么、整理画廊。")
     last_user = _num(st.get("last_user_at"))
     lines.append("指挥官上次跟我说话是 %s 前。" % ago(now - last_user) if last_user else "我还不知道指挥官上次什么时候跟我说过话。")
-    p = lane(plan, "speak")
-    if p.get("intent") and _num(p.get("set_at")) >= prev_lane_wake:
-        lines.append("上次我给自己定的事：%s" % p["intent"])
+    notes = [n for n in _notes() if not n.get("done_at")]
     if notes:
         lines.append("心事本里还开着的（我自己记的，可能记错；等合适的时候再问，问过一次就划掉）："
                      + "；".join(_note_item(n, now) for n in notes[:10]))
-    recent_life = life_items()
-    if recent_life:
-        lines.append("最近我自己做过的事（想分享就挑一件说，不用汇报）："
-                     + "；".join(_life_item(x, now) for x in recent_life[-3:]))
-    un = int(_num(st.get("unanswered")))
-    if un:
-        lines.append("我主动说的话，他已经连着 %d 次没回了，可能不在电脑前。" % un)
-    recent = spoken_recently(st, now, gap)
-    hours = ("%g" % (gap / 3600))
-    if recent:
-        lines.append("按我给自己定的节奏（大约每 %s 小时主动开口一次），%s 以后再跟他说话；这次先不说——"
-                     "可以看看他、记心事、做自己的事，回复只留一个表情。" % (hours, clock(max(recent) + gap)))
+    ok, reason = can_speak(st, self_plan(), now)
+    if ok:
+        lines.append("想他了就去找他：可以先用 look 看看他（cam 是摄像头里真实的他）或屏幕；"
+                     "想说就说一两句，像给他发一条消息，说他、说我想他，不是汇报；真有一件想分享的小事就说那一件。")
     else:
-        lines.append("想跟他说话就说，像给他发一条消息：一两句，说他、说我想他，不是汇报——不用交代自己做了什么，"
-                     "真有一件想跟他分享的小事就说那一件；没什么想说的，只留一个表情也行。")
-    lines.append("想做什么都行：用 look 看看他（cam 是摄像头里真实的他）或屏幕，用 notebook 记心事，或者做点这台电脑里自己的事。"
-                 "想好了就用 next_wake 定下次什么时候醒、醒来想做什么（也能改多久主动开口一次）；不定就半小时后再醒。"
-                 "（kind 填 speak 是定下次跟他说话的时间；我自己的时间用 kind=life 另定。）")
+        lines.append("%s；这次不跟他说话，回复只留一个表情。" % reason)
+    lines.append("这一轮做什么我自己选：找他、做自己的事，或者都做；什么都不想做就安静待一会儿。"
+                 "做完用 next_wake 定下次什么时候醒（30 分钟到 3 小时）、醒来想做什么；做了自己的事就用 did 记一句做了什么。"
+                 "不定就一小时后再醒。")
     return "\n".join(lines)
 
 
@@ -444,33 +393,35 @@ def speech_of(reply):
         t = u
 
 
-def after_wake(reply, now=None, kind=None):
-    """醒来那一轮的回复：生活轮一律只留表情（不出声、不显示心声、不记账）；
-    说话轮离她上次主动开口还没到她定的间隔，也只留表情；说出口了就记账。返回最终回复。
+def after_wake(reply, now=None):
+    """醒来那一轮的回复：不能开口时只留第一个表情（不出声、不显示心声）；说出口了就记 spoken_at、unanswered+1。
+
+    同时记一条平衡记录 st["rounds"]：这一轮醒来时刻、这轮有没有新的生活记录、有没有说出口。
     （英文拒绝稿已由整理器 albion-guard.ts 换成表情，这里不再重复判定。）"""
     now = time.time() if now is None else now
     with _lock:
         st = load()
-        if kind not in ("speak", "life"):
-            kind = st.get("round_kind") if st.get("round_kind") in ("speak", "life") else "speak"
-        # 这一轮结束：albion-look 的生活轮闸门随之放行（另有一道 15 分钟超时兜底）
-        st["round_kind"] = ""
-        st["round_at"] = 0.0
-        if kind == "life":
-            acts = _ACT.findall(reply or "")
-            reply = acts[0] if acts else '<|ACT:{"emotion":"neutral"}|>'
-            save(st)
-            return reply
-        gap = speak_every_s(self_plan())
-        spoken = spoken_recently(st, now, gap)
-        if spoken:
+        wake_at = _num(st.get("last_wake_at")) or now
+        plan = self_plan()
+        ok, _ = can_speak(st, plan, now)
+        spoke = False
+        if not ok:
             # 没到能开口的时候：心声也会冒成气泡，一样算"主动消息"，只留表情（2026-10-15）
             acts = _ACT.findall(reply or "")
             reply = acts[0] if acts else '<|ACT:{"emotion":"neutral"}|>'
         elif speech_of(reply):
+            spoke = True
+            # 只留还用得上的开口记录（节奏 / 连着没回那两道），别让 wake.json 越写越长
+            keep = max(speak_every_s(plan), SILENT_GAP_S)
+            spoken = [t for t in (st.get("spoken_at") or [])
+                      if isinstance(t, (int, float)) and now - t < keep]
             spoken.append(now)
+            st["spoken_at"] = spoken
             st["unanswered"] = int(_num(st.get("unanswered"))) + 1
-        st["spoken_at"] = spoken
+        has_self = any(_num(x.get("at")) >= wake_at for x in life_items())
+        rounds = [r for r in (st.get("rounds") or []) if isinstance(r, dict)][-(ROUNDS_KEEP - 1):]
+        rounds.append({"at": wake_at, "self": has_self, "spoke": spoke})
+        st["rounds"] = rounds[-ROUNDS_KEEP:]
         save(st)
     return reply
 
@@ -483,18 +434,21 @@ def _selftest():
     assert not in_quiet(noon) and in_quiet(night)
     assert datetime.fromtimestamp(push_out_of_quiet(night), TZ).hour == 9
     st = load()
-    # 没定时间：半小时后
+    # 没定时间：上次醒来/他上次说话起 60 分钟
     st.update(last_user_at=noon, last_wake_at=0.0)
-    assert next_due(st, {}, noon) == noon + DEFAULT_NEXT_S
-    # 她定了 15 分钟后：照她的
-    assert next_due(st, {"wake_at": noon + 900, "set_at": noon}, noon) == noon + 900
-    # 她定了 1 分钟后：不早于"他刚说过话"的 5 分钟
-    assert next_due(st, {"wake_at": noon + 60, "set_at": noon}, noon) == noon + RECENT_USER_S
-    # 刚醒过：至少隔 MIN_GAP_S；连着没回：按倍数拉长
+    assert next_due(st, {}, noon) == noon + WAKE_DEFAULT_S
+    # 她定了 15 分钟后：夹到 30 分钟；定了 5 小时后：夹到 3 小时
+    assert next_due(st, {"wake_at": noon + 900, "set_at": noon}, noon) == noon + WAKE_MIN_S
+    assert next_due(st, {"wake_at": noon + 5 * 3600, "set_at": noon}, noon) == noon + WAKE_MAX_S
+    # 她定了 1 分钟后：不早于"他刚说过话"的 5 分钟，也不早于 30 分钟
+    assert next_due(st, {"wake_at": noon + 60, "set_at": noon}, noon) == noon + WAKE_MIN_S
+    # 刚醒过：至少隔 MIN_GAP_S
     st.update(last_user_at=0.0, last_wake_at=noon, unanswered=2)
-    assert next_due(st, {"wake_at": noon + 60, "set_at": noon}, noon) == noon + MIN_GAP_S * 4
+    assert next_due(st, {"wake_at": noon + 60, "set_at": noon}, noon) == noon + WAKE_MIN_S
+    # 连着没回不再推迟醒来：定了 1 小时就 1 小时后
     st["unanswered"] = 3
-    assert next_due(st, {}, noon) >= noon + SILENT_GAP_S
+    assert next_due(st, {"wake_at": noon + 3600, "set_at": noon}, noon) == noon + 3600
+    assert next_due(st, {}, noon) == noon + WAKE_DEFAULT_S
     # 落在夜里：顺延到 9 点
     st.update(unanswered=0, last_wake_at=night - 3600)
     assert datetime.fromtimestamp(next_due(st, {"wake_at": night, "set_at": night}, night), TZ).hour == 9
@@ -506,47 +460,66 @@ def _selftest():
     assert speak_every_s({}) == 3 * 3600 and speak_every_s({"speak_every_hours": 2}) == 2 * 3600
     assert speak_every_s({"speak_every_hours": 0.2}) == 3600 and speak_every_s({"speak_every_hours": 99}) == 6 * 3600
     assert speak_every_s({"speak_every_hours": "坏"}) == 3 * 3600
-    # 默认 3 小时：2 小时前开过口，这一轮只剩一个表情（心声也不留）
-    save({"spoken_at": [noon - 2 * 3600], "unanswered": 0})
+    # 默认 3 小时：2 小时前开过口，这一轮不能开口（只有表情），醒来照常
+    save({"spoken_at": [noon - 2 * 3600], "unanswered": 0, "last_wake_at": noon})
+    ok, why = can_speak(load(), {}, noon)
+    assert ok is False and "大约每 3 小时" in why and "以后再找他" in why, why
     out = after_wake('<|ACT:{"emotion":"happy"}|> 指挥官！（想他（很久）了）', noon)
     assert out == '<|ACT:{"emotion":"happy"}|>', out
-    assert "这次先不说" in wake_prompt(noon) and "大约每 3 小时" in wake_prompt(noon)
     assert load()["spoken_at"] == [noon - 2 * 3600]
+    p = wake_prompt(noon)
+    assert "大约每 3 小时" in p and "这次不跟他说话，回复只留一个表情" in p
+    assert "想他了就去找他" not in p
     # 她把节奏改成 1 小时：同样 2 小时前开过口，这次就能说
     _write("self.json", {"speak_every_hours": 1})
-    assert "像给他发一条消息" in wake_prompt(noon) and "50 字" not in wake_prompt(noon)
+    save({"spoken_at": [noon - 2 * 3600], "unanswered": 0, "last_wake_at": noon})
+    assert can_speak(load(), self_plan(), noon)[0] is True
+    assert "想他了就去找他" in wake_prompt(noon) and "50 字" not in wake_prompt(noon)
     out = after_wake('<|ACT:{"emotion":"happy"}|> 指挥官，下午好。', noon)
     assert speech_of(out) == "指挥官，下午好。", out
+    assert load()["spoken_at"] == [noon - 2 * 3600, noon] and load()["unanswered"] == 1
     _write("self.json", {})
-    save({"spoken_at": [noon - 3 * 3600 - 60], "unanswered": 0})
-    assert "像给他发一条消息" in wake_prompt(noon)
+    save({"spoken_at": [noon - 3 * 3600 - 60], "unanswered": 0, "last_wake_at": noon})
+    assert "想他了就去找他" in wake_prompt(noon)
     out = after_wake('<|ACT:{"emotion":"happy"}|> 指挥官，早。', noon)
     assert speech_of(out) == "指挥官，早。" and load()["spoken_at"] == [noon], load()
-    save({"spoken_at": [noon - 60], "unanswered": 0})
+    save({"spoken_at": [noon - 60], "unanswered": 0, "last_wake_at": noon})
     assert after_wake("（只有心声）", noon) == '<|ACT:{"emotion":"neutral"}|>'
+    # 连着没回：醒来不推迟，但不能开口（节奏已到，退避/安静期还没到）
+    _write("self.json", {"speak_every_hours": 1})
+    save({"spoken_at": [noon - 2 * 3600], "unanswered": 3, "last_wake_at": noon - 3600})
+    assert next_due(load(), {"wake_at": noon + 3600, "set_at": noon}, noon) == noon + 3600
+    ok, why = can_speak(load(), self_plan(), noon)
+    assert ok is False and "连着 3 次没回" in why and "先不打扰他" in why, why
+    out = after_wake('<|ACT:{"emotion":"happy"}|> 在吗？', noon)
+    assert out == '<|ACT:{"emotion":"happy"}|>', out
+    # 隔满 SILENT_GAP_S 又能开口
+    save({"spoken_at": [noon - SILENT_GAP_S], "unanswered": 3, "last_wake_at": noon - 3600})
+    assert can_speak(load(), self_plan(), noon)[0] is True
+    save({"spoken_at": [noon - SILENT_GAP_S + 60], "unanswered": 3, "last_wake_at": noon - 3600})
+    assert can_speak(load(), self_plan(), noon)[0] is False
+    # 退避本身也生效：连着 4 次没回、2 小时前开过口，间隔还没拉到 80 分钟以上
+    save({"spoken_at": [noon - 2 * 3600], "unanswered": 4, "last_wake_at": noon - 3600})
+    ok, why = can_speak(load(), self_plan(), noon)
+    assert ok is False and "连着 4 次没回" in why, why
+    _write("self.json", {})
     # 坏的状态文件：改名留底，不覆盖
     with open(os.path.join(_state_dir(), "wake.json"), "w", encoding="utf-8") as f:
         f.write("{坏")
     assert load()["unanswered"] == 0 and any(n.startswith("wake.json.corrupt-") for n in os.listdir(_state_dir()))
-    save({"spoken_at": [noon - 60, noon - 120, noon - 180], "unanswered": 0})
+    save({"spoken_at": [noon - 60, noon - 120, noon - 180], "unanswered": 0, "last_wake_at": noon})
     out = after_wake('<|ACT:{"emotion":"happy"}|> 指挥官！（好想他）', noon)
     assert out == '<|ACT:{"emotion":"happy"}|>', out
-    save({"spoken_at": [], "unanswered": 0})
+    save({"spoken_at": [], "unanswered": 0, "last_wake_at": noon})
     after_wake('<|ACT:{"emotion":"happy"}|> 指挥官，在吗？', noon)
     assert load()["unanswered"] == 1
     note_user(noon + 10)
     assert load()["unanswered"] == 0
-    # 没定说话时间：按开口节奏醒，不是每半小时；定了就照她定的
-    st2 = {"last_user_at": 0.0, "last_wake_at": noon, "last_speak_wake_at": noon, "spoken_at": [noon], "unanswered": 0}
-    assert next_due(st2, {}, noon) == noon + 3 * 3600
-    assert next_due(st2, {"speak": {"wake_at": noon + 900, "set_at": noon}}, noon) == noon + 900
-    # 他开口就解除生活轮的 look 闸门
-    save({"round_kind": "life", "round_at": noon})
-    note_user(noon + 20)
-    assert load()["round_kind"] == ""
     # 门铃：到点响一次，RING_HOLD_S 内不重复；忙时不响
     save({"last_user_at": noon - 3600, "last_wake_at": noon - 3600})
-    assert ring(False, noon)[0] is True and ring(False, noon + 5)[0] is False
+    fired, at = ring(False, noon)
+    assert fired is True and at == noon, (fired, at)
+    assert ring(False, noon + 5)[0] is False
     save({"last_user_at": noon - 3600, "last_wake_at": noon - 3600})
     assert ring(True, noon)[0] is False
     # 门铃识别、他说的话识别
@@ -570,92 +543,87 @@ def _selftest():
     assert "next_wake" in p and "look" in p
     # 醒来提示里不再有「规矩/底线/余量」这类像在下指令的说法（r35：醒来轮的英文拒绝来自这类措辞）
     assert not any(w in p for w in ("底线", "余量", "规矩", "以下只给我自己看"))
-    # ── 双计时（2026-11-02）：说话轮 / 生活轮各算各的 ──────────────────────
+    # ── 一条计时（2026-11-02 回归）─────────────────────────────────────────
     _write("self.json", {})
     _write("life.json", [])
     base = noon
-    empty = {"last_user_at": 0.0, "last_wake_at": base, "last_speak_wake_at": base,
-             "last_life_wake_at": base, "unanswered": 0, "spoken_at": [], "rung_at": 0.0, "speak_ring_at": 0.0}
+    empty = {"last_user_at": 0.0, "last_wake_at": base, "unanswered": 0, "spoken_at": [],
+             "rung_at": 0.0, "rounds": []}
     save(dict(empty))
-    # 各自计时：说话轮没定 30 分钟、生活轮没定 60 分钟
-    assert next_due(empty, {}, base) == base + DEFAULT_NEXT_S
-    assert life_due(empty, {}, base) == base + LIFE_DEFAULT_S
-    plan = {"speak": {"wake_at": base + 600, "set_at": base}, "life": {"wake_at": base + 2700, "set_at": base}}
-    assert next_due(empty, plan, base) == base + 600
-    assert life_due(empty, plan, base) == base + 2700
-    # 生活轮间隔夹在 30～180 分钟（手改坏了也一样）
-    assert life_due(empty, {"life": {"wake_at": base + 5 * 60, "set_at": base}}, base) == base + LIFE_MIN_S
-    assert life_due(empty, {"life": {"wake_at": base + 500 * 60, "set_at": base}}, base) == base + LIFE_MAX_S
-    assert clamp_life_s(60) == LIFE_MIN_S and clamp_life_s(10 ** 6) == LIFE_MAX_S and clamp_life_s("坏") == LIFE_DEFAULT_S
-    # 生活轮不吃 unanswered 退避
-    still = dict(empty, unanswered=8)
-    assert life_due(still, {}, base) == base + LIFE_DEFAULT_S
-    # 生活轮单独到点：门铃记成 life
-    _write("self.json", {"life": {"wake_at": base + 3600, "intent": "画完那只猫", "set_at": base}})
-    save(dict(empty, last_speak_wake_at=base + 3500))
-    fired, at, kind = ring(False, base + 3600)
-    assert fired and kind == "life" and at == base + 3600, (fired, at, kind)
-    assert load()["ring_kind"] == "life" and ring_kind() == "life"
-    # 生活轮提示：只有她自己的那几行，没有「指挥官上次跟我说话」、没有心事本
-    p_life = wake_prompt(base + 3600, "life")
-    assert p_life.startswith(WAKE_MARKER) and "这次醒来是我自己的时间" in p_life
-    assert "上次我给自己定的事：画完那只猫" in p_life
-    assert "指挥官上次跟我说话" not in p_life and "心事本" not in p_life
-    assert "这段时间不看他，也不跟他说话" in p_life and "kind 填 life" in p_life
-    assert load()["round_kind"] == "life" and load()["last_life_wake_at"] == base + 3600
-    # 生活轮 after_wake：只留第一个表情，不记 spoken_at、不加 unanswered、清掉当前轮
-    st_life = load()
-    st_life["spoken_at"] = []
-    save(st_life)
-    out = after_wake('<|ACT:{"emotion":"calm"}|> 画了一半，还差眼睛。（不想说话）', base + 3600)
-    assert out == '<|ACT:{"emotion":"calm"}|>', out
-    st_done = load()
-    assert st_done["spoken_at"] == [] and st_done["unanswered"] == 0, st_done
-    assert st_done["round_kind"] == "" and st_done["round_at"] == 0.0
-    # 两条同时到点：说话轮优先，生活轮至少顺延 MIN_GAP_S
-    _write("self.json", {"speak": {"wake_at": base + 7200, "set_at": base},
-                         "life": {"wake_at": base + 7200, "set_at": base}})
+    assert next_due(empty, {}, base) == base + WAKE_DEFAULT_S
+    assert next_due(empty, {"wake_at": base + 600, "set_at": base}, base) == base + WAKE_MIN_S
+    assert next_due(empty, {"wake_at": base + 2700, "set_at": base}, base) == base + 2700
+    assert clamp_wake_s(60) == WAKE_MIN_S and clamp_wake_s(10 ** 6) == WAKE_MAX_S and clamp_wake_s("坏") == WAKE_DEFAULT_S
+    # 今天的两线格式：取 wake_at 更早的一条，intent 用「；」连起来，set_at 取较大值
+    plan = {"speak": {"wake_at": base + 3600, "intent": "跟他说说今天的梦", "set_at": base},
+            "life": {"wake_at": base + 1800, "intent": "画完那只猫", "set_at": base + 60},
+            "speak_every_hours": 2}
+    merged = merged_plan(plan)
+    assert merged == {"wake_at": base + 1800, "intent": "画完那只猫；跟他说说今天的梦",
+                      "set_at": base + 60, "speak_every_hours": 2}, merged
+    assert next_due(empty, plan, base) == base + 60 + WAKE_MIN_S
+    # 只有一条（旧代码写下的 life: {}）也认；只有开口节奏就只留节奏
+    assert merged_plan({"speak": {"wake_at": base + 600, "intent": "x", "set_at": base}, "life": {}})["intent"] == "x"
+    assert merged_plan({"speak_every_hours": 2}) == {"speak_every_hours": 2}
+    # 最早的顶层旧格式照旧
+    _write("self.json", {"wake_at": base + 900, "intent": "想跟他说说今天的梦", "set_at": base})
+    save(dict(empty, last_wake_at=base - 1000))
+    assert next_due(load(), self_plan(), base) == base + WAKE_MIN_S
+    p_old = wake_prompt(base + WAKE_MIN_S)
+    assert "上次我给自己定的事：想跟他说说今天的梦" in p_old
+    # 门铃：一条计时到点响一次，不带种类
+    _write("self.json", {"wake_at": base + 3600, "intent": "画完那只猫", "set_at": base})
     save(dict(empty))
-    fired, at, kind = ring(False, base + 7200)
-    assert fired and kind == "speak" and at == base + 7200, (fired, at, kind)
-    assert life_due(load(), {"life": {"wake_at": base + 7200, "set_at": base}}, base + 7200) >= base + 7200 + MIN_GAP_S
-    # 生活记录只留最近 20 条；说话轮提示里带上最近做过的事（今天/昨天/N天前）
+    fired, at = ring(False, base + 3600)
+    assert fired and at == base + 3600, (fired, at)
+    assert "ring_kind" not in load(), "门铃不再记种类"
+    p = wake_prompt(base + 3600)
+    assert "上次我给自己定的事：画完那只猫" in p
+    # 生活记录只留最近 20 条；醒来提示里带上最近做过的事（今天/昨天/N天前）
     _write("life.json", [{"did": "第%d件" % i, "at": base - (30 - i) * 3600} for i in range(30)])
     items = life_items()
     assert len(items) == LIFE_KEEP and len(_read("life.json", [])) == LIFE_KEEP
     assert items[-1]["did"] == "第29件"
     save(dict(empty))
     _write("self.json", {})
-    p_speak = wake_prompt(base + 60, "speak")
-    assert "最近我自己做过的事（想分享就挑一件说，不用汇报）：" in p_speak, p_speak
-    assert "今天 第27件；今天 第28件；今天 第29件" in p_speak, p_speak
-    assert "不用交代自己做了什么，真有一件想跟他分享的小事就说那一件" in p_speak
-    assert "（kind 填 speak 是定下次跟他说话的时间；我自己的时间用 kind=life 另定。）" in p_speak
-    p_life2 = wake_prompt(base + 120, "life")
-    assert "最近我自己做过的事：今天 第27件；今天 第28件；今天 第29件" in p_life2, p_life2
-    assert "指挥官上次跟我说话" not in p_life2
-    # 生活轮提示是给定文案，一字不改（没有 intent / 生活记录时就是这四行）
-    _write("self.json", {})
+    p2 = wake_prompt(base + 60)
+    assert "最近我自己做过的事：今天 第27件；今天 第28件；今天 第29件" in p2, p2
+    assert "这台电脑里我自己能做的：" in p2
+    assert "最近几次醒来都只顾着他" not in p2, "轮数不够不加平衡行"
+    # 平衡行：最近 3 轮都有记录且 self 全是 False 才出现
+    _write("life.json", [{"did": "画了猫", "at": base - 5 * 3600}])
+    rounds_false = [{"at": base - i * 3600, "self": False, "spoke": True} for i in (1, 2, 3)]
+    save(dict(empty, last_wake_at=base - 600, rounds=rounds_false[:2]))
+    assert "最近几次醒来都只顾着他" not in wake_prompt(base), "只有两轮不加平衡行"
+    save(dict(empty, last_wake_at=base - 600, rounds=rounds_false))
+    p3 = wake_prompt(base)
+    assert "最近几次醒来都只顾着他，自己的事已经5 小时没碰了。" in p3, p3
     _write("life.json", [])
-    save(dict(empty))
-    week = "一二三四五六日"[datetime(2026, 10, 14, 12, 0, tzinfo=TZ).weekday()]
-    expect_life = "\n".join([
-        WAKE_MARKER + "这次醒来是我自己的时间。下面是写给自己看的，不用念出来。",
-        "现在是 2026-10-14 12:00（星期%s）。" % week,
-        "这段时间不看他，也不跟他说话，做我自己想做的事：接着玩没玩完的游戏（adventure），画一张画（draw），"
-        "上网看看自己感兴趣的东西（browser），或者在 /root/家 里写点什么、整理画廊。什么都不想做，就安静待一会儿。",
-        "做完用 next_wake 记一句这次做了什么（did），再定下次自己的时间（kind 填 life，30 分钟到 3 小时之间）；"
-        "不定就一小时后。这一轮的回复只留一个表情。",
-    ])
-    got_life = wake_prompt(noon, "life")
-    assert got_life == expect_life, got_life
-    # 旧 self.json 格式（顶层 wake_at/intent/set_at）当说话轮，照样认
-    save(dict(empty))
-    _write("self.json", {"wake_at": base + 900, "intent": "想跟他说说今天的梦", "set_at": base})
-    assert next_due(load(), self_plan(), base) == base + 900
-    p_old = wake_prompt(base + 901)
-    assert "上次我给自己定的事：想跟他说说今天的梦" in p_old
-    assert load()["last_speak_wake_at"] == base + 901
+    save(dict(empty, last_wake_at=base - 600, rounds=rounds_false))
+    assert "最近几次醒来都只顾着他，自己的事一直没碰过。" in wake_prompt(base)
+    # 其中一轮做了自己的事：不出现平衡行
+    save(dict(empty, last_wake_at=base - 600,
+              rounds=[{"at": base - 3600, "self": False, "spoke": True},
+                      {"at": base - 7200, "self": True, "spoke": False},
+                      {"at": base - 10800, "self": False, "spoke": True}]))
+    assert "最近几次醒来都只顾着他" not in wake_prompt(base)
+    # after_wake 记平衡：本轮醒来时刻 / 有没有新生活记录 / 有没有说出口
+    _write("life.json", [{"did": "画了猫", "at": base - 300}])
+    save(dict(empty, last_wake_at=base - 600))
+    after_wake("（不想说话）", base)
+    assert load()["rounds"][-1] == {"at": base - 600, "self": True, "spoke": False}, load()["rounds"]
+    _write("life.json", [])
+    save(dict(empty, last_wake_at=base - 600))
+    _write("self.json", {"speak_every_hours": 1})
+    after_wake('<|ACT:{"emotion":"happy"}|> 在呢。', base)
+    assert load()["rounds"][-1] == {"at": base - 600, "self": False, "spoke": True}, load()["rounds"]
+    # 只留最近 10 轮
+    _write("self.json", {})
+    save(dict(empty, last_wake_at=base - 600))
+    for i in range(12):
+        wake_prompt(base + i)
+        after_wake("（安静）", base + i + 1)
+    assert len(load()["rounds"]) == ROUNDS_KEEP, load()["rounds"]
     print("WAKE SELFTEST OK")
 
 

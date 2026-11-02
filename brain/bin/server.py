@@ -417,8 +417,8 @@ def compose(session, msgs):
             wake.cancel_ring()
             texts, woke = said, False
         else:
-            # 门铃只带种类（说话轮/生活轮）；壳的协议不变，种类是宿主自己记在 wake.json 里的
-            texts = [wake.wake_prompt(kind=wake.ring_kind())]
+            # 门铃只带标记，不分种类；醒来时看到什么全由 wake.wake_prompt() 定
+            texts = [wake.wake_prompt()]
     elif own and any(wake.is_real_user(t) for t in texts):
         wake.note_user()
     current = "\n\n".join(t for t in texts if t)
@@ -659,10 +659,10 @@ class Brain(BaseHTTPRequestHandler):
                 self._json(401, {"error": {"message": "unauthorized", "type": "invalid_request_error"}})
                 return
             busy = session_lock(SESSION_DEFAULT).locked()
-            due, next_at, kind = wake.ring(busy)
-            # kind 是这一轮的种类（speak/life），没响时是 None；壳只按门铃，旧字段一律不变
+            due, next_at = wake.ring(busy)
+            # 壳只按门铃；醒来时看到什么由 wake.wake_prompt 定，这里不带种类
             self._json(200, {"due": due, "next_at": next_at, "next": wake.clock(next_at),
-                             "marker": wake.WAKE_MARKER, "kind": kind})
+                             "marker": wake.WAKE_MARKER})
         elif path == "/albion/shell-tools":
             # albion-shell-tools.ts 每轮开跑前来取：这个会话最近一次壳带来的插件工具清单
             if not self._authorized():
@@ -868,16 +868,14 @@ def _selftest():
     both = msgs[:2] + [{"role": "user", "content": wake.WAKE_MARKER}, {"role": "user", "content": "在吗"}]
     text, _, woke = compose(_S(), both)
     assert not woke and text == "在吗", (woke, text[:40])
-    # 门铃种类 life：compose 出的是生活轮提示（没有「指挥官上次跟我说话」，也没有心事本）
-    wake.save({"last_user_at": time.time() - 3600, "last_wake_at": time.time() - 3600,
-               "last_speak_wake_at": time.time() - 3600, "last_life_wake_at": time.time() - 3600,
-               "rung_at": time.time(), "ring_kind": "life"})
+    # 门铃醒来：一条计时，compose 出的是同一段醒来提示；能不能开口由 after_wake 定
+    wake.save({"last_user_at": time.time() - 4 * 3600, "last_wake_at": time.time() - 4 * 3600,
+               "spoken_at": [time.time() - 60], "unanswered": 0, "rung_at": time.time()})
     text, _, woke = compose(_S(), msgs[:2] + [{"role": "user", "content": "[2026-10-14 12:00] " + wake.WAKE_MARKER}])
-    assert woke and "这次醒来是我自己的时间" in text, text[:80]
-    assert "指挥官上次跟我说话" not in text and "心事本" not in text
-    assert wake.load()["round_kind"] == "life"
-    assert wake.after_wake('<|ACT:{"emotion":"calm"}|> 画会儿画（不想说话）') == '<|ACT:{"emotion":"calm"}|>'
-    assert wake.load()["round_kind"] == ""
+    assert woke and text.startswith(wake.WAKE_MARKER), text[:80]
+    assert "想他了就去找他" not in text and "这次不跟他说话，回复只留一个表情" in text, text[-160:]
+    assert wake.after_wake('<|ACT:{"emotion":"calm"}|> 想说点什么（不想说话）') == '<|ACT:{"emotion":"calm"}|>'
+    assert wake.load()["rounds"][-1]["spoke"] is False
     # 说了话却 0 字回复要补一次；他让她别出声、门铃、壳替她发的系统消息不补；有正文不补
     assert needs_finish_followup("帮我查明天天气再画张画", "") and needs_finish_followup("在吗", '<|ACT:{"emotion":"happy"}|>')
     assert not needs_finish_followup("先别说话，我在开会", '<|ACT:{"emotion":"neutral"}|>')

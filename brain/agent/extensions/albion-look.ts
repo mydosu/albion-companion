@@ -22,7 +22,6 @@ import { readFileSync } from "node:fs";
 import { connect } from "node:net";
 import { join } from "node:path";
 import { requestCapture } from "../eyes-http.ts";
-import { personalStateDir } from "../lib/session-scope.ts";
 
 type Target = "his" | "mine" | "cam";
 
@@ -56,21 +55,6 @@ const SCREEN_PROMPT = [
 const lastAt: Partial<Record<Target, number>> = {};
 const looking = new Set<Target>(); // 正在取的那一路：并发的第二次如实说"正在看"（haiku 复核 r34-P2）
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-// 生活轮（她自己的时间）不看他：宿主在 wake.json 记着这一轮的种类，after_wake 清掉；卡住时 15 分钟自动放行
-const LIFE_ROUND_TIMEOUT_MS = 15 * 60_000;
-const LIFE_BLOCK_TEXT = "这是我自己的时间，先不看他。";
-
-/** 现在是不是正处在生活轮（门铃种类=life，且这一轮还没结束）。读不到状态就当不是，别把她正常看他挡了。 */
-export function inLifeRound(now = Date.now()): boolean {
-	try {
-		const st = JSON.parse(readFileSync(join(personalStateDir(), "wake.json"), "utf-8"));
-		if (!st || st.round_kind !== "life") return false;
-		const at = Number(st.round_at);
-		return Number.isFinite(at) && at > 0 && now - at * 1000 < LIFE_ROUND_TIMEOUT_MS;
-	} catch {
-		return false;
-	}
-}
 
 function jpegComplete(b: Buffer): boolean {
 	let end = b.length;
@@ -183,8 +167,7 @@ export default function albionLook(pi: ExtensionAPI) {
 		description:
 			"自己看一眼：his = 指挥官那台电脑的屏幕，mine = 我自己所在那台电脑的屏幕（我能看图时拿截图原图；看不了图时由 grok 看过原图写成文字给我），" +
 			"cam = 这台电脑的摄像头·真实世界的他（照片只交给家里的本地视觉模型，我拿到的是它写下的文字描述）。" +
-			"想看就调用，不用等谁提醒；同一路一分钟内只取一次。看到的照实说，描述里没写的不算看到。" +
-			"我自己的一轮（生活轮）里不看他，那时候调用只会得到一句话，不该在这时候看。",
+			"想看就调用，不用等谁提醒；同一路一分钟内只取一次。看到的照实说，描述里没写的不算看到。",
 		promptSnippet: "look：自己看一眼（his/mine 屏幕，cam 摄像头·真实世界）",
 		parameters: Type.Object({
 			target: Type.Union([Type.Literal("his"), Type.Literal("mine"), Type.Literal("cam")], {
@@ -194,8 +177,6 @@ export default function albionLook(pi: ExtensionAPI) {
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const target = String(params.target || "") as Target;
 			if (!(target in LABEL)) return text("target 只能是 his、mine 或 cam。");
-			// 她自己的时间不看他：这一轮的种类记在 wake.json，after_wake 才清（15 分钟超时兜底）
-			if (inLifeRound()) return text(LIFE_BLOCK_TEXT);
 			if (looking.has(target)) return text(`【${LABEL[target]}】另一次正在看这一路，等它的结果，别重复取。`);
 			const since = Date.now() - (lastAt[target] ?? 0);
 			if (since < SAME_TARGET_GAP_MS)
