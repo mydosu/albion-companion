@@ -144,14 +144,17 @@ export default function albionChat(pi: ExtensionAPI) {
 		name: "find_sticker",
 		label: "找表情包",
 		description:
-			"按心情找表情包：mood 写想表达的意思或情绪（比如「害羞」「开心」「晚安」）。会列出几张候选，每张一个编号和它的意思；挑一张意思对得上的，用 send_message 的 sticker 发出去。我自己的图排在前面。",
+			"按心情找表情包：mood 写想表达的意思或情绪（比如「害羞」「开心」「晚安」）。会列出几张候选，每张一个编号和它的意思；挑一张意思对得上的，用 send_message 的 sticker 发出去。我自己的图排在前面。想多看几张、自己慢慢挑的时候，mood 写「全部」，会列出所有能用的图和它们的意思。",
 		promptSnippet: "find_sticker：按心情找表情包，配合 send_message 的 sticker 发",
 		parameters: Type.Object({
 			mood: Type.String({ description: "想表达的意思或情绪（比如「害羞」「开心」「晚安」）" }),
 		}),
 		async execute(_toolCallId, params) {
 			const mood = String((params as any)?.mood || "").trim();
-			const { items, random } = pickStickers(mood);
+			const all = mood === "全部";
+			const { items, random } = all
+				? { items: loadStickers().filter(stickerAllowed), random: false }
+				: pickStickers(mood);
 			if (!items.length) {
 				return {
 					content: [
@@ -163,7 +166,9 @@ export default function albionChat(pi: ExtensionAPI) {
 					details: { count: 0, random: false },
 				};
 			}
-			const head = random
+			const head = all
+				? `能用的表情包一共 ${items.length} 张：`
+				: random
 				? `没有正好对得上「${mood}」的，随机挑了几张：`
 				: `按「${mood}」挑了几张：`;
 			const text = [head, ...items.map(stickerLine)].join("\n");

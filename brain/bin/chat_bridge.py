@@ -1050,7 +1050,7 @@ class Service:
                 log("group_send_rejected", remaining=0)
                 return False, GROUP_BUDGET_EMPTY
         pending = inbox.pending(channel)
-        # 同一轮机她自己分几条发：刚回过（SAME_REPLY_S 内）的第二、三条不算「主动找他」，
+        # 同一轮里她自己分几条发：刚回过（SAME_REPLY_S 内）的第二、三条不算「主动找他」，
         # 不受 wake.can_speak 的开口节奏约束（2026-11-02，分不分条由她自己决定）。
         same_reply = (not pending) and (time.time() - self._replied_at.get(channel, 0.0) <= SAME_REPLY_S)
         proactive = (not pending) and not same_reply
