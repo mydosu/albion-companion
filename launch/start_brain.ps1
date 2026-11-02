@@ -1,5 +1,5 @@
 # 启动沙箱里她的脑（Pi 版）—— 幂等，以端口为准。
-# 三个根启动器（一键启动.bat、一键启动-dev.bat、start_all.bat）第 4 步都调它。
+# 现在只有 launch/start_all.bat 的第 4 步调它（根入口 一键启动.bat / 一键启动-dev.bat 都先到 start_all）。
 # 以前的 Hermes 版启动器 _启动脑WSL.ps1 已于 2026-10-16 删除，要回看见 git 历史（5f755e83 及以前）。
 # 跨边界自检：WSL mirrored 模式偶发开机后镜像网卡没挂上，脑在 WSL 里活着但 Windows 摸不到 8650
 # → 三次不通就 wsl --shutdown 重进一次；仍不行交人工。

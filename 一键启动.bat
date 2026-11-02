@@ -1,10 +1,5 @@
 @echo off
-setlocal
-rem 兼容原入口：默认 dev、显示各服务控制台；exe/prod 参数仍可用。
-set ALBION_SHOW_CONSOLES=1
-if "%~1"=="" (
-  call "%~dp0start_all.bat" dev
-) else (
-  call "%~dp0start_all.bat" %*
-)
+rem Entry: build (packaged exe). Hidden by default; progress goes to logs\start_hidden.log.
+rem Falls back to `dev` when shell\apps\stage-tamagotchi\dist\win-unpacked\airi.exe is missing.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0launch\silent_run.ps1" -Bat "%~dp0launch\start_all.bat" -BatArgs "exe __hidden" -Log "%~dp0logs\start_hidden.log"
 exit /b %errorlevel%

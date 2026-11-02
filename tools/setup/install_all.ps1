@@ -13,7 +13,7 @@
       tts        调 tools/setup/setup_tts_env.ps1 建 tts/irodori/.venv。
       brain      在 WSL 里跑 integrations/pi-brain/install.sh 和 deploy.sh。
                  install.sh 需要 root；默认 WSL 用户不是 root 时加 -WslUser root。
-      templates  把 config/local.env.example 复制成 .local/runtime.env（已存在不覆盖）；
+      templates  把 config/local.env.example 复制成 config/local.env（已存在不覆盖）；
                  脑的 agent/.env.example、SOUL.example.md 由 deploy.sh 在目标缺失时放。
 
     每个阶段幂等：已经装好的打印 [skip]，不重复动。任一阶段失败会打印阶段名并停下，
@@ -430,7 +430,7 @@ function Invoke-BrainStage {
 
 function Invoke-TemplatesStage {
     $source = Join-Path $RepoRoot 'config\local.env.example'
-    $target = Join-Path $RepoRoot '.local\runtime.env'
+    $target = Join-Path $RepoRoot 'config\local.env'
     if (-not (Test-Path -LiteralPath $source)) { throw ('模板不存在：' + $source) }
 
     if (Test-Path -LiteralPath $target) {
@@ -441,7 +441,7 @@ function Invoke-TemplatesStage {
         $parent = Split-Path -Parent $target
         if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
         Copy-Item -LiteralPath $source -Destination $target
-        Write-Ok ('本地环境模板已复制：' + $target + '（填好后按 docs/REBUILD.md 设为进程环境变量）')
+        Write-Ok ('本机环境模板已复制：' + $target + '（填好后启动器会自动加载，见 launch/load_env.bat；重启对应服务生效）')
     }
 
     Write-InfoLine ('脑模板由 deploy.sh 在目标缺失时放：' + $BrainHome + '/agent/.env.example -> .env，SOUL.example.md -> SOUL.md')
@@ -457,7 +457,7 @@ function Write-ManualChecklist {
     Write-Section '还要手动做（脚本不碰）'
     Write-InfoLine '1. 壳：照 docs/SHELL_FIRST_RUN.md 填 shell/apps/stage-tamagotchi/.env.local（VITE_ALBION_LLM_KEY = 脑的 API_SERVER_KEY），放两个角色 zip，再 pnpm install --frozen-lockfile && pnpm -F @proj-airi/stage-tamagotchi build:unpack。'
     Write-InfoLine '2. 脑：在 WSL 里把 agent/.env.example 复制成 agent/.env（至少 API_SERVER_KEY，和壳一致）、SOUL.example.md 复制成 SOUL.md 并写人设；deploy.sh 只放模板，不覆盖已有文件。'
-    Write-InfoLine '3. 环境变量：.local/runtime.env 不会被启动器自动加载（docs/REBUILD.md），TTS_TRANSLATE_* 等要设成 Windows 用户环境变量或在启动前设进进程环境。'
+    Write-InfoLine '3. 环境变量：config/local.env 是 Windows 侧唯一配置处（模板 local.env.example，不入库），launch/load_env.bat 会自动加载，真环境变量优先。'
     Write-InfoLine '4. OpenViking：照 config/templates/ov.conf.example 和 config/templates/ov.conf.notes.md 建自己的 ov.conf（不入库），再按教程阶段 7 起服务。'
     Write-InfoLine '5. 视觉机：照 deploy/vision/README.md 装驱动/容器、复制 .env.example 为 .env、下模型、开防火墙。'
     Write-InfoLine '6. 权重：照 docs/REBUILD.md「权重与 Windows 环境」；自训权重在私有仓库 Releases，基础模型/角色包/参考音频按该节恢复，别用别处的下载地址替换。'

@@ -133,23 +133,21 @@ bash /root/albion-pi/stop.sh
 bash /root/albion-pi/accept.sh     # 验一遍：直跑 pi 是不是她、两个壳入口还活着
 ```
 
-Windows 侧：`D:\AI\Wife\_启动脑Pi.ps1`（`一键启动.bat`、`一键启动-dev.bat`、`start_all.bat` 第 4 步都指向它）。
+Windows 侧：`D:\AI\Wife\launch\start_brain.ps1`（只有 `launch\start_all.bat` 的第 4 步调它；两个根入口都先到 start_all）。
 
 ### 看门狗（WSL 整机停掉后自动把脑拉回来）
 
 2026-10-24 00:44 前后疑似待机事件把 WSL 虚拟机整个停了，01:40 又起来，但没人拉起脑，桌面和聊天断了一个多小时。
-`tools/albion_brain_watch.ps1` 是最小的补丁：`airi.exe` 不在就直接退出（用户按「一键关闭.bat」关了全部后不该再偷偷拉起脑）；
+`launch/brain_watch.ps1` 是最小的补丁：`airi.exe` 不在就直接退出（用户按「一键关闭.bat」关了全部后不该再偷偷拉起脑）；
 8650 的 health 正常（内容含 `"brain": "pi"`）也不写日志；只有不通时才跑幂等的 `start.sh`，再把一行
 「时间 + ok/fail + start.sh 输出最后一行」追加到 `D:\AI\Wife\logs\brain-watch.log`（`logs/` 不入 Git）。
-它不会 `wsl --shutdown`，也不调 `_启动脑Pi.ps1`（那条路会重进 WSL）。
+它不会 `wsl --shutdown`，也不调 `launch\start_brain.ps1`（那条路会重进 WSL）。
 
-计划任务名 `AlbionBrainWatch`，每 2 分钟一次、只在用户登录时运行，经 `_静默启动.vbs` 起隐藏窗口（登录的 PowerShell 里执行一次）：
+计划任务名 `AlbionBrainWatch`，每 2 分钟一次、只在用户登录时运行，经 `launch\hidden.vbs` 起隐藏窗口。注册用仓库里的脚本（幂等，先 `-DryRun` 看计划）：
 
 ```powershell
-$act = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument '"D:\AI\Wife\_静默启动.vbs" "powershell -NoProfile -ExecutionPolicy Bypass -File D:\AI\Wife\tools\albion_brain_watch.ps1"'
-$trg = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 2) -RepetitionDuration (New-TimeSpan -Days 3650)
-$set = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-Register-ScheduledTask -TaskName 'AlbionBrainWatch' -Action $act -Trigger $trg -Settings $set -Description 'WSL 停掉后把 Pi 脑拉回来'
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\AI\Wife\launch\install_autostart.ps1 -DryRun
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\AI\Wife\launch\install_autostart.ps1
 ```
 
 `-RepetitionDuration ([TimeSpan]::MaxValue)` 存进去是 `P99999999D…`，任务 XML 不认，会报「任务 XML 包含格式不正确或超出范围的值」；
@@ -191,7 +189,7 @@ Magpie 只是作者的"模型管理器"：它往 `/root/.pi/agent/settings.json`
 
 1. 在 `agent/models.json` 的 `providers` 下加你自己的 OpenAI 兼容 provider（`baseUrl`、`apiKey` 写环境变量名或值、`models` 列表），格式照仓库里那份示例。
 2. 在 `agent/.env` 写 `ALBION_PROVIDER=<上面 providers 里的键>` 和 `ALBION_MODEL=<模型 id>`，provider 的 key 也写在这里（变量名同 `models.json` 里引用的）。
-3. 重启脑（`bash stop.sh && bash start.sh`）。`.env` 里的这两项重启后依然有效，`_启动脑Pi.ps1` 和看门狗不用带环境变量。
+3. 重启脑（`bash stop.sh && bash start.sh`）。`.env` 里的这两项重启后依然有效，`launch/start_brain.ps1` 和看门狗不用带环境变量。
    一次性覆盖仍可 `ALBION_PROVIDER=… ALBION_MODEL=… bash start.sh`（进程环境优先于 `.env`）。
 
 两项都不写、也没有 Magpie 的设置文件时，兜底 `commandcode/deepseek/deepseek-v4-flash`（需要 `COMMANDCODE_API_KEY`）。有 Magpie 的作者生产机不设这两项，行为不变。

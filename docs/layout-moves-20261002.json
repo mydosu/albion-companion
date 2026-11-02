@@ -3085,5 +3085,93 @@
   "new": "教程/assets/08-wake-week.svg",
   "category": "tutorial-renumber-20261031",
   "note": "2026-10-31 教程按复现顺序重新编号，旧篇号链接失效"
-}
+},
+  {
+    "old": "start_all.bat",
+    "new": "launch/start_all.bat",
+    "category": "launch-consolidation-20261101",
+    "note": "启动器收口：唯一启动实现搬进 launch/；WIFE 根改为 %~dp0..，静默层/脑启动器/自检路径随之改"
+  },
+  {
+    "old": "一键关闭.bat",
+    "new": "launch/stop_all.bat",
+    "category": "launch-consolidation-20261101",
+    "note": "关闭实现搬进 launch/，根目录只留转发入口"
+  },
+  {
+    "old": "_silent_run.ps1",
+    "new": "launch/silent_run.ps1",
+    "category": "launch-consolidation-20261101",
+    "note": "无窗口启动层改名去下划线；参数不变"
+  },
+  {
+    "old": "_启动脑Pi.ps1",
+    "new": "launch/start_brain.ps1",
+    "category": "launch-consolidation-20261101"
+  },
+  {
+    "old": "_收控制台.ps1",
+    "new": "launch/close_consoles.ps1",
+    "category": "launch-consolidation-20261101",
+    "note": "窗口标题匹配表加了新服务脚本名 start_backend/start_bridge/start_stream"
+  },
+  {
+    "old": "_静默启动.vbs",
+    "new": "launch/hidden.vbs",
+    "category": "launch-consolidation-20261101",
+    "note": "改为 LF-only 隐患修复后的 CRLF；拖文件进来会自动加引号；计划任务调用点同步改"
+  },
+  {
+    "old": "tools/albion_brain_watch.ps1",
+    "new": "launch/brain_watch.ps1",
+    "category": "launch-consolidation-20261101",
+    "note": "日志仍写仓库根 logs/brain-watch.log（$PSScriptRoot\\..\\logs）"
+  },
+  {
+    "old": "pet/check_all.py",
+    "new": "launch/check_all.py",
+    "category": "launch-consolidation-20261101"
+  },
+  {
+    "old": "一键启动.bat",
+    "new": "一键启动-dev.bat",
+    "category": "launch-consolidation-20261101",
+    "note": "原 dev 入口（ALBION_SHOW_CONSOLES=1）合并进 一键启动-dev.bat；现在带 show 参数才显示控制台"
+  },
+  {
+    "old": "一键启动-构建版.bat",
+    "new": "一键启动.bat",
+    "category": "launch-consolidation-20261101",
+    "note": "构建版成为默认入口；双击隐藏启动 exe，缺 exe 回退 dev"
+  },
+  {
+    "old": "一键启动-构建版-隐藏.vbs",
+    "new": "launch/hidden.vbs",
+    "category": "launch-consolidation-20261101",
+    "note": "与 _静默启动.vbs 合并成一个通用隐藏 runner；构建版隐藏启动改由 一键启动.bat 直接调 silent_run.ps1"
+  },
+  {
+    "old": "pet/start_all.bat",
+    "new": "",
+    "category": "launch-consolidation-20261101",
+    "note": "兼容转发壳删除（原内容只是 call ..\\一键启动.bat）"
+  },
+  {
+    "old": "pet/start_all_prod.bat",
+    "new": "",
+    "category": "launch-consolidation-20261101",
+    "note": "兼容转发壳删除（原内容只是 call ..\\start_all.bat prod）"
+  },
+  {
+    "old": "tts/irodori/启动Irodori后端.bat",
+    "new": "tts/irodori/start_backend.bat",
+    "category": "launch-consolidation-20261101",
+    "note": "服务脚本只留英文名一份；TTS_LOG_TEXT 默认从转发壳并进来，开头新增 call 仓库根 launch/load_env.bat"
+  },
+  {
+    "old": "tts/irodori/启动TTS桥.bat",
+    "new": "tts/irodori/start_bridge.bat",
+    "category": "launch-consolidation-20261101",
+    "note": "同上；转发壳 start_bridge.bat 的清空+改写由本次合并替代"
+  }
 ]

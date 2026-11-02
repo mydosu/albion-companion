@@ -22,8 +22,9 @@ flowchart LR
 
 | 职责 | 当前源码/入口 | 迭代时看哪里 |
 |---|---|---|
-| 构建版总启动 | 根 `一键启动-构建版.bat` → `start_all.bat` | 根启动器及 `pet/check_all.py` |
-| 开发/原入口 | 根 `一键启动-dev.bat`、`一键启动.bat` → `start_all.bat dev` | dev 入口后台启动；原入口保留各服务控制台；所有入口共用服务启动实现 |
+| 构建版总启动 | 根 `一键启动.bat` → `launch/start_all.bat` | 启动实现 `launch/start_all.bat`、自检 `launch/check_all.py` |
+| 开发入口 | 根 `一键启动-dev.bat`（加 `show`＝各服务开控制台）→ `launch/start_all.bat dev` | 两个入口都只是一两行转发，所有入口共用 `launch/start_all.bat` |
+| 本机环境变量 | `config/local.env`（模板 `config/local.env.example`，不入库）→ `launch/load_env.bat` | 每个服务启动 bat 开头都会 call 它；真环境变量优先 |
 | 桌面壳、聊天、主动存在、展示与播放 | `shell/apps/stage-tamagotchi/`、`shell/packages/stage-ui/`、`shell/packages/core-agent/`、音频 packages | 对应目录 `AGENTS.md`、package README 与 Vitest |
 | 耳朵 | `pet/start_ear.bat` → `pet/whisper_serve.py` | `tests/pet/check_ear.py`，模型在本地 `pet/models/` |
 | 眼睛 | `pet/tools/eyes/capture_agent.py`、启动脚本 | `pet/tools/eyes/README.md`；脑里 `look` 打的就是它的 :8790 |

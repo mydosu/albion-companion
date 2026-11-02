@@ -1,7 +1,20 @@
 @echo off
-rem ASCII 转发壳（2026-09-19）：静默启动层 _静默运行.ps1 -> cmd 传中文文件名会坏掉，
-rem 所以静默层改调这个英文名；中文名由 cmd 自己解析（bat 内容无编码问题）。
-rem 旧的中文名 bat 原样保留，双击照旧可用。
+chcp 65001 >nul
+rem Local overrides (repo-root config/local.env) - real environment variables win.
+call "%~dp0..\..\launch\load_env.bat"
 rem 2026-10-30: keep the ja text of each rendered block in the log (see render_queue.speech_log)
 if not defined TTS_LOG_TEXT set "TTS_LOG_TEXT=1"
-call "%~dp0启动Irodori后端.bat"
+cd /d "%~dp0"
+echo ============================================
+echo  Irodori-TTS backend (5 ships, single process)  :9889
+echo  voices: albion / taihou / shinano / brest / jinshi
+echo  Speaker-Inversion embedding (s500) + caption-LoRA (taihou: no LoRA)
+echo  emotion/style is decided by the backend, no need for the caller
+echo  first load takes ~15s (then resident, 2-7s per sentence)
+echo  once you see this line the bridge may start; closing this window stops it
+echo ============================================
+echo.
+rem Controlled voice caption: on by default, 2026-10-26.
+if not defined ALBION_VOICE_CAPTION set "ALBION_VOICE_CAPTION=1"
+"%~dp0.venv\Scripts\python.exe" "%~dp0irodori_serve.py"
+if not defined ALBION_SILENT pause

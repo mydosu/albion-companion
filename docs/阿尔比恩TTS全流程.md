@@ -20,9 +20,9 @@
 
 | 端口 | 是什么 | 谁拉起 |
 |---|---|---|
-| `9889` | Irodori-TTS 后端（**5 船一个进程**） ✓ | `tts\irodori\启动Irodori后端.bat`（经 `start_backend.bat` 转发）|
+| `9889` | Irodori-TTS 后端（**5 船一个进程**） ✓ | `tts\irodori\start_backend.bat` |
 | `9885` | **流式 TTS**：切句、播放时序与会话（壳现在走这里） | `tts\stream\start_stream.bat` |
-| `9881` | **桥**：OpenAI 兼容的语音接口 + 中文→日语翻译 ✓（流式与直连都走它） | `tts\irodori\启动TTS桥.bat`（经 `start_bridge.bat` 转发）|
+| `9881` | **桥**：OpenAI 兼容的语音接口 + 中文→日语翻译 ✓（流式与直连都走它） | `tts\irodori\start_bridge.bat` |
 | `9880` | Denia 专用的旧 GPT-SoVITS 后端（**可选**，平时不启 ✓） | `tts\GPT-sovits\启动Denia后端.bat` |
 | `9882` | 耳朵：中文语音识别（paraformer） ✓ | `pet\start_ear.bat` |
 
@@ -66,7 +66,7 @@
 
 ## ③ 推理线：`:9889` 后端（单进程 5 船）
 
-- 启动：`tts\irodori\启动Irodori后端.bat` → 真正跑的是
+- 启动：`tts\irodori\start_backend.bat` → 真正跑的是
   `.venv\Scripts\python.exe -u irodori_serve.py` ✓
 - 它是**一个进程里装 5 条船**（省显存、省加载时间）；HTTP 路径 `/tts` ✓
 - 加载约 15 秒（第一次更久），所以启动器里桥会**等它 10 秒**再起 ✓
@@ -174,7 +174,7 @@
 
 | 想干什么 | 双击 |
 |---|---|
-| 全起（后端→桥→耳朵→脑→眼睛→壳，最后自检 7 项）| `D:\AI\Wife\一键启动-构建版.bat`（无窗口；带参数运行能看到进度）|
+| 全起（后端→桥→耳朵→脑→眼睛→壳，最后自检 7 项）| `D:\AI\Wife\一键启动.bat`（构建版，无窗口）；想看进度用 `一键启动-dev.bat show` |
 | 全关 | `D:\AI\Wife\一键关闭.bat` |
-| 只开声音那两件 | `tts\irodori\启动Irodori后端.bat` → 等 15 秒 → `启动TTS桥.bat` |
+| 只开声音那两件 | 双击 `tts\irodori\start_backend.bat` → 等 15 秒 → 双击 `tts\irodori\start_bridge.bat` |
 | 单独开 Denia 音色 | `tts\GPT-sovits\启动Denia后端.bat`（`:9880`）|

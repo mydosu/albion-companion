@@ -13,7 +13,7 @@ function Test-Brain {
 
 if (Test-Brain) { exit 0 }
 
-# 只走幂等的 start.sh；绝不做 wsl --shutdown，也不调 _启动脑Pi.ps1（那条路会重启 WSL）。
+# 只走幂等的 start.sh；绝不做 wsl --shutdown，也不调 launch/start_brain.ps1（那条路会重启 WSL）。
 $out = @(wsl -d Ubuntu -- bash /root/albion-pi/start.sh 2>&1)
 $ok = Test-Brain
 $last = ($out | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -Last 1)

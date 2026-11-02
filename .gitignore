@@ -70,3 +70,6 @@ tests/pet/spine-official/sr38/
 *.bin
 *.db-journal
 tts/irodori/_tmp_v2_golden.json
+
+# Windows 侧唯一环境变量文件（只入库模板 config/local.env.example）
+config/local.env

@@ -1,5 +1,22 @@
 @echo off
-rem ASCII 转发壳（2026-09-19）：静默启动层 _静默运行.ps1 -> cmd 传中文文件名会坏掉，
-rem 所以静默层改调这个英文名；中文名由 cmd 自己解析（bat 内容无编码问题）。
-rem 旧的中文名 bat 原样保留，双击照旧可用。
-call "%~dp0启动TTS桥.bat"
+chcp 65001 >nul
+rem Local overrides (repo-root config/local.env) - real environment variables win.
+call "%~dp0..\..\launch\load_env.bat"
+cd /d "%~dp0"
+echo ============================================
+echo  Albion TTS bridge (OpenAI-compatible /v1/audio/speech)  :9881
+echo  voices: albion / taihou / shinano / brest / jinshi / denia
+echo  requires: Irodori backend (:9889) running
+echo  closing this window stops the bridge
+echo ============================================
+echo.
+rem Translation (zh -> ja): official DeepSeek API, thinking off (bridge default), 2026-09-23.
+if not defined TTS_TRANSLATE_BASE set "TTS_TRANSLATE_BASE=https://api.deepseek.com/v1"
+if not defined TTS_TRANSLATE_MODEL set "TTS_TRANSLATE_MODEL=deepseek-flash"
+rem Controlled voice caption and sentence-final emoji: on by default, 2026-10-26.
+if not defined ALBION_VOICE_CAPTION set "ALBION_VOICE_CAPTION=1"
+if not defined ALBION_VOICE_EMOJI set "ALBION_VOICE_EMOJI=1"
+rem 2026-10-30: keep the zh/ja text of each translated unit in the log so a bad line can be traced
+if not defined TTS_LOG_TEXT set "TTS_LOG_TEXT=1"
+"%~dp0.venv\Scripts\python.exe" bridge.py
+if not defined ALBION_SILENT pause

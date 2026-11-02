@@ -2,7 +2,10 @@
 
 | 位置 | 放什么 | Git 策略 |
 |---|---|---|
-| 根入口、`shell/`、`pet/`、`tts/` | 当前生产源码、构建配置、运行入口、许可 | 跟踪源码；模型、环境、构建产物忽略 |
+| 根入口（`一键启动.bat` / `一键启动-dev.bat` / `一键关闭.bat` / `一键安装.bat`） | 一两行转发到 `launch/`，不放实现 | 跟踪 |
+| `launch/` | 启动实现：`start_all.bat`、`stop_all.bat`、`silent_run.ps1`、`start_brain.ps1`、`close_consoles.ps1`、`hidden.vbs`、`load_env.bat`、`brain_watch.ps1`、`check_all.py`、`install_autostart.ps1` | 跟踪 |
+| `config/local.env` | Windows 侧唯一环境变量文件（KEY=VALUE）；模板 `local.env.example` | 忽略，只入库模板 |
+| `shell/`、`pet/`、`tts/` | 当前生产源码、构建配置、运行入口、许可 | 跟踪源码；模型、环境、构建产物忽略 |
 | `tests/pet/`、`tests/tts/`、`tests/pi-brain/` | 独立测试、诊断、复现支持脚本 | 跟踪 |
 | `tests/pet/data/`、TTS golden JSON | 经过审查的固定输入/预期值 | 跟踪；不放真实私密会话 |
 | `tests/tts/eval/`、`tests/tts/probes/` | 需真实服务的 A/B 与语音探针 | 脚本跟踪，产物忽略 |

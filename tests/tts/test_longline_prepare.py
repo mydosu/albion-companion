@@ -198,7 +198,7 @@ class ApiTranslation(unittest.TestCase):
             opened.assert_called_once_with("offline.env", encoding="utf-8", errors="ignore")
 
     def test_bridge_launcher_defaults_preserve_explicit_overrides(self):
-        raw = (ROOT / "tts/irodori/启动TTS桥.bat").read_bytes()
+        raw = (ROOT / "tts/irodori/start_bridge.bat").read_bytes()
         self.assertEqual(raw.count(b"\n"), raw.count(b"\r\n"))
         text = raw.decode("gbk")
         self.assertNotIn("set TTS_TRANSLATE_BACKEND=", text)

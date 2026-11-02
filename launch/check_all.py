@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""阿尔比恩桌宠 · 八项自检（start_all.bat 收尾会调它）
+"""阿尔比恩桌宠 · 八项自检（launch/start_all.bat 收尾会调它）
 
 用法:
-  D:/AI/Wife/tts/GPT-sovits/runtime/python.exe check_all.py [等待秒数] [--json]
+  D:/AI/Wife/tts/GPT-sovits/runtime/python.exe D:/AI/Wife/launch/check_all.py [等待秒数] [--json]
 
 默认最多等 90 秒（Irodori 后端要加载模型，起得慢）。每 5 秒轮询一次，全绿就提前结束。
 --json：只在 stdout 输出一份 JSON（ok / ready / total / checks[{name, ok, detail}]），不打印表格；退出码不变。

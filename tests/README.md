@@ -19,7 +19,7 @@ python tools/check_repository.py
 & .\tts\GPT-sovits\runtime\python.exe tests/pet/check_ear.py
 
 # 已有服务自检：保持原位，因为启动器调用它；含外部视觉服务检查
-& .\tts\GPT-sovits\runtime\python.exe pet/check_all.py 0
+& .\tts\GPT-sovits\runtime\python.exe launch/check_all.py 0
 
 # 查看评估参数（不生成语音）
 & .\tts\irodori\.venv\Scripts\python.exe tests/tts/eval/ab_stream_v4.py --help

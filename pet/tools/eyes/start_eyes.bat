@@ -2,6 +2,8 @@
 rem ASCII entry for the eye capture agent (silent launcher cannot start the exe directly).
 rem Token is read from token.txt next to this file (not tracked; copy token.txt.example). No built-in fallback.
 cd /d "%~dp0"
+rem Local overrides (repo-root config/local.env) - real environment variables win.
+call "%~dp0..\..\..\launch\load_env.bat"
 set "EYES_TOK="
 if exist "%~dp0token.txt" for /f "usebackq delims=" %%A in ("%~dp0token.txt") do if not defined EYES_TOK set "EYES_TOK=%%A"
 if not defined EYES_TOK (

@@ -39,7 +39,7 @@
 | 项 | 值 | 出处 |
 |---|---|---|
 | 后端 | `irodori_serve.py`，`:9889`，5 船一个进程 | `tts/irodori/irodori_serve.py:206` |
-| 启动 | `tts/irodori/启动Irodori后端.bat` → `.venv\Scripts\python.exe irodori_serve.py` | 同目录 bat |
+| 启动 | `tts/irodori/start_backend.bat` → `.venv\Scripts\python.exe irodori_serve.py` | 同目录 bat |
 | 规划 | `POST /v2/plan`，纯 CPU、不加载模型 | `tts/irodori/scene_plan.py:1013` |
 | 渲染 | `POST /v2/render`，进程内全局单 GPU 队列 | `tts/irodori/render_queue.py:650` |
 | 底模 | `checkpoints/model.safetensors`，bf16 | `irodori_serve.py:23,143` |

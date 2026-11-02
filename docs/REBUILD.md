@@ -126,9 +126,10 @@ DeepSeek 官方、Command Code、codex 三条退路顺序不变；`TTS_BRAIN_ROU
 私密文件读取 `DEEPSEEK_API_KEY`（默认文件 `%USERPROFILE%\AppData\Local\hermes\.env`）。
 该模式默认 `TTS_TRANSLATE_BASE=https://api.deepseek.com/v1`、`TTS_TRANSLATE_MODEL=deepseek-flash`；
 启动器只在未定义时设置这两个值。当前机器未配置该模式所需 key，不应作为默认线路。
-`config/local.env.example` 是空值模板，现有启动器不会自动加载它。
+`config/local.env.example` 是 Windows 侧唯一配置模板：复制成 `config/local.env`（不入库）再改；
+`launch/load_env.bat` 会在每个服务启动 bat 开头加载它（真环境变量优先，缺文件静默跳过）。
 
-`pet/check_all.py` 从 WSL 的 `/root/albion-pi/agent/.env`（`API_SERVER_KEY`）读探活 key；Windows 侧旧 Albion `.env` 已不再读，两边不会自动同步。
+`launch/check_all.py` 从 WSL 的 `/root/albion-pi/agent/.env`（`API_SERVER_KEY`）读探活 key；Windows 侧旧 Albion `.env` 已不再读，两边不会自动同步。
 新机器要核实此条件，不能因自检缺 key 把网关误判为宕机。
 壳内 provider、key、布局与角色选项在 Electron 私人用户数据中，恢复备份或手动配置：
 脑宿主 :8650（Pi 版）、流式 TTS :9885、STT :9882、采集端 :8790；鉴权值需与服务匹配，禁止写进仓库。
@@ -140,11 +141,11 @@ DeepSeek 官方、Command Code、codex 三条退路顺序不变；`TTS_BRAIN_ROU
 ```powershell
 Set-Location D:\AI\Wife
 New-Item -ItemType Directory -Path logs -Force
-& '.\一键启动-构建版.bat' show
+& '.\一键启动-dev.bat' show
 & .\tts\irodori\.venv\Scripts\python.exe -B -m unittest discover -s tests/tts -p 'test_*.py'
 python tools/check_repository.py
 python tools/restore_weights.py
-& .\tts\GPT-sovits\runtime\python.exe pet/check_all.py 0
+& .\tts\GPT-sovits\runtime\python.exe launch\check_all.py 0
 ```
 
 还要实测：壳显示角色、中文输入/回复、STT、日语发声与切句播放、眼睛、摆件、WSL profile 隔离。

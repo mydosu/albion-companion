@@ -7,7 +7,7 @@
 
 ## 跑起来
 
-**本机（阿尔比恩所在的这台）**：不用手动开 —— `D:\AI\Wife\一键启动.bat`（以及 `start_all.bat`、`一键启动-dev.bat`、`start_eyes.bat`）会以 `--bind 127.0.0.1 --token-file <本目录 token.txt>` 自动拉起（端口 8790），壳里「自己这台」那个来源就是它。
+**本机（阿尔比恩所在的这台）**：不用手动开 —— `D:\AI\Wife\一键启动.bat`（以及 `launch\start_all.bat`、`一键启动-dev.bat`、`start_eyes.bat`）会以 `--bind 127.0.0.1 --token-file <本目录 token.txt>` 自动拉起（端口 8790），壳里「自己这台」那个来源就是它。
 token 由采集端自己读文件第一行非空内容，**不出现在进程命令行里**；文件缺失或为空时采集端直接退出，不会换成随机值。
 
 **指挥官那台**：双击 `启动采集端.bat`，它同样用 `--token-file` 从同目录 `token.txt` 读 token。
@@ -17,7 +17,7 @@ token 由采集端自己读文件第一行非空内容，**不出现在进程命
 
 - 位置：本目录 `pet\tools\eyes\token.txt`，照同目录的 `token.txt.example`（空文件）建；
   里面**只写一行 token**，不加注释、不加引号。`.gitignore` 已经忽略它。
-- 缺这个文件或文件是空的：启动器不起眼睛、明确报错（根入口统一由 `start_all.bat` 写进 `logs\eyes.err.log`），
+- 缺这个文件或文件是空的：启动器不起眼睛、明确报错（根入口统一由 `launch\start_all.bat` 写进 `logs\eyes.err.log`），
   其余服务照常起；不会退回任何写死的值。
 - 同一个值还要填到用它的地方：WSL 脑的 `agent/.env`（`ALBION_EYES_MINE_TOKEN` / `ALBION_EYES_HIS_TOKEN`）。
   2026-10-16 起壳里不再直接取图（原来的 `albion-eyes.ts` 和 `settings/albion/eyes-*` 设置已撤），看东西只走脑里的 `look` 工具。

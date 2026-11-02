@@ -18,7 +18,7 @@
 
 ## 环境
 
-Windows。壳为 Electron 应用，服务由 `start_all.bat` 拉起（开发）或 `start_all_prod.bat`（打包版）。
+Windows。壳为 Electron 应用，服务由 `launch\start_all.bat` 拉起（`dev` 走 electron-vite，`exe` 走打包版；缺 exe 回退 dev）。
 
 ## 第三方素材
 

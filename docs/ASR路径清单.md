@@ -55,7 +55,7 @@
 | | 93 | `/v1/models` 列 `['paraformer-zh','whisper-1']` | 壳校验用 |
 | | 100 | `model_name: str = Form('whisper-1', alias='model')` | **请求里的模型名（耳朵不看它）** |
 | | 107-128 | paraformer 处理分支 | 写临时 `.wav` 交给 funasr |
-| `check_all.py` | 76, 84 | `http://127.0.0.1:9882/health` | 自检 |
+| `launch/check_all.py` | 76, 84 | `http://127.0.0.1:9882/health` | 自检 |
 | `tools\check_ear.py` | 2, 18, 26 | 耳朵验收脚本（`model=whisper-1`） | 测试 |
 | `models\modelscope\iic\` | — | `speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch` / `speech_fsmn_vad_zh-cn-16k-common-pytorch` / `punc_ct-transformer_zh-cn-common-vocab272727-pytorch` | **模型文件本体（1.11 GB）** |
 
@@ -88,11 +88,11 @@
 
 | 文件 | 行 | 内容 |
 |---|---|---|
-| `一键启动.bat` | 参数转发 | 转发 `start_all.bat dev`，保留可见控制台 |
-| `一键启动-dev.bat` | 参数转发 | 转发 `start_all.bat dev`，后台运行 |
-| `start_all.bat` | `rem 3) 耳朵 STT` 段 | 唯一 STT 启动实现，探测 9882 后调用 `pet/start_ear.bat` |
-| `一键关闭.bat` | 13, 29 | 端口表 `(9889 9881 9885 9882 8650 8790 9335)` |
-| `_收控制台.ps1` | 1 | 进程名匹配表（含 `start_ear` / `whisper_serve`） |
+| `一键启动.bat` | 参数转发 | 用 `launch\silent_run.ps1` 隐藏起 `launch\start_all.bat exe __hidden`（构建版） |
+| `一键启动-dev.bat` | 参数转发 | 转发 `launch\start_all.bat dev`；带 `show` 时给服务开可见控制台 |
+| `launch/start_all.bat` | `rem 3) 耳朵 STT` 段 | 唯一 STT 启动实现，探测 9882 后调用 `pet/start_ear.bat` |
+| `launch/stop_all.bat` | 13, 29 | 端口表 `(9889 9881 9885 9882 8650 8790 9335)`；根 `一键关闭.bat` 只转发到它 |
+| `launch/close_consoles.ps1` | 1 | 进程名匹配表（含 `start_ear` / `whisper_serve`） |
 
 ---
 

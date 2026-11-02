@@ -5,7 +5,7 @@
 `shell/`、`pet/`、`tts/` 不是独立项目仓库。子目录已有 AGENTS.md 仍适用。
 
 - 执行任务时按同席给的任务目标和项目长期授权放手做：为达成目标需要改的都可以改，顺手发现的问题直接修；但不要借整理重构无关业务、换模型、改身份或同步 Windows 与 WSL skills。
-- 生产：`shell/apps/`、`shell/packages/`、`pet/whisper_serve.py`、`pet/tools/eyes/`、`pet/widget/`、`tts/irodori/`、`tts/stream/`。根启动入口保留原位。
+- 生产：`shell/apps/`、`shell/packages/`、`pet/whisper_serve.py`、`pet/tools/eyes/`、`pet/widget/`、`tts/irodori/`、`tts/stream/`。根目录只留四个用户入口（`一键启动.bat`、`一键启动-dev.bat`、`一键关闭.bat`、`一键安装.bat`），启动实现在 `launch/`。
 - 独立测试与探针：`tests/<组件>/`；固定材料放其 `data/` 或随测试文件的已登记 golden JSON；生成结果只写 `tests/output/`。
 - AIRI 已有 `*.test.ts` / `*.browser.test.ts` 继续由所在 package 的 Vitest 管理；这是框架单元测试的明确例外。新增独立脚本不得放进 `shell/*/src`。
 - 可重复使用的维护工具放 `tools/` 或 `pet/tools/`；一次性改码脚本放 `archive/legacy/`，不可直接批量执行归档脚本。
@@ -17,4 +17,4 @@
 - 提交前用 `python tools/check_repository.py` 检查分类/旧路径，再用 Gitleaks 扫描暂存区。`git add` 指定路径；禁止 `git add -f` 私密/备份目录。发现真实凭据先停止推送并修复，不通过宽泛忽略规则绕过扫描。
 - 审计任务只读：开始记录目标 MD5，结束核对。收尾任务按任务目标做（包括提交、推送）。实现任务记录基线、验证命令、通过/失败数字和未验证项。
 - push 按用户本轮要求或同席项目长期授权进行；禁止 force push 或擅自重写历史。
-- 重启 start_all 里的服务（9889/9881/9885 等）必须无窗口——用 WMI 起 `powershell -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File D:\AI\Wife\_silent_run.ps1 -Bat <对应 start_*.bat> -Log <原日志>`，和 start_all.bat 用的是同一套；禁止 `start /min`、裸 cmd、自写包装 bat；起完确认桌面没有新的控制台窗口；重启前先 taskkill 卡在 pause 上的外层 cmd。
+- 重启 `launch/start_all.bat` 里的服务（9889/9881/9885 等）必须无窗口——用 WMI 起 `powershell -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File D:\AI\Wife\launch\silent_run.ps1 -Bat <对应 start_*.bat> -Log <原日志>`，和 `launch/start_all.bat` 用的是同一套；禁止 `start /min`、裸 cmd、自写包装 bat；起完确认桌面没有新的控制台窗口；重启前先 taskkill 卡在 pause 上的外层 cmd。
