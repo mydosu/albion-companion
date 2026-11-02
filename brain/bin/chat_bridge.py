@@ -48,7 +48,8 @@ SESSION_DM = "albion-desktop"                  # TG 私聊 / Discord 私信：�
 SESSION_GROUP = "albion-discord"               # Discord 群：自己的真会话（长期记忆共享）
 GROUP_BATCH_S = 10.0                           # 群里合批窗口（逐条限制已去掉，只留额度兜底）
 DM_QUIET_S = 2.5                               # 私信合批：最后一条之后安静这么久再叫醒
-DM_MAX_WAIT_S = 6.0                            # 但从第一条算最多等这么久
+DM_MAX_WAIT_S = 6.0
+TYPING_REFRESH_S = 4.0                           # TG 的「正在输入」5 秒过期，4 秒续一次                            # 但从第一条算最多等这么久
 TTS_URL = "http://127.0.0.1:9881/v1/audio/speech"
 CHANNELS = ("telegram", "discord", "discord_group")
 # 群里还有可畏（Hermes 那边的 bot）。这句是她群聊说明的一部分，原文照定稿（2026-11-02 用户改）。
@@ -658,6 +659,11 @@ class Telegram:
                               disable_web_page_preview=True)
         return (res or {}).get("message_id")
 
+    async def send_chat_action(self, action="typing"):
+        """「正在输入 / 在录语音 / 在挑表情」（TG 的状态 5 秒过期，调用方自己续）。"""
+        res = await self._api("sendChatAction", chat_id=int(self.cfg["tg_owner"]), action=action)
+        return bool(res)
+
     async def send_voice(self, ogg, caption=None):
         if self.http is None:
             raise RuntimeError("telegram not connected")
@@ -727,6 +733,16 @@ async def _discord_send(channel, text, sticker_path=None):
 
 
 # ── Discord ────────────────────────────────────────────────────────────────
+
+class _NullContext:
+    """什么都不做的异步上下文（状态提示拿不到目标时用）。"""
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
 class DiscordBot:
     def __init__(self, cfg, on_message):
         self.cfg = cfg
@@ -853,6 +869,20 @@ class DiscordBot:
                 self.remember(member)
         log("discord_members", known=len(self._members))
 
+    async def typing(self):
+        """他那边的「正在输入」：discord.py 的 channel.typing() 自己会续，退出上下文就停。
+
+        频道还没连上时返回一个空上下文，调用方不用特判。
+        """
+        channel = None
+        try:
+            if self.client and self.ready:
+                channel = self.client.get_channel(int(self.cfg["dc_channel"] or 0)) or \
+                    self.client.get_user(int(self.cfg["dc_owner"] or 0))
+        except Exception:                       # noqa: BLE001 - 只是状态提示，拿不到就算了
+            channel = None
+        return channel.typing() if channel is not None else _NullContext()
+
     async def send_dm(self, text, sticker_path=None):
         if not self.client or not self.ready:
             raise RuntimeError("discord not ready")
@@ -902,6 +932,61 @@ class DiscordBot:
 
 
 # ── 桥本体 ─────────────────────────────────────────────────────────────────
+
+class _Typing:
+    """叫醒这一轮（等 host.chat 的整段时间）里显示「正在输入」，退出时一定停。
+
+    TG：sendChatAction 每 TYPING_REFRESH_S 秒续一次（TG 的提示 5 秒过期）。
+    Discord：用 discord.py 的 channel.typing()，它自己续，退出上下文就停。
+    失败只记一条日志，绝不影响收发（2026-11-02）。
+    """
+
+    def __init__(self, svc, channel, action="typing"):
+        self.svc = svc
+        self.channel = channel
+        self.action = action
+        self.task = None
+        self.cm = None
+
+    async def __aenter__(self):
+        try:
+            if self.channel == "telegram":
+                self.task = asyncio.create_task(self._loop())
+            elif self.channel in ("discord", "discord_group"):
+                self.cm = await self.svc.dc.typing()
+                await self.cm.__aenter__()
+        except Exception as exc:                  # noqa: BLE001 - 只是状态提示
+            log("typing_start_failed", channel=self.channel, error=repr(exc)[:120])
+        return self
+
+    async def _loop(self):
+        while True:
+            try:
+                await self.svc.tg.send_chat_action(self.action)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:              # noqa: BLE001 - 失败就不再续，别刷日志
+                log("typing_failed", channel=self.channel, error=repr(exc)[:120])
+                return
+            await asyncio.sleep(TYPING_REFRESH_S)
+
+    async def __aexit__(self, *exc):
+        if self.task is not None:
+            self.task.cancel()
+            try:
+                await self.task
+            except BaseException:                 # noqa: BLE001 - 取消/异常都不往外抛
+                pass
+            self.task = None
+        if self.cm is not None:
+            try:
+                await self.cm.__aexit__(*exc)
+            except Exception:                     # noqa: BLE001
+                pass
+            self.cm = None
+        return False
+
+
 class Service:
     def __init__(self, cfg):
         self.cfg = cfg
@@ -912,6 +997,10 @@ class Service:
         self._group_worker = None
         self._budget_cache = (0.0, None)          # (取的时刻, 结果)：5 秒内复用，别每句话都翻频道历史
         self._replied_at = {}                     # channel -> 刚回过他的时刻（同一轮她自己连发几条时用）
+
+    def typing(self, channel, action="typing"):
+        """「正在输入」上下文：包住 notify() 或合成语音/挑表情那一段。"""
+        return _Typing(self, channel, action)
 
     async def start(self):
         await self.tg.start()
@@ -1054,8 +1143,9 @@ class Service:
                     await asyncio.sleep(min(wait, 1.0))
                     waited = True
                     break
-                ok = await notify(self.cfg, self.host, SESSION_DM, dm_notice(channel, batch),
-                                  [i["id"] for i in batch])
+                async with self.typing(channel):
+                    ok = await notify(self.cfg, self.host, SESSION_DM, dm_notice(channel, batch),
+                                      [i["id"] for i in batch])
                 if not ok:
                     return                        # 宿主忙/挂了：留到下一次醒来，不在这里死等
             if waited:
@@ -1073,10 +1163,11 @@ class Service:
                 continue
             context = inbox.context_items("discord_group", since_s=600, limit=10)
             budget = await self.refresh_budget()
-            ok = await notify(self.cfg, self.host, SESSION_GROUP,
-                              group_notice(self.dc.channel_name(), items, context, budget,
-                             self.dc.owner_name_set()),
-                              [i["id"] for i in items])
+            async with self.typing("discord_group"):
+                ok = await notify(self.cfg, self.host, SESSION_GROUP,
+                                  group_notice(self.dc.channel_name(), items, context, budget,
+                                 self.dc.owner_name_set()),
+                                  [i["id"] for i in items])
             if not ok:
                 return
 
@@ -1112,7 +1203,11 @@ class Service:
         sent_sticker = False
         try:
             if channel == "telegram":
-                ogg = await synth_ogg(self.cfg, text) if (voice and text) else None
+                if voice and text:
+                    async with self.typing("telegram", "record_voice"):
+                        ogg = await synth_ogg(self.cfg, text)
+                else:
+                    ogg = None
                 if voice and text and ogg is None:
                     notes.append("语音没合成出来，只发了文字。")
                 if ogg:
@@ -1121,7 +1216,8 @@ class Service:
                 elif text:
                     await self.tg.send_text(text)
                 if sticker:
-                    await self.tg.send_sticker(paths, text or None)
+                    async with self.typing("telegram", "choose_sticker"):
+                        await self.tg.send_sticker(paths, text or None)
                     sent_sticker = True
             elif channel == "discord":
                 if voice:
