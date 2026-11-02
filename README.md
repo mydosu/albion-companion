@@ -52,7 +52,8 @@ WSL2 的配置：`networkingMode=mirrored`，无 CPU/内存上限，WSL 内可�
 |---|---|---|---|
 | 本机 | 桌面壳 `airi.exe`（CDP 调试口） | 9335 | GPU 约 331 MB |
 | 本机（WSL） | 脑：Pi 宿主 | 8650 | CPU |
-| 本机 | Irodori TTS 后端 | 9889 | GPU 约 2.35 GB |
+| 本机 | Irodori TTS 后端（日语特化；与 Denia 二选一，`ALBION_TTS_ENGINE`） | 9889 | GPU 约 2.35 GB |
+| 本机 | Denia TTS 后端（GPT-SoVITS 中文角色；二选一） | 9880 | GPU（`ALBION_GSV_DEVICE`，可 cpu） |
 | 本机 | TTS 桥（翻译 + OpenAI 兼容语音接口） | 9881 | CPU |
 | 本机 | 流式 TTS 网关 | 9885 | CPU |
 | 本机 | 语音识别 `whisper_serve`（paraformer） | 9882 | CPU |

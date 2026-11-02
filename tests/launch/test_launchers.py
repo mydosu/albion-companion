@@ -29,6 +29,7 @@ ENTRY_BATS = [
     "tts/irodori/start_backend.bat",
     "tts/irodori/start_bridge.bat",
     "tts/stream/start_stream.bat",
+    "tts/gsv/start_denia.bat",
     "ear/start_ear.bat",
 ]
 
@@ -61,7 +62,11 @@ class Launchers(unittest.TestCase):
         # 唯一实现里只保留分支：端口一律空闲、外部动作打桩（不探真端口、不起真服务）
         p = self.root / "launch/start_all.bat"
         text = p.read_bytes().decode("gbk")
-        text = text[:text.index(":check\r\n")].rstrip() + "\r\n:check\r\nset PORTFREE=1\r\nexit /b\r\n"
+        text = text[:text.index(":check\r\n")].rstrip() + (
+            "\r\n:check\r\n"
+            # 记下 start_all 到底探了哪些端口（gsv/irodori 二选一的用例靠它断言）
+            '>>"' + str(self.root / "checks.txt") + '" echo %1\r\n'
+            "set PORTFREE=1\r\nexit /b\r\n")
         text = text.replace("ping -n 11 127.0.0.1 >nul", "rem skipped fixture wait")
         text = text.replace('"%SYS_PY%" "%WIFE%\\launch\\check_all.py" 90',
                             "echo FIXTURE_SELF_CHECK")
@@ -98,6 +103,11 @@ class Launchers(unittest.TestCase):
         eye = next(r for r in rows if "capture_agent.py" in (r["Cmd"] or ""))
         self.assertIn('"' + str(self.root / EYES_TOKEN) + '"', eye["Cmd"])
         self.assertNotIn("fixture-only", json.dumps(rows))
+
+    def checks(self):
+        """start_all 探过的端口（夹具的 :check 会记一行）。"""
+        p = self.root / "checks.txt"
+        return p.read_text(encoding="utf-8-sig").split() if p.exists() else []
 
     # ---- 入口 -------------------------------------------------------------
     def test_dev_hidden_from_other_cwd(self):
@@ -136,6 +146,53 @@ class Launchers(unittest.TestCase):
         (self.root / "config" / "local.env").write_text("ALBION_SHOW_CONSOLES=1\n", encoding="utf-8")
         out, rows = self.run_entry("一键启动-dev.bat")           # 没带 show，靠 local.env
         self.assert_services(rows, True)
+
+    # ---- TTS 二选一（ALBION_TTS_ENGINE） ------------------------------------
+    def test_default_engine_is_irodori(self):
+        out, rows = self.run_entry("launch/start_all.bat", "dev")
+        bats = [Path(r["Bat"]).name for r in rows if r["Bat"]]
+        self.assertEqual(bats, ["start_backend.bat", "start_bridge.bat", "start_stream.bat", "start_ear.bat"])
+        self.assertIn("9889", self.checks())                     # 只探 Irodori
+        self.assertNotIn("9880", self.checks())
+        self.assertIn("启动 TTS 后端 :9889", out)
+
+    def test_gsv_engine_starts_denia_and_skips_irodori(self):
+        (self.root / "config").mkdir(exist_ok=True)
+        (self.root / "config" / "local.env").write_text("ALBION_TTS_ENGINE=gsv\n", encoding="utf-8")
+        out, rows = self.run_entry("launch/start_all.bat", "dev")
+        bats = [Path(r["Bat"]).name for r in rows if r["Bat"]]
+        self.assertEqual(bats, ["start_denia.bat", "start_bridge.bat", "start_stream.bat", "start_ear.bat"])
+        self.assertIn("9880", self.checks())                     # 探的是 Denia
+        self.assertNotIn("9889", self.checks())                  # 不起 Irodori
+        self.assertIn("启动 Denia 后端 :9880", out)
+        self.assertNotIn("启动 TTS 后端 :9889", out)
+        self.assert_services_no_irodori(rows)
+
+    def assert_services_no_irodori(self, rows):
+        self.assertFalse(any("irodori_serve" in (r["Bat"] or "") or "start_backend" in (r["Bat"] or "")
+                             for r in rows))
+
+    def test_stop_all_covers_both_tts_backends(self):
+        text = (ROOT / "launch/stop_all.bat").read_bytes().decode("gbk")
+        # 关的时候两个后端都收：一对在 :killport 前，一对在收尾核对前
+        self.assertEqual(text.count("(9889 9880 9881 9885 9882 8650 8790 9335)"), 2)
+
+    def test_check_all_follows_engine(self):
+        text = (ROOT / "launch/check_all.py").read_text(encoding="utf-8")
+        self.assertIn("ALBION_TTS_ENGINE", text)
+        self.assertIn("config", text)
+        self.assertIn("local.env", text)
+        self.assertIn("9880", text)                              # gsv
+        self.assertIn("9889", text)                              # irodori
+
+    def test_env_example_documents_engine_switch(self):
+        text = (ROOT / "config/local.env.example").read_text(encoding="utf-8")
+        self.assertIn("ALBION_TTS_ENGINE=irodori", text)
+        self.assertIn("ALBION_GSV_DEVICE=cuda", text)
+        self.assertNotIn("ALBION_START_DENIA", text)
+        start_all = (ROOT / "launch/start_all.bat").read_bytes().decode("gbk")
+        self.assertIn("ALBION_TTS_ENGINE", start_all)
+        self.assertNotIn("ALBION_START_DENIA", start_all)
 
     # ---- 静态约束 ---------------------------------------------------------
     def test_batch_encoding_and_crlf(self):

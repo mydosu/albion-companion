@@ -6,6 +6,7 @@
 
 默认最多等 90 秒（Irodori 后端要加载模型，起得慢）。每 5 秒轮询一次，全绿就提前结束。
 --json：只在 stdout 输出一份 JSON（ok / ready / total / checks[{name, ok, detail}]），不打印表格；退出码不变。
+TTS 后端按 `config/local.env` 的 `ALBION_TTS_ENGINE` 只查一个：irodori → :9889，gsv → :9880。
 脑的探活带 key（不带 key 会在网关日志里留 "rejected invalid API key"，见 docs/history/pet-ROADMAP.md 17g）。
 """
 import json
@@ -28,6 +29,40 @@ AS_JSON = '--json' in sys.argv[1:]
 _args = [a for a in sys.argv[1:] if a != '--json']
 WAIT_S = int(_args[0]) if _args else 90
 SHELL_ENV = HERE.parent / 'shell' / 'apps' / 'stage-tamagotchi' / '.env.local'
+LOCAL_ENV = HERE.parent / 'config' / 'local.env'
+
+
+def local_env_value(key, default=''):
+    """取一个 ALBION_* 配置：真环境变量优先，没有才读 config/local.env。
+
+    和 launch/load_env.bat 是**同一套语义**（别处不要另写解析）：一行一个 KEY=VALUE、
+    空白行与整行 `#` 注释跳过、按第一个 `=` 切、值按字面取（不做 %VAR% 展开）、
+    已经定义过的同名变量不覆盖。一键启动会先 call load_env.bat 再跑本脚本，所以正常
+    路径下这里走的就是环境变量；单独双击/手工跑本脚本时才需要回落读文件。
+    """
+    import os
+    if key in os.environ:
+        return os.environ[key]
+    try:
+        text = LOCAL_ENV.read_text(encoding='utf-8', errors='replace')
+    except OSError:
+        return default
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        k, sep, v = line.partition('=')
+        if sep and k.strip() == key:
+            return v.strip()
+    return default
+
+
+def tts_engine():
+    """TTS 后端二选一：irodori（默认，:9889）或 gsv（:9880）。认不出的值按默认处理。"""
+    return 'gsv' if local_env_value('ALBION_TTS_ENGINE', 'irodori').strip().lower() == 'gsv' else 'irodori'
+
+
+ENGINE = tts_engine()
 
 
 def vision_base():
@@ -89,11 +124,19 @@ def stream_plan_version_row():
     return ('流式TTS :9885', True, f'plan_version={pv}')
 
 
+def tts_backend_row():
+    """只查**当前引擎**那一个后端：irodori :9889 / gsv Denia :9880（一键启动只拉起其中一个）。"""
+    if ENGINE == 'gsv':
+        ok = tcp_open(9880)
+        return ('Denia 后端 :9880', ok, 'TCP 可连' if ok else '连不上（一键启动会拉起）')
+    ok = tcp_open(9889)
+    return ('Irodori 后端 :9889', ok, 'TCP 可连' if ok else '连不上')
+
+
 def collect():
     rows = []
 
-    ok = tcp_open(9889)
-    rows.append(('Irodori 后端 :9889', ok, 'TCP 可连' if ok else '连不上'))
+    rows.append(tts_backend_row())
 
     st, body = http('http://127.0.0.1:9881/v1/models')
     models = ''

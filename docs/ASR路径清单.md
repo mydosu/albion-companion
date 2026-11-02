@@ -91,7 +91,7 @@
 | `一键启动.bat` | 参数转发 | 用 `launch\silent_run.ps1` 隐藏起 `launch\start_all.bat exe __hidden`（构建版） |
 | `一键启动-dev.bat` | 参数转发 | 转发 `launch\start_all.bat dev`；带 `show` 时给服务开可见控制台 |
 | `launch/start_all.bat` | `rem 3) 耳朵 STT` 段 | 唯一 STT 启动实现，探测 9882 后调用 `ear/start_ear.bat` |
-| `launch/stop_all.bat` | 13, 29 | 端口表 `(9889 9881 9885 9882 8650 8790 9335)`；根 `一键关闭.bat` 只转发到它 |
+| `launch/stop_all.bat` | 13, 29 | 端口表 `(9889 9880 9881 9885 9882 8650 8790 9335)`（两个 TTS 后端都关）；根 `一键关闭.bat` 只转发到它 |
 | `launch/close_consoles.ps1` | 1 | 进程名匹配表（含 `start_ear` / `whisper_serve`） |
 
 ---

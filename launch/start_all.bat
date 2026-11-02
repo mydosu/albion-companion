@@ -12,6 +12,10 @@ if "%ALBION_SHOW_CONSOLES%"=="1" set "CONSOLE_FLAG=-Visible"
 if not defined CONSOLE_FLAG set "ALBION_SILENT=1"
 if not exist "%WIFE%\logs" mkdir "%WIFE%\logs"
 
+rem TTS 引擎二选一：irodori（默认，:9889 五船日语特化）或 gsv（:9880 Denia 中文角色）
+if not defined ALBION_TTS_ENGINE set "ALBION_TTS_ENGINE=irodori"
+if /i not "!ALBION_TTS_ENGINE!"=="gsv" set "ALBION_TTS_ENGINE=irodori"
+
 rem 系统 Python：眼睛采集端和自检只用标准库，ALBION_PYTHON 优先，否则 PATH 上的 python
 set "SYS_PY=python"
 if defined ALBION_PYTHON set "SYS_PY=%ALBION_PYTHON%"
@@ -19,17 +23,31 @@ if defined ALBION_PYTHON set "SYS_PY=%ALBION_PYTHON%"
 echo ==========================================
 echo   阿尔比恩桌宠 · 一键启动（构建版）
 echo   （已经在跑的服务会自动跳过，不会重复起）
+echo   TTS 引擎：%ALBION_TTS_ENGINE%（config\local.env 的 ALBION_TTS_ENGINE）
 echo ==========================================
 echo.
 
-rem 1) TTS 后端 Irodori（五船单进程，加载约 15 秒）
-call :check 9889
-if !PORTFREE!==1 (
-  echo [1/6] 启动 TTS 后端 :9889 ...
-  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0silent_run.ps1" !CONSOLE_FLAG! -Bat "%WIFE%\tts\irodori\start_backend.bat" -Log "%WIFE%\logs\irodori.log"
-  set NEED_BRIDGE=1
+rem 1) TTS 后端：config\local.env 的 ALBION_TTS_ENGINE 二选一（irodori 默认 / gsv）
+rem    irodori = Irodori 五船日语特化 :9889（加载约 15 秒）
+rem    gsv     = Denia 中文角色 :9880（tts\gsv\start_denia.bat，首句慢）
+if /i "!ALBION_TTS_ENGINE!"=="gsv" (
+  call :check 9880
+  if !PORTFREE!==1 (
+    echo [1/6] 启动 Denia 后端 :9880（gsv 引擎）...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0silent_run.ps1" !CONSOLE_FLAG! -Bat "%WIFE%\tts\gsv\start_denia.bat" -Log "%WIFE%\logs\denia.log"
+    set NEED_BRIDGE=1
+  ) else (
+    echo [1/6] Denia 后端已在运行, 跳过
+  )
 ) else (
-  echo [1/6] TTS 后端已在运行, 跳过
+  call :check 9889
+  if !PORTFREE!==1 (
+    echo [1/6] 启动 TTS 后端 :9889（irodori 引擎）...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0silent_run.ps1" !CONSOLE_FLAG! -Bat "%WIFE%\tts\irodori\start_backend.bat" -Log "%WIFE%\logs\irodori.log"
+    set NEED_BRIDGE=1
+  ) else (
+    echo [1/6] TTS 后端已在运行, 跳过
+  )
 )
 
 rem 2) TTS 桥（必须等后端就绪）
@@ -52,17 +70,6 @@ if !PORTFREE!==1 (
   powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0silent_run.ps1" !CONSOLE_FLAG! -Bat "%WIFE%\tts\stream\start_stream.bat" -Log "%WIFE%\logs\stream.log"
 ) else (
   echo [2.5/6] 流式语音已在运行, 跳过
-)
-
-rem 2.8) Denia（可选中文角色，:9880；tts/gsv/start_denia.bat）。默认不起，ALBION_START_DENIA=1 才拉
-if "%ALBION_START_DENIA%"=="1" (
-  call :check 9880
-  if !PORTFREE!==1 (
-    echo [2.8/6] 启动 Denia 后端 :9880 ...
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0silent_run.ps1" !CONSOLE_FLAG! -Bat "%WIFE%\tts\gsv\start_denia.bat" -Log "%WIFE%\logs\denia.log"
-  ) else (
-    echo [2.8/6] Denia 后端已在运行, 跳过
-  )
 )
 
 rem 3) 耳朵 STT（paraformer，CPU，加载约 5 秒）
@@ -126,8 +133,8 @@ echo ---- 等模型加载, 然后自检（最多 90 秒）----
 
 echo.
 echo 服务都在后台静默跑; 想全关掉, 双击 一键关闭.bat.
-echo 单独启动: 进 tts\irodori 或 ear / eyes / widget 目录双击对应的 .bat.
-echo 可选: 想用 Denia 音色, 再双击 tts\gsv\start_denia.bat (:9880).
+echo 单独启动: 进 tts\irodori 或 tts\gsv 或 ear / eyes / widget 目录双击对应的 .bat.
+echo TTS 二选一: 改 config\local.env 的 ALBION_TTS_ENGINE=irodori（:9889 日语特化）或 gsv（:9880 中文 Denia）, 重启后生效.
 echo.
 endlocal
 exit /b

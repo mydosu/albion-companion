@@ -12,6 +12,10 @@
 本模块只做"协调"：切句交给 `session_text`（P1）、翻译交给桥 `/v2/prepare`（P2）、
 场景/风格交给 I `/v2/plan`（P3a）、音频交给 I `/v2/render`（P3b/c，全局单 GPU 队列）。
 读循环始终活着，所以 cancel/finish 在合成期间也进得来（方案 §3.3 的硬要求）。
+
+`ALBION_TTS_ENGINE` 二选一（见 `Config.engine`，壳那侧协议两边完全一样）：
+  * irodori（默认）＝上面这条流水线；
+  * gsv＝中文原文直接送桥 `/v1/audio/speech`（voice=denia）拿整条 WAV，不翻译、不规划、不渲染。
 """
 import asyncio
 import base64
@@ -129,6 +133,16 @@ class Config:
     def __init__(self, **kw):
         self.bridge_url = kw.get("bridge_url") or os.environ.get("BRIDGE_URL", "http://127.0.0.1:9881")
         self.irodori_url = kw.get("irodori_url") or os.environ.get("IRODORI_URL", "http://127.0.0.1:9889")
+        # TTS 引擎二选一（和 launch/start_all.bat 读同一份 config/local.env；一键启动会把它
+        # 经 load_env.bat 放进环境变量，所以这里只需读 env）：
+        #   irodori（默认）= 桥 /v2/prepare（中译日）→ Irodori /v2/plan + /v2/render（流式）
+        #   gsv           = 不翻译、不规划：中文原文 → 桥 /v1/audio/speech(voice=denia) → 整条 WAV
+        # 进程启动时固定（换引擎要重启服务），和 plan_version 一样不做会话内热切。
+        self.engine = (os.environ.get("ALBION_TTS_ENGINE")
+                       or kw.get("engine") or "irodori").strip().lower()
+        if self.engine not in ("irodori", "gsv"):
+            print("[stream] 未知 ALBION_TTS_ENGINE=%r，回落 irodori" % self.engine, flush=True)
+            self.engine = "irodori"
         self.voices = list(kw.get("voices") or ("albion", "taihou", "shinano", "brest", "jinshi"))
         self.default_voice = kw.get("default_voice") or self.voices[0]
         self.prepare_timeout = kw.get("prepare_timeout", 60.0)    # 实测翻译 13–43s，所有单元留足余量
@@ -203,6 +217,7 @@ class Config:
 
     def as_dict(self):
         return {"bridge_url": self.bridge_url, "irodori_url": self.irodori_url,
+                "engine": self.engine,
                 "voices": self.voices, "prepare_timeout": self.prepare_timeout,
                 "unit_budget": self.unit_budget, "render_timeout": self.render_timeout,
                 "max_units": self.max_units, "max_chars": self.max_chars,
@@ -542,6 +557,9 @@ class Coordinator:
             sess._budget = None
 
     async def _pipeline(self, sess, unit):
+        if self.cfg.engine == "gsv":
+            await self._pipeline_gsv(sess, unit)
+            return
         # t0 沿用**预取发起时**记下的时刻：预算口径始终是"本单元从被调度起算的翻译+渲染合计"，
         # 取回预取结果时**不重新起算**（codex 裁决边界）。
         t0 = self._T0.setdefault(unit.unit_id, time.monotonic())
@@ -586,6 +604,88 @@ class Coordinator:
         log("[timing] %s %s segs=%d prepare=%.0fms gpu_send=%.0fms total=%.0fms"
             % (sess.id, unit.unit_id, len(segments), (t_prep - t0) * 1000.0,
                (t_end - t_prep) * 1000.0, (t_end - t0) * 1000.0))
+
+    async def _pipeline_gsv(self, sess, unit):
+        """gsv 引擎（中文 Denia）：一个单元 = 中文原文 → 桥 /v1/audio/speech → 整条 WAV。
+
+        与 irodori 的差别（「TTS 二选一」方案）：
+          * 不调桥 `/v2/prepare`：不把中文翻成日语（桥里的文本清洗照旧生效）；
+          * 不调 Irodori `/v2/plan`、`/v2/render`，也没有 render 会话；
+          * 一个单元只出一份完整 WAV（Denia 不支持流式）。**壳侧协议一个字都不改**：
+            仍是 `display.span` → `sentence.start` → 二进制 WAV 帧 → `sentence.end`，
+            帧格式就是网关原来下发的 WAV（壳按 `format` 解码，壳请求的是 wav）。
+        字幕仍是**中文原文**（`display.span` / `sentence.*` 的 text 取源账本），不显示译文。
+        """
+        t0 = self._T0.setdefault(unit.unit_id, time.monotonic())
+        sess.cur_pf = None
+        speech = (unit.speech_text or "").strip()
+        if not speech:
+            await self._no_audio(sess, unit, reason="empty_speech")
+            return
+        # gsv 不预取音频（也没得预取），只把下一单元占进预取槽，原文顺序和收尾判定都不变。
+        self._prefetch_next(sess)
+        if sess.cancelled:
+            return
+        try:
+            audio = await self._gsv_speech(sess, speech)
+            if not audio:
+                raise StageError("gsv", "桥返回空音频")
+            if len(audio) > MAX_PAYLOAD:
+                raise StageError("gsv", "payload 超过 %d 字节上限" % MAX_PAYLOAD)
+            if sess.pending_bytes + len(audio) > MAX_DOWN_BYTES:
+                raise StageError("gsv", "下行待发字节超过 %d" % MAX_DOWN_BYTES)
+            n_samples, sr = self._wav_info(audio)
+            if sess.fmt == "wav" and not n_samples:
+                raise StageError("gsv", "WAV 会话收到无法计时的帧（%d 字节，无 RIFF 头）" % len(audio))
+            frame_s = (n_samples / sr) if n_samples else 0.0
+            # 和 irodori 一样：发之前按这一帧的真实时长看余额（一整段 = 一个播放段）。
+            await self._wait_credit(sess, need_s=frame_s, need_units=1)
+            if sess.cancelled:
+                return
+            display = self.source_of(sess, unit)
+            await sess.send_json({"event": "display.span", "payload": {
+                "session_id": sess.id, "generation": sess.generation,
+                "unit_id": unit.unit_id, "source_unit_id": unit.unit_id,
+                "source_range": [unit.start, unit.end], "text": display,
+                "eligible": "audio", "source": "audio"}})
+            await sess.send_json({"event": "sentence.start", "payload": {
+                "session_id": sess.id, "generation": sess.generation,
+                "unit_id": unit.unit_id, "sub_index": 0,
+                "text": display, "format": sess.fmt}})
+            if n_samples:
+                sess.sent_s += n_samples / sr
+            sess.pending_bytes += len(audio)              # writer 发完再减
+            await sess.send_bytes(audio)
+            sess.audio_bytes += len(audio)
+            sess.counts["audio"] += 1
+            seg = {"sub_index": 0, "started": True, "frames": 1, "samples": n_samples, "sr": sr}
+            await sess.send_json(self._segment_end(sess, unit, seg, display))
+        except StalledCredit:
+            raise                                  # 限流砍单元：交给上层记 stage="credit"
+        except Exception as e:
+            st = getattr(e, "stage", "gsv")
+            log("%s 单元失败 stage=%s %s: %s: %s"
+                % (sess.id, st, unit.unit_id, type(e).__name__, text_meta(e)))
+            await self._fail_span(sess, unit, st, "%s: %s" % (type(e).__name__, str(e)[:160]))
+        else:
+            self._T0.pop(unit.unit_id, None)
+            t_end = time.monotonic()
+            log("[timing] %s %s segs=1 gsv=%.0fms total=%.0fms"
+                % (sess.id, unit.unit_id, (t_end - t0) * 1000.0, (t_end - t0) * 1000.0))
+
+    async def _gsv_speech(self, sess, text):
+        """桥 `/v1/audio/speech`（voice=denia）：整条 WAV，桥里有文本清洗（心声/网址等）。
+
+        denia 是**非流式**的（桥对 `stream_format`/SSE 直接 400），所以这里按整条读回来，
+        再按网关现有的 WAV 下发格式交给壳。超时用 `render_timeout`（GPU 首句/长句都算在
+        单元预算里，外部 ActiveBudget 另有截止）。
+        """
+        body = {"input": text, "voice": "denia"}
+        r = await self._http().post(self.cfg.bridge_url.rstrip("/") + "/v1/audio/speech",
+                                    json=body, timeout=self.cfg.render_timeout)
+        if r.status_code != 200:
+            raise StageError("gsv", "bridge %d: %s" % (r.status_code, (r.text or "")[:200]))
+        return r.content
 
     async def _no_audio(self, sess, unit, reason=None):
         """无音频单元：不发二进制、不造零长度帧；**显示资格立即生效**（方案 §4.2）。
@@ -1051,6 +1151,9 @@ class Coordinator:
         voice = (frame.get("voice") or self.cfg.default_voice).strip().lower()
         voice = voice.replace("-irodori", "") or self.cfg.default_voice
         fmt = (frame.get("response_format") or "wav").strip().lower()
+        if self.cfg.engine == "gsv" and fmt != "wav":
+            # Denia 只能出 WAV（桥整条 wav 回来）；壳请求别的格式就解码不了，先如实记一笔。
+            log("[stream] gsv 引擎只能下发 WAV，本会话请求的是 %s" % fmt)
         return Session(self.cfg, "s" + uuid.uuid4().hex[:12], gen, voice, fmt)
 
     @staticmethod
@@ -1142,6 +1245,9 @@ class Coordinator:
         sess.prefetch = self._prepare_ahead(sess, nxt)
 
     def _prepare_ahead(self, sess, nxt):
+        if self.cfg.engine == "gsv":
+            # gsv 没有"提前翻译"这一步：不建准备任务，只保留槽位（预算从真正调度时起算）
+            return (nxt, None)
         self._T0.setdefault(nxt.unit_id, time.monotonic())   # 预算从此刻起算
         # codex 复核：`session_text` 在提交单元时就定好了 kind，所以无声段在这里**已经知道**。
         # 不建 task（省掉一次没用的 /v2/prepare）；但**必须留着这个单元占住预取槽** ——
@@ -1276,7 +1382,8 @@ def install(app, cfg=None, transport=None):
 
     @app.get("/api/v1/audio/speech/models")
     async def models():
-        return {"models": [{"id": "albion-stream", "name": "本机流式（Irodori 桥）"}]}
+        name = "本机流式（GSV/Denia）" if co.cfg.engine == "gsv" else "本机流式（Irodori 桥）"
+        return {"models": [{"id": "albion-stream", "name": name}]}
 
     @app.get("/api/v1/audio/speech/voices")
     async def voices():

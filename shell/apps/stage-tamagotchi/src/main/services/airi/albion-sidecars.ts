@@ -1,7 +1,9 @@
 // 阿尔比恩桌宠 · 本机语音模块（模块A）随壳自启
 //
-// 壳起来时顺手把三个本机服务拉起来（端口已在跑就跳过 → 和用户自己双击的 bat 幂等共存）：
-//   :9889 Irodori 后端（5 船 TTS）   :9881 TTS 桥（含中文→日语翻译层）   :9882 耳朵（paraformer-zh）
+// 壳起来时顺手把本机服务拉起来（端口已在跑就跳过 → 和用户自己双击的 bat 幂等共存）：
+//   :9881 TTS 桥（含中文→日语翻译层）   :9882 耳朵（paraformer-zh）
+//   :9889 Irodori 后端（5 船 TTS；只在 ALBION_TTS_ENGINE=irodori 时拉，
+//         gsv 模式不拉它 —— 中文 Denia :9880 由 launch/start_all.bat 或 tts/gsv/start_denia.bat 负责）
 // 退出时只杀「本进程拉起来的」那些，用户在别的窗口里跑的实例一律不碰。
 //
 // 路径可用环境变量覆盖（打包时要用）：ALBION_IRODORI_DIR / ALBION_EAR_DIR / ALBION_SIDECARS=0 关掉整套。
@@ -75,6 +77,32 @@ function repoRoot(): string {
     : join(app.getAppPath(), '..', '..', '..')
 }
 
+/**
+ * 读仓库根 `config/local.env` 里的一个值（和 `launch/load_env.bat` 同一套语义：
+ * 一行一个 KEY=VALUE、空行与 `#` 注释跳过、按第一个 `=` 切、真环境变量优先）。
+ * 文件不存在/读不了就当没配，返回 undefined。
+ */
+function readLocalEnv(key: string): string | undefined {
+  try {
+    const text = readFileSync(join(repoRoot(), 'config', 'local.env'), 'utf8')
+    for (const line of text.split(/\r?\n/)) {
+      if (!line || line.startsWith('#'))
+        continue
+      const i = line.indexOf('=')
+      if (i > 0 && line.slice(0, i).trim() === key)
+        return line.slice(i + 1).trim()
+    }
+  }
+  catch {}
+  return undefined
+}
+
+/** TTS 引擎二选一：irodori（默认，:9889）或 gsv（Denia :9880）。认不出的值按 irodori。 */
+function ttsEngine(): 'irodori' | 'gsv' {
+  const raw = process.env.ALBION_TTS_ENGINE ?? readLocalEnv('ALBION_TTS_ENGINE') ?? 'irodori'
+  return raw.trim().toLowerCase() === 'gsv' ? 'gsv' : 'irodori'
+}
+
 export function sidecarDirs(): SidecarDirs {
   const cfg = readSidecarConfig()
   const bundled = bundledRoot()
@@ -92,14 +120,19 @@ export function sidecarDirs(): SidecarDirs {
 
 function sidecars(): Sidecar[] {
   const { irodoriDir: IRODORI_DIR, earDir: EAR_DIR, pythonExe: GSV_PY } = sidecarDirs()
-  return [
-    {
+  const list: Sidecar[] = []
+  // TTS 二选一：gsv 模式只拉桥（Denia :9880 由 launch/start_all.bat 或 tts/gsv/start_denia.bat 负责），
+  // 不再顺手拉起 Irodori —— 否则两个后端会同时吃显存。
+  if (ttsEngine() === 'irodori') {
+    list.push({
       name: 'Irodori 后端',
       port: 9889,
       exe: `${IRODORI_DIR}/.venv/Scripts/python.exe`,
       args: ['-u', 'irodori_serve.py'],
       cwd: IRODORI_DIR,
-    },
+    })
+  }
+  list.push(
     {
       name: 'TTS 桥',
       port: 9881,
@@ -119,7 +152,8 @@ function sidecars(): Sidecar[] {
         ALBION_STT_PORT: '9882',
       },
     },
-  ]
+  )
+  return list
 }
 
 function portOpen(port: number, timeoutMs = 400): Promise<boolean> {
@@ -172,6 +206,9 @@ function openSidecarLog(s: Sidecar, log: Console): number | undefined {
 export async function startAlbionSidecars(log: Console = console): Promise<void> {
   if (process.env.ALBION_SIDECARS === '0')
     return
+
+  if (ttsEngine() === 'gsv')
+    log.info('[albion-sidecars] TTS 引擎 gsv：不拉 Irodori（Denia :9880 由 launch/start_all.bat 或 tts/gsv/start_denia.bat 拉起）')
 
   for (const s of sidecars()) {
     if (await portOpen(s.port)) {

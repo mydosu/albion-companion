@@ -10,7 +10,7 @@ echo   （按端口找主人，找到就关；找不到就跳过）
 echo ==========================================
 echo.
 
-for %%P in (9889 9881 9885 9882 8650 8790 9335) do (
+for %%P in (9889 9880 9881 9885 9882 8650 8790 9335) do (
   call :killport %%P
 )
 
@@ -26,7 +26,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0close_consoles.ps1"
 
 echo.
 echo ---- 关闭后核对 ----
-for %%P in (9889 9881 9885 9882 8650 8790 9335) do (
+for %%P in (9889 9880 9881 9885 9882 8650 8790 9335) do (
   call :showport %%P
 )
 echo.
