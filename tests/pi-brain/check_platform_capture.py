@@ -94,7 +94,7 @@ def notices():
     ]
     ctx = [{"id": 9, "at": now - 120, "author": "机器人甲", "text": "我先睡了"},
            {"id": 10, "at": now - 60, "author": "Formidable", "text": "晚安"}]
-    group_items = [{"id": 14, "at": now, "author": "Myduso", "text": "你们俩聊什么呢"},
+    group_items = [{"id": 14, "at": now, "author": "OwnerNick", "text": "你们俩聊什么呢"},
                    {"id": 15, "at": now + 30, "author": "Formidable", "text": "随便聊聊"}]
     return [
         ("TG 私信", chat_bridge.dm_notice("telegram", items[:1])),
@@ -134,11 +134,11 @@ def main():
         problems.append("Discord 私信没变成「（Discord 私信）指挥官：原话」：%r" % dm)
     grp = outs[2]
     for want in ("（Discord 群）机器人甲：我先睡了", "（Discord 群）Formidable：晚安",
-                 "（Discord 群）Myduso：你们俩聊什么呢", "（Discord 群）Formidable：随便聊聊"):
+                 "（Discord 群）OwnerNick：你们俩聊什么呢", "（Discord 群）Formidable：随便聊聊"):
         if want not in grp:
             problems.append("群通知缺上下文/消息行：%r" % want)
     zero = outs[3]
-    if "（Discord 群）Myduso：你们俩聊什么呢" not in zero:
+    if "（Discord 群）OwnerNick：你们俩聊什么呢" not in zero:
         problems.append("R=0 那条的消息行没了：%r" % zero)
 
     # 与 tools/reextract_albion_memory.py 的 Python 引擎逐条对拍（同一份规则、同义实现）

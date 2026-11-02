@@ -204,6 +204,75 @@ def replace_mentions(text, index):
     return out
 
 
+# ── 认人：只认数字 ID；名字一律运行时从 Discord 取（仓库是公开的，不写死真名）──
+OWNER_LABEL = "指挥官"          # 她看到的「他」的称呼；正文里的 @他 也统一写成这个
+IMPERSONATOR_LABEL = "群友（自称 %s）"
+
+
+def owner_alias_set(owner_names=()):
+    """{小写名字…}：owner 在 Discord 上的各种名字（name/global_name/nick）＋「指挥官」。"""
+    aliases = {OWNER_LABEL.lower()}
+    for name in owner_names or ():
+        text = str(name or "").strip()
+        if text:
+            aliases.add(text.lower())
+    return aliases
+
+
+def claims_owner_identity(member, owner_names=()):
+    """这人是不是在冒充他：名字里带「指挥官」，或跟 owner 的任一名字撞名（不分大小写）。"""
+    aliases = owner_alias_set(owner_names)
+    for name in _member_names(member):
+        if OWNER_LABEL in name:
+            return True
+        if name.lower() in aliases:
+            return True
+    return False
+
+
+def display_author(member, owner_id, owner_names=()):
+    """群里「谁说的」：他 →「指挥官」；冒充者 →「群友（自称 X）」；其他人 → 昵称/显示名。"""
+    if is_owner(getattr(member, "id", None), owner_id):
+        return OWNER_LABEL
+    if claims_owner_identity(member, owner_names):
+        shown = (getattr(member, "display_name", "") or getattr(member, "name", "") or "").strip()
+        return IMPERSONATOR_LABEL % (shown or "某人")
+    return (getattr(member, "display_name", "") or getattr(member, "name", "")
+            or str(member)).strip()
+
+
+def render_author(author, owner_names=()):
+    """箱子里存着的作者名（可能是改版前写进去的昵称）也按同一套规则显示。
+
+    新入箱的消息写的就是「指挥官」，但旧数据和 context 行里还是昵称；渲染时统一。
+    """
+    text = str(author or "").strip()
+    if not text:
+        return "有人"
+    if text.startswith("群友（自称"):
+        return text
+    if text == OWNER_LABEL or text.lower() in owner_alias_set(owner_names):
+        return OWNER_LABEL
+    if OWNER_LABEL in text:
+        return IMPERSONATOR_LABEL % text
+    return text
+
+
+def rewrite_owner_mentions(text, owner_id, owner_names=()):
+    """正文里 @到他 → 「@指挥官」：``<@id>`` / ``<@!id>``，以及 clean_content 换出来的他的名字。"""
+    out = str(text or "")
+    if not out:
+        return out
+    owner = str(owner_id or "").strip()
+    if owner:
+        out = re.sub(r"<@!?%s>" % re.escape(owner), "@" + OWNER_LABEL, out)
+    others = {n for n in owner_alias_set(owner_names) if n and n != OWNER_LABEL.lower()}
+    for name in sorted(others, key=len, reverse=True):
+        out = re.sub(r"@(" + re.escape(name) + r")(?=$|[^0-9A-Za-z_])", "@" + OWNER_LABEL, out,
+                     flags=re.IGNORECASE)
+    return out
+
+
 def _stamp(ts):
     from datetime import datetime
     return datetime.fromtimestamp(float(ts or 0), wake.TZ).strftime("%m-%d %H:%M")
@@ -242,8 +311,12 @@ def budget_note(budget):
     return ""
 
 
-def group_notice(channel_name, items, context=None, budget=None):
-    """群通知。每行消息前加 ``（Discord 群）`` 前缀（同样只为长期记忆剥壳用，定稿文字没改）。"""
+def group_notice(channel_name, items, context=None, budget=None, owner_names=()):
+    """群通知。每行消息前加 ``（Discord 群）`` 前缀（同样只为长期记忆剥壳用，定稿文字没改）。
+
+    作者名统一走 render_author：他永远是「指挥官」，冒充者是「群友（自称 X）」，
+    改版前存进箱子的旧昵称在渲染时也会被换掉（2026-11-02）。
+    """
     lines = [PLATFORM_MARKER + "Discord 群「%s」里有新消息（群里大家都看得到；我和指挥官之间的私事、当面说过的话不发这儿）："
              % (channel_name or "群"),
              GROUP_PEER_NOTE]
@@ -252,10 +325,12 @@ def group_notice(channel_name, items, context=None, budget=None):
         lines.append("（刚才群里还在聊的：）")
         for item in context:
             lines.append("（Discord 群）#%s %s %s：%s" % (item["id"], _hhmm(item.get("at")),
-                                                        item.get("author") or "有人", item.get("text")))
+                                                        render_author(item.get("author"), owner_names),
+                                                        item.get("text")))
     for item in items:
         lines.append("（Discord 群）#%s %s %s：%s" % (item["id"], _hhmm(item.get("at")),
-                                                    item.get("author") or "有人", item.get("text")))
+                                                    render_author(item.get("author"), owner_names),
+                                                    item.get("text")))
     lines.append(GROUP_INVITE_NOTE)
     note = budget_note(budget)
     if note:
@@ -512,6 +587,8 @@ class DiscordBot:
         self.ready = False
         # 成员名 → id：给她发群消息时把「@可畏」换成真 mention（2026-11-02）
         self._members = {}
+        # owner 在 Discord 上的真名（name/global_name/nick），只在运行时取；用来认 @他 和防冒充
+        self._owner_names = set()
 
     @property
     def configured(self):
@@ -524,9 +601,31 @@ class DiscordBot:
             return
         names = self._members.setdefault(str(mid), set())
         names.update(_member_names(member))
+        if is_owner(mid, self.cfg["dc_owner"]):
+            self._owner_names.update(_member_names(member))
+
+    def remember_owner(self, user):
+        """把他的 Discord 名字记下来（name / global_name）：防冒充和 @他 要用，但不写死在代码里。"""
+        mid = getattr(user, "id", None)
+        if not is_owner(mid, self.cfg["dc_owner"]):
+            return
+        for attr in ("name", "global_name"):
+            value = getattr(user, attr, None)
+            if isinstance(value, str) and value.strip():
+                self._owner_names.add(value.strip())
+        self._owner_names.update(_member_names(user))
+
+    def owner_name_set(self):
+        """owner 现在已知的所有名字（运行时取；没有就返回空集合，调用方自己兜底）。"""
+        return set(self._owner_names)
 
     def name_index(self):
-        return build_name_index([(mid, sorted(names)) for mid, names in self._members.items()])
+        index = build_name_index([(mid, sorted(names)) for mid, names in self._members.items()])
+        # 「@指挥官」→ 他的 <@id>：她 send_message 只写得出这个称呼（2026-11-02）。
+        # 群里若有人叫「指挥官」（冒充者），这里强制指向真 owner，别 @ 到冒牌货。
+        if self.cfg["dc_owner"]:
+            index[OWNER_LABEL.lower()] = str(self.cfg["dc_owner"])
+        return index
 
     def channel_name(self):
         if not self.client or not self.cfg["dc_channel"]:
@@ -558,7 +657,15 @@ class DiscordBot:
             # 频道名解析成什么、有没有解析到，部署时一眼能看出来（2026-11-02）
             log("discord_ready", user=str(self.client.user), guilds=len(self.client.guilds),
                 channel=self.channel_name() or "(未配置或看不到)")
+            try:
+                owner = self.client.get_user(int(self.cfg["dc_owner"]))
+                if owner is None:
+                    owner = await self.client.fetch_user(int(self.cfg["dc_owner"]))
+                self.remember_owner(owner)
+            except Exception as exc:              # noqa: BLE001 - 取不到就等收到他消息时再记
+                log("discord_owner_names_failed", error=repr(exc)[:120])
             await self._warm_members()
+            log("discord_owner_names", known=len(self._owner_names))
 
         @self.client.event
         async def on_message(message):
@@ -697,9 +804,11 @@ class Service:
     def on_discord_message(self, message):
         if self.dc.client and message.author.id == self.dc.client.user.id:
             return
-        author = getattr(message.author, "display_name", "") or str(message.author)
-        # 用 clean_content：她看到的是「@可畏」，不是「<@1566802611611504680>」（2026-11-02）
-        text = message_text(message)
+        # 谁说的只按数字 ID 认：他永远是「指挥官」，冒充他名字的是「群友（自称 X）」（2026-11-02）
+        owner_names = self.dc.owner_name_set()
+        author = display_author(message.author, self.cfg["dc_owner"], owner_names)
+        # 正文里 @他（<@id> 或 clean_content 换出来的名字）一律写成「@指挥官」
+        text = rewrite_owner_mentions(message_text(message), self.cfg["dc_owner"], owner_names)
         self.dc.remember(message.author)
         for member in (getattr(message, "mentions", None) or []):
             self.dc.remember(member)              # 被 @ 的人也在里面，名字顺手记住
@@ -807,7 +916,8 @@ class Service:
             context = inbox.context_items("discord_group", since_s=600, limit=10)
             budget = await self.refresh_budget()
             ok = await notify(self.cfg, self.host, SESSION_GROUP,
-                              group_notice(self.dc.channel_name(), items, context, budget),
+                              group_notice(self.dc.channel_name(), items, context, budget,
+                             self.dc.owner_name_set()),
                               [i["id"] for i in items])
             if not ok:
                 return
@@ -1002,7 +1112,7 @@ def _selftest():
         idx = build_name_index([("111", ["Formidable"]), ("222", ["Albion"])])
         assert replace_mentions("@formidable 你看", idx) == "<@111> 你看"
         assert replace_mentions("@Albion 和 @Formidable", idx) == "<@222> 和 <@111>"
-        assert replace_mentions("@Myduso 你看", idx) == "@Myduso 你看", "对不上的人不替换"
+        assert replace_mentions("@Nobody 你看", idx) == "@Nobody 你看", "对不上的人不替换"
         assert replace_mentions("@AlbionBot", idx) == "@AlbionBot", "只有精确整名才替换"
         amb = build_name_index([("111", ["Same"]), ("222", ["same"])])
         assert replace_mentions("@Same", amb) == "@Same", "重名有歧义就不替换"

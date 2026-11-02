@@ -237,6 +237,9 @@ def check_drain():
         def channel_name(self):
             return "albion"
 
+        def owner_name_set(self):
+            return set()
+
     def service():
         cfg = chat_bridge.load_config(environ={"API_SERVER_KEY": "k"}, home=os.path.join(_STATE, "nohome"))
         svc = chat_bridge.Service(cfg)
@@ -367,6 +370,9 @@ def check_group_gate():
         def name_index(self):
             return {}
 
+        def owner_name_set(self):
+            return {"ownernick"}
+
         def channel_name(self):
             return "常规"
 
@@ -390,7 +396,7 @@ def check_group_gate():
         return svc
 
     form = _Author("1566802611611504680", bot=True, name="Formidable", display="Formidable")
-    owner = _Author(int(cfg["dc_owner"]), bot=False, name="myduso_27930", display="Myduso")
+    owner = _Author(int(cfg["dc_owner"]), bot=False, name="owner_handle", display="OwnerNick")
     other = _Author("999", bot=False, name="someone", display="Someone")
     group = _Channel(int(cfg["dc_channel"]), guild=object())
     exhausted = [("1566802611611504680", True, _time.time() - i) for i in range(12)]
@@ -414,13 +420,13 @@ def check_group_gate():
     ok(last["needs"] is True, "R=8：可畏说话也叫醒（不要求 @）")
 
     # ---- send_group：R>0 能发；R=0 拒发（回复路径，不掺主动限流） ----
-    inbox.add("discord_group", "在吗", author="Myduso")
+    inbox.add("discord_group", "在吗", author="OwnerNick")
     sent, msg = _asyncio.run(svc.send("discord_group", "嗯"))
     ok(sent and svc.dc.sent == ["嗯"], "R>0：能发", msg)
 
     reset()
     svc = make_service(exhausted)
-    inbox.add("discord_group", "在吗", author="Myduso")
+    inbox.add("discord_group", "在吗", author="OwnerNick")
     sent, msg = _asyncio.run(svc.send("discord_group", "嗯"))
     ok(not sent and msg == chat_bridge.GROUP_BUDGET_EMPTY, "R=0：send_group 被拒，返回定稿原文", msg)
     ok(svc.dc.sent == [], "R=0：一个字都没发出去")
@@ -428,15 +434,99 @@ def check_group_gate():
     # ---- @名字 → <@id>（能匹配 / 不能匹配 / 重名）----
     idx = chat_bridge.build_name_index([("111", ["Formidable"]), ("222", ["Albion"])])
     ok(chat_bridge.replace_mentions("@formidable 你说呢", idx) == "<@111> 你说呢", "@名字（不区分大小写）换成真 mention")
-    ok(chat_bridge.replace_mentions("@Myduso 你说呢", idx) == "@Myduso 你说呢", "群里没有的人：不换")
+    ok(chat_bridge.replace_mentions("@OwnerNick 你说呢", idx) == "@OwnerNick 你说呢", "群里没有的人：不换")
     ok(chat_bridge.replace_mentions("@AlbionBot", idx) == "@AlbionBot", "只有精确整名才换（不吃前缀）")
     amb = chat_bridge.build_name_index([("111", ["Same"]), ("222", ["same"])])
     ok(chat_bridge.replace_mentions("@Same", amb) == "@Same", "重名有歧义：不换")
 
     # ---- 群说明 ----
-    notice = chat_bridge.group_notice("常规", [inbox.add("discord_group", "在吗", author="Myduso")])
+    notice = chat_bridge.group_notice("常规", [inbox.add("discord_group", "在吗", author="OwnerNick")])
     ok(chat_bridge.GROUP_PEER_NOTE in notice and chat_bridge.GROUP_INVITE_NOTE in notice,
        "群通知里带着「可畏也在群里…」和「可以回，也可以不回」")
+
+
+def check_owner_identity():
+    """认人只按数字 ID：他 →「指挥官」；@他 →「@指挥官」；冒充者 →「群友（自称 X）」（2026-11-02）。
+
+    真名一律运行时从 Discord 取，这份自检只用假名（仓库是公开的）。
+    """
+    owner_id = "1001"
+    owner_names = {"OwnerHandle", "OwnerDisplay"}
+
+    class _Who:
+        bot = False
+
+        def __init__(self, uid, nick=None, display=None, name=None):
+            self.id = int(uid) if str(uid).isdigit() else uid
+            self.nick = nick
+            self.display_name = display or name or ""
+            self.name = name or display or ""
+            self.guild = None
+
+        def __str__(self):
+            return self.display_name
+
+    owner = _Who(owner_id, nick="队长", display="OwnerDisplay", name="OwnerHandle")
+    plain = _Who("2002", display="Someone", name="someone")
+    copy_label = _Who("2003", display="指挥官", name="commander_fan")
+    copy_nick = _Who("2004", nick="指挥官阿", display="Fakey", name="fakey")
+    copy_name = _Who("2005", display="OwnerHandle", name="OwnerHandle")
+
+    # 1) 谁说的
+    ok(chat_bridge.display_author(owner, owner_id, owner_names) == "指挥官",
+       "群消息作者是他：一律写「指挥官」（不看昵称）",
+       chat_bridge.display_author(owner, owner_id, owner_names))
+    ok(chat_bridge.display_author(plain, owner_id, owner_names) == "Someone",
+       "别的成员照旧用显示名")
+    ok(chat_bridge.display_author(copy_label, owner_id, owner_names) == "群友（自称 指挥官）",
+       "显示名叫「指挥官」的按冒充处理", chat_bridge.display_author(copy_label, owner_id, owner_names))
+    ok(chat_bridge.display_author(copy_nick, owner_id, owner_names).startswith("群友（自称 "),
+       "昵称里带「指挥官」的按冒充处理", chat_bridge.display_author(copy_nick, owner_id, owner_names))
+    ok(chat_bridge.display_author(copy_name, owner_id, owner_names).startswith("群友（自称 "),
+       "跟 owner 名字撞名的按冒充处理", chat_bridge.display_author(copy_name, owner_id, owner_names))
+
+    # 2) 正文里 @他
+    ok(chat_bridge.rewrite_owner_mentions("<@%s> 你在吗" % owner_id, owner_id, owner_names) == "@指挥官 你在吗",
+       "<@id> 换成 @指挥官")
+    ok(chat_bridge.rewrite_owner_mentions("<@!%s> 看这个" % owner_id, owner_id, owner_names) == "@指挥官 看这个",
+       "<@!id> 也换")
+    ok(chat_bridge.rewrite_owner_mentions("@OwnerHandle 你来", owner_id, owner_names) == "@指挥官 你来",
+       "clean_content 换出来的名字也换成 @指挥官")
+    ok(chat_bridge.rewrite_owner_mentions("<@2002> 不是我", owner_id, owner_names) == "<@2002> 不是我",
+       "别人的 id 不动")
+    ok(chat_bridge.rewrite_owner_mentions("@Someone 你也在", owner_id, owner_names) == "@Someone 你也在",
+       "别人的名字不动")
+
+    # 3) context 行（箱子里还是改版前存进去的昵称）
+    notice = chat_bridge.group_notice(
+        "常规",
+        [{"id": 9, "at": 0, "author": "指挥官", "text": "现在说的"}],
+        [{"id": 8, "at": 0, "author": "OwnerHandle", "text": "刚才说的"}],
+        None, owner_names)
+    ok("OwnerHandle" not in notice and notice.count("指挥官：") == 2,
+       "context 行里改版前的旧昵称也显示成「指挥官」")
+    bad = chat_bridge.group_notice("常规", [{"id": 10, "at": 0, "author": "指挥官阿", "text": "我也"}],
+                                   None, None, owner_names)
+    ok("群友（自称 指挥官阿）" in bad, "群通知里冒充者带「自称」")
+
+    # 4) 她 send_message 写「@指挥官」→ 真 mention（replace_mentions + name_index 已有这条别名）
+    test_cfg = chat_bridge.load_config(
+        environ={"ALBION_DISCORD_BOT_TOKEN": "fake", "ALBION_DISCORD_OWNER_ID": owner_id},
+        home=os.path.join(_STATE, "nohome"))
+    bot = chat_bridge.DiscordBot(test_cfg, lambda m: None)
+    bot.remember(owner)
+    bot.remember(plain)
+    idx = bot.name_index()
+    ok(chat_bridge.replace_mentions("@指挥官 我在这", idx) == "<@%s> 我在这" % owner_id,
+       "她发「@指挥官」换成真 mention", str(idx))
+    ok(chat_bridge.replace_mentions("@OwnerHandle 是你吗", idx) == "<@%s> 是你吗" % owner_id,
+       "她写 owner 的名字也能换")
+
+    # 5) 冒充者名字不会把「@指挥官」抢走
+    copy_bot = chat_bridge.DiscordBot(test_cfg, lambda m: None)
+    copy_bot.remember(copy_label)
+    ok(chat_bridge.replace_mentions("@指挥官 在吗", copy_bot.name_index()) == "<@%s> 在吗" % owner_id,
+       "群里有人叫「指挥官」也照样 @ 到真 owner")
 
 
 def main():
@@ -449,6 +539,7 @@ def main():
     check_drain()
     check_budget()
     check_group_gate()
+    check_owner_identity()
     print("check_chat: %d passed, %d failed" % (PASS, FAIL))
     return 0 if FAIL == 0 else 1
 
