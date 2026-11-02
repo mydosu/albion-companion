@@ -11,9 +11,16 @@
 #   sudo bash firewall.sh install    # 装到 /usr/local/bin + systemd，开机和 docker 重启时自动重跑
 #   sudo bash firewall.sh remove     # 停掉服务、删 unit 和脚本（DOCKER-USER 留空）
 #
-# 参数在 .env：VLM_PORT、ALLOWED_SOURCES（空格分隔的网段）、VLM_IPV6。
+# 参数在 .env：VLM_PORT（宿主发布端口）、ALLOWED_SOURCES（空格分隔的网段）、VLM_IPV6。
 # 注意：apply/install 会清空整条 DOCKER-USER，再按这里的规则重建；这台机器上如果还有
 # 别的容器要自定义放行，把它的规则一起写进 ALLOWED_SOURCES 或改这个脚本。
+#
+# 匹配的是容器端口，不是宿主发布端口：DOCKER-USER 在 DNAT 之后才走，--dport 看到的是
+# 容器里的 8080（和 docker-compose.yml 里 ports 右边那个一致），改 VLM_PORT 不用动规则。
+#
+# 触发方式二选一：生产用的是 docker.service 的 drop-in
+# （/etc/systemd/system/docker.service.d/override.conf 里 ExecStartPost= 调这个脚本）；
+# 这里的 install 装成独立 unit（PartOf=docker.service），效果一样。
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -32,7 +39,9 @@ for candidate in "$HERE/.env" "${DOCKER_USER_RULES_ENV:-}"; do
   fi
 done
 
-PORT="${VLM_PORT:-8080}"
+HOST_PORT="${VLM_PORT:-8080}"
+# 容器端口固定 8080
+CONT_PORT="${VLM_CONT_PORT:-8080}"
 ALLOWED_SOURCES="${ALLOWED_SOURCES:-192.168.0.0/16 10.0.0.0/8 100.64.0.0/10}"
 VLM_IPV6="${VLM_IPV6:-1}"
 
@@ -57,11 +66,11 @@ apply_family() {
   "$cmd" -A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
   local src
   for src in $ALLOWED_SOURCES; do
-    "$cmd" -A DOCKER-USER -s "$src" -p tcp --dport "$PORT" -j RETURN
+    "$cmd" -A DOCKER-USER -s "$src" -p tcp --dport "$CONT_PORT" -j RETURN
   done
-  "$cmd" -A DOCKER-USER -p tcp --dport "$PORT" -j DROP
+  "$cmd" -A DOCKER-USER -p tcp --dport "$CONT_PORT" -j DROP
   "$cmd" -A DOCKER-USER -j RETURN
-  echo "[ok  ] $family DOCKER-USER 已重写：$PORT 只放行 $ALLOWED_SOURCES"
+  echo "[ok  ] $family DOCKER-USER 已重写：容器端口 $CONT_PORT（宿主发布 $HOST_PORT）只放行 $ALLOWED_SOURCES"
 }
 
 apply_all() {
