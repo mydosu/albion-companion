@@ -4,6 +4,31 @@
 
 **想让你的 agent 照着一步步复现，直接让它读 [00 复现向导](00-复现向导.md)**：按阶段执行、每阶段有前置和验收命令。下面的篇号就是向导里的阶段号。
 
+## 开始之前：先选模型
+
+不嫌弃 DeepSeek 口癖、愿意自己调教的话，建议用 OpenCode、Command Code 或者 OpenDesign 这几家中转站，套餐量大管饱。DeepSeek 的口癖怎么调，[03 篇](03-口癖和人设.md) 已经写了人设换口吻和第 3 条兜底清洗，照着配就行，这里不展开。
+
+想要少点事、就能有人类感，就买 Gemini Pro 反代出来用，Gemini 3.8 Flash 在角色扮演里面还是顶尖的。
+
+我现在的各个功能分别由不同的模型承担，具体分工如下：
+
+| 功能 | 用的模型 | 怎么接的 | 出处 |
+|---|---|---|---|
+| 脑：她说话、决定调哪个工具 | Gemini 3.8 Flash | Gemini Pro 订阅，用 Magpie 反代（WSL 里 `/root/.pi/agent/settings.json`：`defaultProvider=magpie`，`defaultModel=antigravity/gemini-3.8-flash`） | [教程 00 第 284 行](00-复现向导.md)、[教程 03](03-口癖和人设.md) |
+| 脑的兜底 | DeepSeek V4 Flash | Command Code（`commandcode/deepseek/deepseek-v4-flash`） | [教程 00 第 284 行](00-复现向导.md) |
+| 人设改写 | Gemini | 教程 03 | [教程 03](03-口癖和人设.md) |
+| TTS 翻译（中文转日语，她说日语） | 跟着脑当前用的模型走，关思考；退路是 Command Code | `tts/irodori/bridge.py` | [README 第 68 行](../README.md)、[教程 04 第 150 行](04-训练角色声音.md) |
+| 联网搜索 | grok-chat-fast | grok 号池（本机代理） | `brain/agent/extensions/grokweb-search.ts` |
+| 画图 | grok-imagine-image-2.0，改图用 grok-imagine-image-edit | grok 号池 | `brain/agent/extensions/albion-draw.ts` |
+| 看屏幕截图 | 主模型能收图就自己看；不收图时交号池的 grok-4.7 转述 | `brain/agent/extensions/albion-look.ts` | [教程 09](09-她的眼睛.md) |
+| 看摄像头 | 视觉机上的本地 Qwen3-VL 4B（llama.cpp）；照片不出局域网，也不进主模型（本地跑，不花 token） | `albion-look.ts` | [教程 09](09-她的眼睛.md)、[README 第 64 行](../README.md) |
+| 记忆的向量模型 | BAAI/bge-m3（1024 维） | OpenViking 的 embedding 配置 | [教程 07](07-长期记忆.md) |
+| 记忆抽取 | 中转站上几个免费模型轮换（minimax-m3.1-flash、beam、ornith），DeepSeek V4.1 Flash 兜底 | OpenViking 的 vlm 配置 | [教程 07 第 244 行](07-长期记忆.md) |
+| 语音识别 | 本地 paraformer，跑 CPU（本地跑，不花 token） | `ear/` | [教程 06](06-语音输入.md) |
+| 她的声音 | 本地 Irodori TTS + 自己训的 LoRA（本地跑，不花 token） | `tts/irodori` | [教程 04](04-训练角色声音.md) |
+
+每个功能的模型都能单独换，各篇有写怎么配。
+
 每篇解决一个问题，可以只看你卡住的那篇：遇到什么问题 → 为什么会这样 → 我怎么解决的 → 你可以怎么做。
 
 | 篇 | 解决什么问题 | 状态 |
