@@ -49,13 +49,7 @@ tts\gsv\start_denia.bat
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\AI\Wife\launch\silent_run.ps1 -Bat D:\AI\Wife\tts\gsv\start_denia.bat -Log D:\AI\Wife\logs\denia.log
 ```
 
-第一次加载较慢（CPU），看到 9880 在监听再起桥/说话。想让 `launch/start_all.bat` 顺手拉起它：
-
-```ini
-ALBION_START_DENIA=1
-```
-
-（默认不拉，保持「Denia 是可选音色」。）
+第一次加载较慢（CPU），看到 9880 在监听再起桥/说话（Denia 是可选音色，默认不随一键启动拉起，调试时按上述方式手动启动）。
 
 ## 与桥的约定
 

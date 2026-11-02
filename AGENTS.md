@@ -8,7 +8,7 @@
 - 生产：`shell/apps/`、`shell/packages/`、`ear/whisper_serve.py`、`eyes/`、`widget/`、`tts/irodori/`、`tts/stream/`、`tts/gsv/`（Denia 适配层）、`brain/`（WSL 脑的仓库镜像）、`memory/`（OpenViking 守护）。根目录只留四个用户入口（`一键启动.bat`、`一键启动-dev.bat`、`一键关闭.bat`、`一键安装.bat`），启动实现在 `launch/`。
 - 独立测试与探针：`tests/<组件>/`；固定材料放其 `data/` 或随测试文件的已登记 golden JSON；生成结果只写 `tests/output/`。
 - AIRI 已有 `*.test.ts` / `*.browser.test.ts` 继续由所在 package 的 Vitest 管理；这是框架单元测试的明确例外。新增独立脚本不得放进 `shell/*/src`。
-- 可重复使用的维护工具放 `tools/` 或 `tools/`；一次性改码脚本放 `archive/legacy/`，不可直接批量执行归档脚本。
+- 可重复使用的维护工具放 `tools/`；一次性改码脚本放 `archive/legacy/`，不可直接批量执行归档脚本。
 - 旧生产副本放 `backup/code/<日期>/<原相对路径>`，不入 Git；私密 profile 归档放 `backup/profile-archives/`。回滚源码优先用明确 Git commit，在独立 worktree 验证。
 - 日志放 `logs/`，临时草稿放 `_tmp/`；现有仍在写的日志路径等进程自然停止后再迁，不能为了整理杀进程。个人数据 `her-home/`、模型/环境/训练数据保持本地。
 - 修改路径前搜索引用，包括文档、启动器、Python 导入、Node import、fixture 路径与输出目录；同一变更更新引用和 `docs/layout-moves-20261002.json` 的后续迁移记录。保留 bat 原编码与 CRLF。

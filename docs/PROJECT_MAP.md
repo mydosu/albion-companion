@@ -34,6 +34,7 @@ flowchart LR
 | 流式切句与会话 | `tts/stream/start_stream.bat` → `stream_server.py` + `session_text.py` | `tests/tts/test_credit_patience.py` 与壳音频 tests |
 | Denia（中文角色，可选） | `tts/gsv/start_denia.bat` → 上游 GPT-SoVITS `api_v2.py` :9880 | `tts/gsv/README.md`（`ALBION_GSV_ROOT`、权重、参考音）；不是 Irodori 主线 |
 | 脑（阿尔比恩本人） | WSL `/root/albion-pi/`（`start.sh`／`accept.sh`，宿主 :8650） | 仓库镜像 `brain/`（与现网逐文件一致）；见其 README |
+| 长期记忆守护 | `memory/openviking-*.ps1/.py` | `memory/OPENVIKING_GUARD.md`，服务监听 :1933 |
 | 她自己的眼睛 | 脑里 `look` 工具 → 主力机/本机采集端 :8790 | 主力机上单独部署一份；仓库来源见 `eyes/` |
 
 脑不再是 Hermes 网关，也没有单独的语音插件：她的话由壳从自己的 store 取正文再送 TTS（端点契约没变）。
