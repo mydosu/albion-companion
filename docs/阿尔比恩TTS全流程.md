@@ -20,11 +20,17 @@
 
 | 端口 | 是什么 | 谁拉起 |
 |---|---|---|
-| `9889` | Irodori-TTS 后端（**5 船一个进程**） ✓ | `tts\irodori\start_backend.bat` |
-| `9885` | **流式 TTS**：切句、播放时序与会话（壳现在走这里） | `tts\stream\start_stream.bat` |
-| `9881` | **桥**：OpenAI 兼容的语音接口 + 中文→日语翻译 ✓（流式与直连都走它） | `tts\irodori\start_bridge.bat` |
-| `9880` | Denia 专用的旧 GPT-SoVITS 后端（**可选**，平时不启 ✓） | `tts\gsv\start_denia.bat` |
+| `9889` | Irodori-TTS 后端（**5 船一个进程**） ✓；和 `9880` **二选一** | `tts\irodori\start_backend.bat` |
+| `9885` | **流式 TTS**：切句、播放时序与会话（壳现在走这里；两种引擎都起） | `tts\stream\start_stream.bat` |
+| `9881` | **桥**：OpenAI 兼容的语音接口 + 中文→日语翻译 ✓（流式与直连都走它；两种引擎都起） | `tts\irodori\start_bridge.bat` |
+| `9880` | Denia 专用的 GPT-SoVITS 后端（中文角色，和 `9889` **二选一**） | `tts\gsv\start_denia.bat` |
 | `9882` | 耳朵：中文语音识别（paraformer） ✓ | `ear\start_ear.bat` |
+
+**引擎二选一**：`config/local.env` 的 `ALBION_TTS_ENGINE=irodori`（默认，走 `:9889`，中文台词由桥翻日语）
+或 `gsv`（走 `:9880`，中文原文直接念，不翻译、不规划、整条 wav）。`launch/start_all.bat` 只拉起选中的那个；
+`gsv` 模式下 `:9885` 网关不调 `/v2/prepare`、`/v2/plan`、`/v2/render`，直接把每个单元的中文送桥
+`POST /v1/audio/speech {"voice":"denia"}`。设备由 `ALBION_GSV_DEVICE`（默认 cuda）覆盖，
+入库的 `tts/gsv/tts_infer_denia.yaml` 保持 cpu。
 
 ---
 

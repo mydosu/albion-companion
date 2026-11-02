@@ -18,6 +18,8 @@ flowchart LR
   T --> B[准备与翻译桥 :9881]
   T --> I[Irodori 后端 :9889]
   B --> I
+  T -. gsv 引擎：中文原文 -.-> B
+  B -. voice=denia .-> G[Denia 后端 :9880]
 ```
 
 | 职责 | 当前源码/入口 | 迭代时看哪里 |
@@ -29,10 +31,10 @@ flowchart LR
 | 耳朵 | `ear/start_ear.bat` → `ear/whisper_serve.py` | `tests/ear/check_ear.py`，模型在本地 `ear/models/` |
 | 眼睛 | `eyes/capture_agent.py`、启动脚本 | `eyes/README.md`；脑里 `look` 打的就是它的 :8790 |
 | 状态摆件 | `widget/albion_status_widget.pyw` | 本地位置状态不入库 |
-| 语音后端 | `tts/irodori/start_backend.bat` → `irodori_serve.py`，以及 `serve_v2.py`、规划/情感/渲染模块 | `ships.json`，`tests/tts/` |
+| 语音后端（二选一） | `irodori`：`tts/irodori/start_backend.bat` → `irodori_serve.py`，以及 `serve_v2.py`、规划/情感/渲染模块；`gsv`：`tts/gsv/start_denia.bat` → 上游 GPT-SoVITS `api_v2.py` :9880（引擎由 `config/local.env` 的 `ALBION_TTS_ENGINE` 决定） | `ships.json`，`tests/tts/` |
 | 准备/翻译桥 | `tts/irodori/start_bridge.bat` → `bridge.py` + `bridge_v2.py` | 默认 `codex` 历史分支：Command Code 主路，Codex CLI 最终退路；`api` 需独立 key |
 | 流式切句与会话 | `tts/stream/start_stream.bat` → `stream_server.py` + `session_text.py` | `tests/tts/test_credit_patience.py` 与壳音频 tests |
-| Denia（中文角色，可选） | `tts/gsv/start_denia.bat` → 上游 GPT-SoVITS `api_v2.py` :9880 | `tts/gsv/README.md`（`ALBION_GSV_ROOT`、权重、参考音）；不是 Irodori 主线 |
+| Denia（中文角色，和 Irodori 二选一） | `tts/gsv/start_denia.bat` → 上游 GPT-SoVITS `api_v2.py` :9880 | `tts/gsv/README.md`（`ALBION_GSV_ROOT`、`ALBION_GSV_DEVICE`、权重、参考音）；`ALBION_TTS_ENGINE=gsv` 时流式网关直接调桥 `/v1/audio/speech` |
 | 脑（阿尔比恩本人） | WSL `/root/albion-pi/`（`start.sh`／`accept.sh`，宿主 :8650） | 仓库镜像 `brain/`（与现网逐文件一致）；见其 README |
 | 她自己的眼睛 | 脑里 `look` 工具 → 主力机/本机采集端 :8790 | 主力机上单独部署一份；仓库来源见 `eyes/` |
 

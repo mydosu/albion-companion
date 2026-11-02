@@ -15,8 +15,9 @@ if not exist "%ALBION_GSV_ROOT%\runtime\python.exe" (
 )
 if not defined ALBION_DENIA_CONFIG set "ALBION_DENIA_CONFIG=%~dp0tts_infer_denia.yaml"
 if not defined ALBION_DENIA_PORT set "ALBION_DENIA_PORT=9880"
+if not defined ALBION_GSV_DEVICE set "ALBION_GSV_DEVICE=cuda"
 echo ============================================
-echo  Denia backend (GPT-SoVITS api_v2)  :%ALBION_DENIA_PORT%  [CPU]
+echo  Denia backend (GPT-SoVITS api_v2)  :%ALBION_DENIA_PORT%  [%ALBION_GSV_DEVICE%]
 echo  GSV root : %ALBION_GSV_ROOT%
 echo  config   : %ALBION_DENIA_CONFIG%
 echo  first load is slow; start the bridge after the port listens
