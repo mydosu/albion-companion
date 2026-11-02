@@ -15,7 +15,7 @@
   <out>/report.json               条数、总时长、被跳过的条目及原因
 
 之后：
-  python tts/irodori/prepare_manifest.py --dataset audiofolder --data-dir <out> --split train \
+  python tts/irodori/prepare_manifest.py --dataset audiofolder --data-files "train=<out>/train/*" --split train \
       --audio-column audio --text-column text --output-manifest ... --latent-dir ...
   （参数以 prepare_manifest.py --help 为准）
 
