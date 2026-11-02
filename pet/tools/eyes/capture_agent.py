@@ -13,6 +13,11 @@
     python capture_agent.py --port 8790 --max-width 1600 --token-file token.txt
     （也认环境变量 ALBION_EYES_TOKEN；--token <TOKEN> 仍可用，但值会出现在进程命令行里）
 
+这台机器的默认值可用环境变量覆盖（不设时行为与以前完全一致）：
+    ALBION_FFMPEG       ffmpeg.exe 路径；路径不存在时仍退回 PATH 里的 ffmpeg
+    ALBION_CAM          DirectShow 摄像头名
+    ALBION_CAM_ROTATE   顺时针转正角度 0/90/180/270
+
 接口：
     GET /health              → {"ok": true, "screen": "3840x1080", ...}
     GET /shot + Authorization: Bearer <token> → image/jpeg（多显示器一起截）
@@ -172,17 +177,57 @@ def grab_jpeg(max_width: int = 1920) -> tuple[bytes, str]:
             out.unlink(missing_ok=True)
 
 
-DEFAULT_FFMPEG = 'D:/ffmpeg-2026-03-22-git-9c63742425-full_build/bin/ffmpeg.exe'
-DEFAULT_CAM = 'FHD Camera'
+ENV_FFMPEG = 'ALBION_FFMPEG'
+ENV_CAM = 'ALBION_CAM'
+ENV_CAM_ROTATE = 'ALBION_CAM_ROTATE'
+
+# 作者这台机器的现值；换机器时用环境变量覆盖，默认行为不变。
+_FFMPEG_FALLBACK = 'D:/ffmpeg-2026-03-22-git-9c63742425-full_build/bin/ffmpeg.exe'
+_CAM_FALLBACK = 'FHD Camera'
 # 摄像头是侧着装的：原始画面里人头朝左（2026-10-17 实拍），本地 4B 视觉模型认成「倒的、白花花一片」。
-# 顺时针转 90° 才是正的；摄像头换了朝向就改 --cam-rotate。
-DEFAULT_CAM_ROTATE = 90
+# 顺时针转 90° 才是正的；摄像头换了朝向就改 --cam-rotate 或 ALBION_CAM_ROTATE。
+_CAM_ROTATE_FALLBACK = 90
 _CAM_ROTATE_VF = {0: '', 90: 'transpose=1', 180: 'hflip,vflip', 270: 'transpose=2'}
 
 
-def grab_cam_jpeg(max_width: int = 1920, device: str = DEFAULT_CAM, ffmpeg: str = DEFAULT_FFMPEG,
-                  rotate: int = DEFAULT_CAM_ROTATE) -> bytes:
-    """用 ffmpeg 抓摄像头的一帧，转正、只缩不放成 JPEG。"""
+def env_default(name: str, fallback: str) -> str:
+    """环境变量优先（空白值当没设），否则用这台机器的现值。"""
+    return (os.environ.get(name) or '').strip() or fallback
+
+
+def default_ffmpeg() -> str:
+    return env_default(ENV_FFMPEG, _FFMPEG_FALLBACK)
+
+
+def default_cam() -> str:
+    return env_default(ENV_CAM, _CAM_FALLBACK)
+
+
+def default_cam_rotate() -> int:
+    raw = (os.environ.get(ENV_CAM_ROTATE) or '').strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        return _CAM_ROTATE_FALLBACK
+    return value if value in _CAM_ROTATE_VF else _CAM_ROTATE_FALLBACK
+
+
+DEFAULT_FFMPEG = default_ffmpeg()
+DEFAULT_CAM = default_cam()
+DEFAULT_CAM_ROTATE = default_cam_rotate()
+
+
+def grab_cam_jpeg(max_width: int = 1920, device: str | None = None, ffmpeg: str | None = None,
+                  rotate: int | None = None) -> bytes:
+    """用 ffmpeg 抓摄像头的一帧，转正、只缩不放成 JPEG。
+
+    device/ffmpeg/rotate 为 None 时在调用时读环境变量（ALBION_CAM / ALBION_FFMPEG /
+    ALBION_CAM_ROTATE），方便不改调用点就换机器。
+    """
+    device = device or default_cam()
+    ffmpeg = ffmpeg or default_ffmpeg()
+    if rotate is None:
+        rotate = default_cam_rotate()
     # 并发保护：见 _CAPTURE_LOCK
     with _CAPTURE_LOCK:
         if not IS_WIN:
@@ -393,7 +438,11 @@ def sweep_stale(max_age_s: int = STALE_AGE_S) -> int:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description='阿尔比恩的眼睛 · 采集端')
+    ap = argparse.ArgumentParser(
+        description='阿尔比恩的眼睛 · 采集端',
+        epilog=(f'摄像头默认值可用环境变量覆盖：{ENV_FFMPEG}=ffmpeg 路径，'
+                f'{ENV_CAM}=摄像头名，{ENV_CAM_ROTATE}=0/90/180/270。'),
+    )
     ap.add_argument('--port', type=int, default=8790)
     ap.add_argument('--token', default=None,
                     help='会出现在进程命令行里；启动器请用 --token-file 或环境变量 ALBION_EYES_TOKEN')
