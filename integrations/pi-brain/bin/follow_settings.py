@@ -171,12 +171,38 @@ def write_settings_defaults(settings_file, provider, model):
     return True
 
 
+def env_file_values(agent_dir, names):
+    """agent/.env 里这几个键的值（进程环境里没有时的兜底，让 ALBION_PROVIDER/ALBION_MODEL 写在 .env 里重启后仍生效）。
+    格式同 server.load_env：KEY=值，去首尾空白与成对引号，空值等于没设。读不到就是空 dict。"""
+    out = {}
+    try:
+        with open(os.path.join(agent_dir, ".env"), encoding="utf-8") as fh:
+            for raw in fh:
+                raw = raw.rstrip("\r\n")
+                if not raw or raw.startswith("#") or "=" not in raw:
+                    continue
+                k, v = raw.split("=", 1)
+                k, v = "".join(k.split()), v.strip()
+                if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+                    v = v[1:-1]
+                if k in names and v:
+                    out[k] = v
+    except OSError:
+        pass
+    return out
+
+
 def resolve(env=None, settings_file=None, source_models=None, agent_dir=None):
     """算出这一轮该用哪个 (provider, model)，顺手把 provider 段和 settings 默认值同步好。"""
     env = os.environ if env is None else env
     settings_file = settings_file or settings_path(env)
     source_models = source_models or source_models_path(settings_file, env)
     agent_dir = agent_dir or env.get("PI_CODING_AGENT_DIR") or "/root/albion-pi/agent"
+
+    # 进程环境优先（ALBION_PROVIDER=x bash start.sh 的一次性覆盖），其次 agent/.env
+    names = ("ALBION_PROVIDER", "ALBION_MODEL")
+    if not all(env.get(n, "").strip() for n in names):
+        env = {**env_file_values(agent_dir, names), **{k: v for k, v in env.items() if k not in names or v.strip()}}
 
     provider = model = None
     source = "default"
