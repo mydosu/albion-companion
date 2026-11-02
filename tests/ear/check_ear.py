@@ -15,6 +15,8 @@ import pathlib
 import sys
 import urllib.request
 
+sys.stdout.reconfigure(encoding='utf-8')  # 中文 Windows 控制台默认 GBK，打印 ✓ 会崩
+
 EAR = 'http://127.0.0.1:9882/v1/audio/transcriptions'
 ZH_WAV = pathlib.Path(__file__).parent / 'data' / '_zh_test.wav'
 failures = []
