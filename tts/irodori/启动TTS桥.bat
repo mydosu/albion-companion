@@ -3,7 +3,7 @@ chcp 65001 >nul
 cd /d "%~dp0"
 echo ============================================
 echo  Albion TTS bridge (OpenAI-compatible /v1/audio/speech)  :9881
-echo  voices: albion / taihou / shinano / brest / jinshi
+echo  voices: albion / taihou / shinano / brest / jinshi / denia
 echo  requires: Irodori backend (:9889) running
 echo  closing this window stops the bridge
 echo ============================================

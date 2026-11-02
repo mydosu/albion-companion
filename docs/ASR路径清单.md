@@ -21,7 +21,7 @@
 
 | 变量 | 默认 | 谁设的 |
 |---|---|---|
-| `ALBION_STT_ENGINE` | `paraformer` | `start_ear.bat:4` · `albion-sidecars.ts:108` |
+| `ALBION_STT_ENGINE` | `paraformer` | `start_ear.bat:4` · `albion-sidecars.ts:108`，都留了环境变量优先 |
 | `ALBION_FUNASR_ROOT` | `<耳朵目录>\models\modelscope\iic` | `start_ear.bat:5` · `albion-sidecars.ts:109` |
 | `ALBION_STT_PORT` | `9882` | `start_ear.bat:6` · `albion-sidecars.ts:110` |
 | `ALBION_STT_MODEL` | `small` | 只有切 whisper 引擎才用 |
@@ -38,9 +38,9 @@
 | 文件 | 行 | 内容 | 作用 |
 |---|---|---|---|
 | `start_ear.bat` | 2 | `title 阿尔比恩的耳朵 (paraformer-zh :9882)` | 窗口标题 |
-| | 4 | `set ALBION_STT_ENGINE=paraformer` | **引擎开关** |
-| | 5 | `set ALBION_FUNASR_ROOT=%~dp0models\modelscope\iic` | **模型目录** |
-| | 6 | `set ALBION_STT_PORT=9882` | 端口 |
+| | 4 | `if not defined ALBION_STT_ENGINE set ALBION_STT_ENGINE=paraformer` | **引擎开关**（环境变量优先） |
+| | 5 | `if not defined ALBION_FUNASR_ROOT set ALBION_FUNASR_ROOT=%~dp0models\modelscope\iic` | **模型目录**（环境变量优先） |
+| | 6 | `if not defined ALBION_STT_PORT set ALBION_STT_PORT=9882` | 端口（环境变量优先） |
 | | 8 | `"%~dp0..\tts\GPT-sovits\runtime\python.exe" whisper_serve.py` | 解释器 + 入口 |
 | `whisper_serve.py` | 2, 5, 6 | 文件头说明（跑法 / BaseURL） | 注释 |
 | | 8-19 | 引擎与 5 个环境变量说明 | 注释 |

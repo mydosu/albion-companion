@@ -105,7 +105,7 @@ function sidecars(): Sidecar[] {
       args: ['whisper_serve.py'],
       cwd: EAR_DIR,
       env: {
-        ALBION_STT_ENGINE: 'paraformer',
+        ALBION_STT_ENGINE: process.env.ALBION_STT_ENGINE || 'paraformer',
         ALBION_FUNASR_ROOT: `${EAR_DIR}/models/modelscope/iic`,
         ALBION_STT_PORT: '9882',
       },
