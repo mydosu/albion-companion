@@ -65,7 +65,7 @@ WSL2 的配置：`networkingMode=mirrored`，无 CPU/内存上限，WSL 内可�
 
 本机显存日常总占用约 3.8 / 8 GB（含 OBS 等非项目进程）。
 
-外部依赖：脑的模型通过本地代理出网（类型是 Magpie、Command Code、grok 号池），TTS 翻译跟着脑的模型走、退路是 Command Code；跨机取图和视觉机走局域网优先、Tailscale 备用。选模型的话，有条件建议用 Gemini（官方 API、Pro 套餐反代、中转站都行），文本能力数一数二，见[教程 03](教程/03-口癖和人设.md)。
+外部依赖：脑的模型通过本地代理出网（类型是 Magpie、Command Code、grok 号池），TTS 翻译跟着脑的模型走、退路是 Command Code；跨机取图和视觉机走局域网优先、Tailscale 备用。选模型的话见[教程：开始之前：先选模型](教程/README.md#开始之前先选模型)。
 
 ## 结构
 
