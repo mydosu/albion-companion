@@ -840,6 +840,99 @@ def check_live_unread():
     ok("群里又有人说话了" in reply3, "群里回话带着新消息提示", reply3)
     ok("群里第二条" in reply3, "群里回话带着第二条原话", reply3)
 
+def check_typing():
+    """叫醒这一轮显示「正在输入」：会续、结束就停、失败不影响收发（2026-11-02）。"""
+    import asyncio as _asyncio
+    import time as _time
+    reset()
+
+    class FakeHost:
+        def __init__(self, delay=0.0):
+            self.calls = []
+            self.delay = delay
+
+        async def chat(self, session, text):
+            self.calls.append((session, text))
+            await _asyncio.sleep(self.delay)
+            return "ok"
+
+    class FakeTG:
+        def __init__(self, boom=False):
+            self.actions = []
+            self.boom = boom
+
+        async def send_chat_action(self, action="typing"):
+            self.actions.append(action)
+            if self.boom:
+                raise RuntimeError("synthetic typing failure")
+
+    class FakeDC:
+        ready = True
+        client = object()
+
+        def channel_name(self):
+            return "albion"
+
+        def owner_name_set(self):
+            return set()
+
+        async def typing(self):
+            return _NullCtx()
+
+    class _NullCtx:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+    def service(delay=0.0, boom=False):
+        cfg = chat_bridge.load_config(environ={"API_SERVER_KEY": "k"}, home=os.path.join(_STATE, "nohome"))
+        svc = chat_bridge.Service(cfg)
+        svc.host = FakeHost(delay)
+        svc.dc = FakeDC()
+        svc.tg = FakeTG(boom)
+        return svc
+
+    old_refresh = chat_bridge.TYPING_REFRESH_S
+    chat_bridge.TYPING_REFRESH_S = 0.01            # 让「续」在测试里跑得出来
+    try:
+        # 1) 叫醒期间 typing 被调用过，而且会续
+        svc = service(delay=0.06)
+        inbox.add("telegram", "在忙吗", at=_time.time())
+        _asyncio.run(svc._drain_dm())
+        ok(len(svc.host.calls) == 1, "叫醒照常发生", svc.host.calls)
+        ok(len(svc.tg.actions) >= 2, "叫醒期间「正在输入」会续（不止一次）", svc.tg.actions)
+        ok(all(a == "typing" for a in svc.tg.actions), "默认是 typing", svc.tg.actions)
+
+        # 2) 这一轮结束后停止
+        n = len(svc.tg.actions)
+        _asyncio.run(_asyncio.sleep(0.08))
+        ok(len(svc.tg.actions) == n, "这一轮结束后不再续（状态停掉，不残留）", (n, len(svc.tg.actions)))
+
+        # 3) typing 抛异常：notify 照常完成
+        svc2 = service(delay=0.0, boom=True)
+        inbox.add("telegram", "第二条", at=_time.time())
+        _asyncio.run(svc2._drain_dm())
+        ok(len(svc2.host.calls) == 1, "typing 失败时叫醒照常完成", svc2.host.calls)
+        states = {i["text"]: i["state"] for i in inbox.load()["items"]}
+        ok(states.get("第二条") == "notified", "typing 失败也不影响叫醒状态", states)
+
+        # 4) 群里也一样（Discord 用 channel.typing()，没有就退化成空上下文）
+        svc3 = service()
+        cfg = svc3.cfg
+        svc3.cfg = dict(cfg, dc_owner="1508482140570914990", dc_channel="1566804961218666671")
+
+        async def budget():
+            return {"remaining": 8, "used": 1, "owner_last_at": None}
+
+        svc3.refresh_budget = budget
+        inbox.add("discord_group", "群里说话", at=_time.time(), author="指挥官")
+        _asyncio.run(svc3._drain_group())
+        ok(len(svc3.host.calls) == 1, "群里叫醒照常发生", svc3.host.calls)
+    finally:
+        chat_bridge.TYPING_REFRESH_S = old_refresh
+
 def main():
     check_inbox()
     check_owner_and_group()
@@ -852,6 +945,7 @@ def main():
     check_group_gate()
     check_repeat_send()
     check_live_unread()
+    check_typing()
     check_owner_identity()
     check_stickers()
     print("check_chat: %d passed, %d failed" % (PASS, FAIL))
