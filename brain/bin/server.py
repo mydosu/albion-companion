@@ -379,16 +379,19 @@ def get_session(session_id):
             s.close()
             s = None
         if s is None:
+            extra_env = session_env(session_id)
+            err_path = err_log_path(session_id)
             s = PiSession(session_id, cwd="/root", model=route_arg(route),
                           tools=tools_for_session(session_id), extensions=usable_extension_files(),
-                          log_path=err_log_path(session_id),
+                          log_path=err_path,
                           sandbox_env={"PI_CODING_AGENT_DIR": AGENT_DIR,
                                        "ALBION_SESSION_ID": session_id,
                                        # WSL 系统时区 10-13 起被改成 America/Chicago：她的日期、农历、bash 里的 date 全差 13 小时。
                                        # 她和指挥官都在北京时间过日子，pi 一律按北京时间起（宿主自己设了 TZ 就照它的）。
                                        "TZ": os.environ.get("TZ") or "Asia/Shanghai",
                                        "COMMANDCODE_API_KEY": os.environ.get("COMMANDCODE_API_KEY", ""),
-                                       **session_env(session_id)})
+                                       **extra_env})
+            note_capture_filters(err_path, extra_env)
             s.start()
             s.seeded = False
             s.ext_sig = sig
@@ -492,21 +495,43 @@ def ephemeral_state_dir(session_id):
 #   · 宿主补问【接着说完】、活动库里那两句占位、会话刚重启时接上的旧记录（只留【现在】之后他真打的字）；
 #   · 每轮约定与回忆块（正常轮由 albion-turn 在 context 钩子里加，不进 pi 会话；留着兜底）。
 # 规则里不能出现英文逗号（宿主按逗号拼成一条环境变量交给扩展）。
+# 顺序有讲究（2026-11-02 复盘）：宿主每轮把「此前的记录 → 【现在】 → 这一轮的话」拼成一条 user 消息，
+# 扩展按顺序**只跑一遍**规则，所以 `^` 锚定的整条丢弃规则必须排在「先把旧记录剥掉」之后，否则
+# 【平台消息】/【自主醒来】前面顶着旧记录块，`^` 永远匹配不上，整条照样提交给抽取器
+# （线上证据：sessions/pi-01a19c97…/messages.jsonl 里 【平台消息】 与 【以下是这次对话此前的记录】 同时存在）。
 CAPTURE_FILTERS = (
+    # 1) 先剥壳：旧记录 / 回忆块 / 每轮约定
+    r"user:s|^【以下是这次对话此前的记录[^\n]*\n[\s\S]*?【现在】\n||",
+    r"user:s|<memory-context>[\s\S]*?</memory-context>||",
+    r"user:s|\n*【阿尔比恩本轮说话约定】[\s\S]*$||",
+    # 2) 再整条丢：剥完壳还以这些开头的，本来就不是他说的话
     r"user:d|^【自主醒来】|",
     r"user:d|^【平台消息】|",          # 桥叫醒的那条通知：他发来的原文在里面，但不能记成「他说过」的事实
     r"user:d|^【接着说完】|",
     r"user:d|^（阿尔比恩自己醒来）$|",
     r"user:d|^（阿尔比恩接着把刚才的话说完）$|",
-    r"user:s|^【以下是这次对话此前的记录[^\n]*\n[\s\S]*?【现在】\n||",
-    r"user:s|<memory-context>[\s\S]*?</memory-context>||",
-    r"user:s|\n*【阿尔比恩本轮说话约定】[\s\S]*$||",
 )
 
 
 def capture_filter_rules():
     extra = [s.strip() for s in os.environ.get("OPENVIKING_CAPTURE_FILTERS", "").split(",") if s.strip()]
     return list(CAPTURE_FILTERS) + [r for r in extra if r not in CAPTURE_FILTERS]
+
+
+def note_capture_filters(log_path, env):
+    """往 pi-<session>.err 写一行自证：这一具 pi 身子到底拿到了几条捕获过滤规则（2026-11-02）。
+
+    上一轮排查「过滤器为什么没生效」时只能靠 /proc/<pid>/environ 反推；有了这行，日志里就能直接看出
+    env 有没有传进 pi 子进程，不用再去猜。
+    """
+    raw = env.get("OPENVIKING_CAPTURE_FILTERS") or ""
+    rules = [r for r in raw.split(",") if r]
+    line = "# capture filters loaded: %d (%d bytes)\n" % (len(rules), len(raw))
+    try:
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(line)
+    except OSError:
+        pass
 
 
 def session_env(session_id):
