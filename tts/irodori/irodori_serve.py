@@ -23,7 +23,7 @@ os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 CKPT = os.path.join(ROOT, "checkpoints", "model.safetensors")
 AUDIO_ROOT = r"D:/AI/Wife/tts/GPT-sovits/audio"
 SHIPS = ("albion", "taihou", "shinano", "brest", "jinshi")
-DEFAULT_SHIP = "albion"
+DEFAULT_SHIP = os.environ.get("TTS_DEFAULT_VOICE", "albion").strip().lower() or "albion"  # 换角色：设此环境变量，默认 albion
 
 
 LORA_OFF = {}   # 2026-09-14：大凤改用"干净 53 条 + 低步数 LoRA@200"（盲听定稿 B 方案）→ 现在五船全挂 LoRA

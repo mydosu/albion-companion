@@ -34,7 +34,7 @@ import emotion_codebook as CB    # v3 白名单码本（同样纯 CPU）
 
 PLAN_VERSION = 2
 
-DEFAULT_SHIP = "albion"          # 与 irodori_serve.DEFAULT_SHIP 同值：单元没带 voice 时用于自检与日志
+DEFAULT_SHIP = os.environ.get("TTS_DEFAULT_VOICE", "albion").strip().lower() or "albion"  # 与 irodori_serve.DEFAULT_SHIP 同值：单元没带 voice 时用于自检与日志
 
 # ---- 每块念的日语进日志（2026-10-30）：默认关 ------------------------------------
 # 桥那边只记译文哈希；出事时要能对上"第几块音频念的是哪句日语"（上句尾巴有没有串过来）。

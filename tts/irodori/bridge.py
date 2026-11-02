@@ -38,7 +38,9 @@ app = FastAPI()
 BACKEND = "http://127.0.0.1:9889/tts"          # Irodori-TTS（单进程，5 船，整条 wav）
 BACKEND_STREAM = "http://127.0.0.1:9889/tts_stream"   # 同一后端的 SSE 分块端点
 VOICES = ("albion", "taihou", "shinano", "brest", "jinshi", "denia")
-DEFAULT_VOICE = "albion"
+DEFAULT_VOICE = os.environ.get("TTS_DEFAULT_VOICE", "albion").strip().lower() or "albion"  # 换角色：设此环境变量，默认 albion
+if DEFAULT_VOICE not in VOICES:
+    VOICES += (DEFAULT_VOICE,)
 
 
 def text_meta(text):
@@ -897,6 +899,35 @@ def _tlog(msg: str):
     _file_log("_translate_err.log", msg)
 
 
+# api 线路的线格式：默认 responses（作者原行为，一字不变）；chat = 通用 OpenAI 兼容 /chat/completions
+# （DeepSeek 官方、OpenRouter、本地 vLLM 等只认这条）。base/model/key 仍读 TTS_TRANSLATE_BASE/MODEL/KEY。
+# 只作用于「端点 == TTS_TRANSLATE_BASE」的调用，Command Code 退路不受影响。
+TRANSLATE_API_STYLE = os.environ.get("TTS_TRANSLATE_API_STYLE", "responses").strip().lower()
+
+
+def _ask_chat(key: str, text: str, model: str, endpoint: str, prompt: str | None = None) -> str:
+    payload = {"model": model, "stream": False,
+               "messages": [{"role": "system", "content": prompt or TRANSLATE_PROMPT},
+                            {"role": "user", "content": text}]}
+    req = urllib.request.Request(f"{endpoint}/chat/completions",
+                                 data=json.dumps(payload).encode("utf-8"),
+                                 headers={"Content-Type": "application/json",
+                                          "Authorization": f"Bearer {key}"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            out = json.loads(r.read().decode("utf-8"))
+        msg = ((out.get("choices") or [{}])[0] or {}).get("message") or {}
+        txt = str(msg.get("content") or "").strip().strip('"')
+        if txt:
+            return txt
+        last = "空译文"
+    except Exception as e:  # noqa: BLE001
+        last = type(e).__name__
+    print(f"[translate] {model} chat 失败：{last}", flush=True)
+    _tlog(f"{model} chat 失败 source={text_meta(text)} : {last}")
+    return ""
+
+
 def _ask(key: str, text: str, model: str, endpoint: str | None = None,
          prompt: str | None = None) -> str:
     """翻译主路：走 **Responses API**。
@@ -907,6 +938,8 @@ def _ask(key: str, text: str, model: str, endpoint: str | None = None,
       · Responses 这条路认：reasoning:{"effort":"none"} ⇒ 实测 1.6~2.7s、reasoning 0 字。
       · 旧 :3050 反代之所以快，是它走 /alpha/generate 且把思考参数丢了（那条路现已 403）。
     """
+    if TRANSLATE_API_STYLE == "chat" and (endpoint or TRANSLATE_BASE) == TRANSLATE_BASE:
+        return _ask_chat(key, text, model, endpoint or TRANSLATE_BASE, prompt)  # 通用 OpenAI 兼容口（api 线路）
     base = {"model": model, "store": False,
             "input": [{"role": "system", "content": prompt or TRANSLATE_PROMPT},
                       {"role": "user", "content": text}]}
