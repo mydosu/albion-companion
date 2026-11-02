@@ -175,8 +175,11 @@ sudo bash integrations/pi-brain/install.sh          # 装 Node 26.9.0 和 Pi 1.0
 bash integrations/pi-brain/deploy.sh                # 部署到 /root/albion-pi；换目录：deploy.sh /some/dir 或 ALBION_HOME=…
 ```
 
-- `deploy.sh` 覆盖前先把旧文件备份到 `<目标>/backup/deploy-<时间>/`；`DRY_RUN=1` 只列不写。
-  `agent/.env`、`SOUL.md`、`models.json`、`settings.json`、`real-sessions.json`、`auth.json` 已存在就**不动**，不存在才放仓库里的版本；`SYSTEM.md` 是生成物，不部署。
+- `deploy.sh` 只管检查器 `tools/check_pi_brain_sync.py` 管的那批：`bin/`、`agent/extensions/`、`agent/APPEND_SYSTEM.md`、`accept.sh`，
+  加上 `install.sh`、`deploy.sh` 自己；`agent/.env.example`、`agent/SOUL.example.md` 只在目标里没有时才放。
+  README、`start.sh`、`models.json`、`settings.json`、`.env`、`SOUL.md` 等一律不碰（第一次部署这些要自己准备，见下面）。
+  覆盖前先把旧文件备份到 `<目标>/backup/deploy-<时间>/`；`DRY_RUN=1` 只列不写。
+  **对已有的生产目录先 `DRY_RUN=1`**：仓库版本不一定比生产新（生产上直接改过的文件会被列成"更新"）。
 - 部署完它会尝试跑 `tools/check_pi_brain_sync.py`。检查器是 Windows 侧的 Python（里面调 `wsl`），WSL 调不回 Windows 时只提示，
   到 Windows 上跑 `python tools/check_pi_brain_sync.py --prod <目标>` 即可。
 - 然后 `cp agent/.env.example agent/.env`、`cp agent/SOUL.example.md agent/SOUL.md`，填完再 `bash start.sh`、`bash accept.sh`。
