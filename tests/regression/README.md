@@ -60,7 +60,7 @@ TTS 两个套件要装好依赖的解释器（`--python .\tts\irodori\.venv\Scri
 
 - 真实服务、模型、GPU：`tests/tts/eval/`、`tests/tts/probes/`、`tests/ear/check_ear.py`、`launch/check_all.py`
   （要 :9882/:9889/:8650 或真实推理），改动后单独按 `tests/README.md` 跑。
-- 桌面/CDP 与 Electron 页面：`tests/ear/*.mjs`、`:9335` 调试端口相关探针。
+- 桌面/CDP 与 Electron 页面：`tests/spine/*.mjs`、`:9335` 调试端口相关探针。
 - 任何会启动/重启服务的命令。
 
 ## 加套件

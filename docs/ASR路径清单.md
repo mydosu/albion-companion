@@ -27,7 +27,7 @@
 | `ALBION_STT_MODEL` | `small` | 只有切 whisper 引擎才用 |
 | `ALBION_STT_DEVICE` | `auto` | 代码默认，没人设 |
 | `ALBION_STT_PRELOAD` | `1` | 代码默认 |
-| `ALBION_EAR_DIR` | `D:/AI/Wife/pet` | `albion-sidecars.ts:77`（打包时用） |
+| `ALBION_EAR_DIR` | `D:/AI/Wife/ear` | `albion-sidecars.ts:77`（打包时用） |
 | `ALBION_GSV_PYTHON` | — | 耳朵/桥/后端共用的 python |
 | `ALBION_SIDECARS` | — | 设 `0` 关掉壳自启三件套 |
 

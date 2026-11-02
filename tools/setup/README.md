@@ -9,7 +9,7 @@
 | 阶段 | 做什么 | 已装好时 |
 |---|---|---|
 | `preflight` | 查 git、node/pnpm、uv、nvidia-smi、wsl 和 WSL 发行版；缺的给官方下载地址。uv 是 TTS 阶段的硬前提，WSL/发行版是脑阶段的硬前提 | 照常检查，不装系统软件 |
-| `stt` | 调 `setup_stt_runtime.ps1` 建 `tts/GPT-sovits/runtime` | 打印 `[skip]` |
+| `stt` | 调 `setup_stt_runtime.ps1` 建耳朵的 uv 环境（`ear/.venv`） | 打印 `[skip]` |
 | `tts` | 调 `setup_tts_env.ps1` 建 `tts/irodori/.venv` | venv 依赖齐全时 `[skip]` |
 | `brain` | 在 WSL 里跑 `brain/install.sh` 和 `deploy.sh` | 两个脚本自身幂等，会打印 `[skip]`/`未变` |
 | `templates` | `config/local.env.example` -> `config/local.env`；脑模板由 `deploy.sh` 在目标缺失时放 | 目标已存在就 `[skip]`，不覆盖 |
@@ -35,28 +35,25 @@
 - `config/local.env` 是 Windows 侧唯一环境变量文件（不入库）：`launch/load_env.bat` 会在每个服务启动 bat 开头加载它，真环境变量优先；改完重启对应服务即可（细节见 `docs/REBUILD.md`）。
 - `一键安装.bat` 不带参数时就是真装；只想演练务必带 `-DryRun`。
 
-## 耳朵/眼睛的 Python 3.9（阶段 6）
+## 耳朵的 Python 环境（阶段 6）
 
-`tts/GPT-sovits/runtime/python.exe` 是耳朵 `ear/whisper_serve.py` 和眼睛启动器共用的解释器（参考部署 Python 3.9.13）。重建：
+`ear/.venv` 是耳朵 `ear/whisper_serve.py` 专属的 uv 环境（Python 3.10，CPU 版 torch + funasr，约 1.24 GB；眼睛和 check_all 用系统 Python，不再借用旧的 GSV runtime）。重建：
 
 ```powershell
 # 先看要做什么，不下载、不写文件
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/setup/setup_stt_runtime.ps1 -DryRun
 
-# 建到默认位置 tts/GPT-sovits/runtime
+# 建到默认位置 ear/.venv
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/setup/setup_stt_runtime.ps1
 
-# 已存在时默认不覆盖；要重建才加 -Force（原目录改名成 runtime.bak-<时间>，可改回）
+# 已存在时默认不覆盖；要重建才加 -Force
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/setup/setup_stt_runtime.ps1 -Force
 ```
 
-- 默认下载官方 `python-3.9.13-embed-amd64.zip` 解到目标目录，启用 `import site`，用 `get-pip.py` 装 pip。
-- `-Source venv` 用本机已有的 3.9（`py -3.9` 或 `uv python find 3.9`）建 venv；`-Source auto` 有 3.9 就用 venv，没有就用 embeddable。
-- 默认只装耳朵实际 import 的最小集（`funasr`、`faster-whisper`、`ctranslate2`、`fastapi`、`uvicorn`、`python-multipart`，以及 funasr 运行所需的 `torch`/`torchaudio`/`numpy`），版本取 `config/rebuild/stt-environment.json`。眼睛只用标准库和 .NET，不需要额外包。
-- 某个包没有对应平台的 wheel 时只记录、继续装后面的包；最后统一列出失败项，并在核心包或 import 验证失败时返回非零。
-- `-Full` 再按同一份快照逐包重放全部 252 项（`--no-deps`，失败项同样只记录不中断）。
-- torch 默认从 `https://download.pytorch.org/whl/cu128` 取；离线或换源用 `-TorchWheel <本地 whl>` / `-TorchIndex <url>` / `-PipIndex <镜像>`。
-- 重建前先停耳朵和采集端（它们正用这个 `python.exe`）；启动仍按 `教程/00-复现向导.md` 用 `launch/silent_run.ps1`，不要在本脚本里拉起服务。
+- 默认用 `uv sync --directory ear --locked`，锁文件对不上就失败，不静默换版本。依赖版本的唯一真相是 `ear/pyproject.toml` 与 `ear/uv.lock`。
+- 建好后用解释器导入耳朵实际依赖（`funasr`、`faster-whisper` 等）自检并确认模型目录存在。
+- `-Check` 只检查已有环境能否 import，不同步；`-Unlocked` 允许重新解析依赖；`-Root` 可覆盖耳朵目录。
+- 重建前先停耳朵服务；启动仍按 `教程/00-复现向导.md` 用 `launch/silent_run.ps1`，不要在本脚本里拉起服务。
 
 ## TTS 环境（阶段 4）
 

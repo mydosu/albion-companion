@@ -63,6 +63,7 @@ python tools/restore_weights.py
 | `shell/packages/stage-ui/src/assets/spine/models/albion-spine-38.zip` | 本机角色 Spine 包 |
 | `ear/models/modelscope/iic/` | paraformer ASR、fsmn VAD、ct-punc，目录名由 `ear/whisper_serve.py` 指定 |
 | `tts/ref_audio/<角色>/` | 参考音频；后端优先 `004.wav`、`068.wav`、`072.wav`、`003.wav`，缺时取已有 WAV |
+| `ear/.venv/` | 耳朵专属 Python 3.10 环境（CPU 版 torch + funasr）；`uv sync --directory ear` 建 |
 | `tts/GPT-sovits/runtime/` | 只给 GSV/Denia 用（Python 3.9.13）；耳朵改用 `ear/.venv`（uv），眼睛与 check_all 用系统 Python |
 | `tts/irodori/.venv/` | 本机 Python 3.10.20，torch 2.10.0+cu128；恢复环境或重新安装 |
 | Hugging Face 缓存 | checkpoint 所需 codec/tokenizer，可按上游源码下载或恢复离线缓存 |
@@ -78,7 +79,7 @@ uv sync --frozen --extra cu128 --python 3.10
 
 命令未在新机器执行，平台 wheel、驱动与网络还需验证。
 environment JSON 是实际安装状态快照，不保证跨平台按全表 pip 安装成功。
-STT 当前默认 CPU paraformer，需要 `funasr==1.0.27` 等对应依赖与三套模型。
+STT 当前默认 CPU paraformer，由 `ear/` 独立的 uv 项目管理（Python 3.10 + CPU 版 torch + funasr 等），配三套模型。
 备用 GPT-SoVITS 的完整第三方目录/权重没有随 Git 保存；使用 Denia 时再按其安装文档恢复。
 
 ## WSL 脑与私人配置

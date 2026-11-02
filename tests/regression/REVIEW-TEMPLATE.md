@@ -6,7 +6,7 @@
 
 ## 复核对象
 
-- 包名：<shell / pi-brain / pet / tts / docs / tests …>
+- 包名：<shell / pi-brain / ear / eyes / widget / tts / memory / docs / tests …>
 - 基线 commit：<base>　当前 HEAD：<head>　范围：`<base>..<head>`
 - 本包改动：`git diff --name-status <base>..<head> -- <本包路径>`
 
