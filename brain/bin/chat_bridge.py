@@ -215,11 +215,16 @@ def _hhmm(ts):
 
 
 def dm_notice(channel, items):
-    """TG / Discord 私信的通知轮（主脑定稿的文字，照抄）。"""
+    """TG / Discord 私信的通知轮（主脑定稿的文字，照抄）。
+
+    每行消息前面加了两个前缀（2026-11-02，为长期记忆）：``（Telegram）`` / ``（Discord 私信）``
+    标明渠道、``指挥官：`` 标明是谁说的。宿主提交给 OpenViking 前会把 ``#编号 时间`` 和说明行剥掉，
+    留下的正好是「（渠道）谁：原话」；她看到的定稿文字一个字没改，只是多了前缀。
+    """
     where = {"telegram": "Telegram", "discord": "Discord 私信"}.get(channel, inbox.channel_label(channel))
     lines = [PLATFORM_MARKER + "指挥官在%s上给我发了消息（写给自己看的，不用念）：" % where]
     for item in items:
-        lines.append("#%s %s %s" % (item["id"], _stamp(item.get("at")), item.get("text")))
+        lines.append("（%s）#%s %s 指挥官：%s" % (where, item["id"], _stamp(item.get("at")), item.get("text")))
     lines.append("想回就用 send_message 回他（channel=%s）；这一轮我在这里写的字他看不到。也可以先不回，下次醒来还会看到。"
                  % channel)
     return "\n".join(lines)
@@ -238,6 +243,7 @@ def budget_note(budget):
 
 
 def group_notice(channel_name, items, context=None, budget=None):
+    """群通知。每行消息前加 ``（Discord 群）`` 前缀（同样只为长期记忆剥壳用，定稿文字没改）。"""
     lines = [PLATFORM_MARKER + "Discord 群「%s」里有新消息（群里大家都看得到；我和指挥官之间的私事、当面说过的话不发这儿）："
              % (channel_name or "群"),
              GROUP_PEER_NOTE]
@@ -245,11 +251,11 @@ def group_notice(channel_name, items, context=None, budget=None):
         # 群里刚才还在聊的（别人的话）：只给她看个上下文，不改状态、不驱动叫醒
         lines.append("（刚才群里还在聊的：）")
         for item in context:
-            lines.append("#%s %s %s：%s" % (item["id"], _hhmm(item.get("at")),
-                                           item.get("author") or "有人", item.get("text")))
+            lines.append("（Discord 群）#%s %s %s：%s" % (item["id"], _hhmm(item.get("at")),
+                                                        item.get("author") or "有人", item.get("text")))
     for item in items:
-        lines.append("#%s %s %s：%s" % (item["id"], _hhmm(item.get("at")),
-                                       item.get("author") or "有人", item.get("text")))
+        lines.append("（Discord 群）#%s %s %s：%s" % (item["id"], _hhmm(item.get("at")),
+                                                    item.get("author") or "有人", item.get("text")))
     lines.append(GROUP_INVITE_NOTE)
     note = budget_note(budget)
     if note:

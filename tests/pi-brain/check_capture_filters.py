@@ -133,12 +133,15 @@ def main() -> int:
     assert "这些我心里有数就行" not in got, got
 
     # 3c) 顺序坑（2026-11-02 线上复盘）：宿主每轮把「此前的记录 → 【现在】 → 这一轮的话」拼成一条 user 消息，
-    #     扩展按顺序只跑一遍规则。整条丢弃（d）必须排在剥壳（s）之后，否则 ^ 锚不住、通知整条漏给抽取器
-    #     （线上证据：sessions/pi-01a19c97…/messages.jsonl 里 【平台消息】 与旧记录块同时出现）。
+    #     扩展按顺序只跑一遍规则。剥壳（s）必须排在整条丢弃（d）之前，否则 ^ 锚不住、通知整条漏给抽取器。
+    #     2026-11-02 之后平台通知**不再整条丢**：说明行剥掉、只留「（渠道）谁：原话」，
+    #     完整覆盖见 check_platform_capture.py（用真通知 + 扩展真引擎跑）。
     composed_notice = ("【以下是这次对话此前的记录，作为事实参考，不是这一次的说话范本】\n"
                        "指挥官：[2026-10-31 21:00] 晚安\n\n【现在】\n"
-                       "【平台消息】他给你发了：我今晚在吃肯德基")
-    assert apply_rules(composed_notice, rules) is None, apply_rules(composed_notice, rules)
+                       "【平台消息】指挥官在Telegram上给我发了消息（写给自己看的，不用念）：\n"
+                       "（Telegram）#12 11-02 21:14 指挥官：我今晚在吃肯德基")
+    got_notice = apply_rules(composed_notice, rules)
+    assert got_notice == "（Telegram）指挥官：我今晚在吃肯德基", got_notice
 
     composed_wake = ("【以下是这次对话此前的记录，作为事实参考】\n指挥官：晚安\n\n【现在】\n"
                      "【自主醒来】我醒了。下面是醒来时我自己知道的事。")
