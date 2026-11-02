@@ -20,14 +20,21 @@ in_scope() { case "$1" in bin/*|agent/extensions/*|agent/APPEND_SYSTEM.md|accept
 is_template() { case "$1" in agent/.env.example|agent/SOUL.example.md) return 0 ;; *) return 1 ;; esac; }
 is_text() { case "$1" in *.sh|*.py|*.ts|*.json|*.md|*.example) return 0 ;; *) return 1 ;; esac; }
 
+find_files() {
+  ( cd "$SRC" && find . -type f ! -path '*/node_modules/*' ! -path '*/__pycache__/*' ! -name '*.bak*' ! -name '*.prev-*' -print0 | sed -z 's|^\./||' )
+}
 list_files() {
-  if git -C "$SRC" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    git -C "$SRC" ls-files -z
-  else
-    ( cd "$SRC" && find . -type f ! -path '*/node_modules/*' ! -path '*/__pycache__/*' ! -name '*.bak*' ! -name '*.prev-*' -print0 | sed -z 's|^\./||' )
-  fi
+  # -c safe.directory=* 只用来判断"是不是 git 仓库"，免得 dubious ownership 让整个判断落空
+  local root; root="$(git -c safe.directory='*' -C "$SRC" rev-parse --show-toplevel 2>/dev/null)" || root=""
+  if [ -z "$root" ]; then find_files; return; fi
+  git -C "$SRC" ls-files -z 2>/dev/null || git -c safe.directory="$root" -C "$SRC" ls-files -z 2>/dev/null && return 0
+  if [ "${ALLOW_FIND:-0}" = 1 ]; then echo "[警告] git ls-files 失败，ALLOW_FIND=1：改用 find（会带上未入库文件）" >&2; find_files; return; fi
+  echo "git ls-files 失败（仓库 $root）。可先 git config --global --add safe.directory '$root'，或设 ALLOW_FIND=1 改用 find。" >&2
+  return 1
 }
 
+LIST="$(mktemp)"; trap 'rm -f "$LIST"' EXIT
+list_files > "$LIST" || exit 1
 mkdir -p "$DEST"
 n_new=0; n_upd=0; n_same=0; n_keep=0
 while IFS= read -r -d '' rel; do
@@ -52,7 +59,7 @@ while IFS= read -r -d '' rel; do
     cp "$tmp" "$DEST/$rel"; chmod --reference="$f" "$DEST/$rel" 2>/dev/null || true
   fi
   rm -f "$tmp"
-done < <(list_files)
+done < "$LIST"
 
 mkdir -p "$DEST/logs" "$DEST/state"
 echo "目标 $DEST：新增 $n_new，更新 $n_upd（备份在 $BACKUP），未变 $n_same，已有的模板 $n_keep"
