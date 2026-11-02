@@ -5,7 +5,7 @@
 - `tailscale-guard.cmd`：先 Ensure，再采样；8082 分支显式停用。保留原 CMD 编码和 CRLF。
 - `tailscale-guard-conpty.pyw`：文件锁覆盖实际 CMD 生命周期；观察器与通知器用无继承管道的隐藏进程启动。CMD 超过 600 秒时记录并继续持锁等待，不杀可能持有 1933 的进程树。
 - `openviking-memory-health.py`：查询任务并更新三个固定事件槽，不调用 Hermes。请求共享8秒预算，独立采样子进程再受10秒硬上限约束，防止缓慢响应绕过socket超时。复用现有私有 ov.conf 凭据，不嵌入凭据。
-- `openviking-notify.py`：单消费者、尝试前节流、30 秒硬超时。发送前复核可达性和最新状态；用观察时间表述消息，避免把发送中的竞态描述为当前故障。2026-10-21 起改用 `hermes send` 直投用户本人的 Telegram 私信与微信私信（`TARGETS`），两路各自独立发送、独立记日志：不经模型、不占额度，退出码即平台回执。旧的 `hermes chat --resume` 路径把消息写进只有 Hermes 桌面端渲染的历史会话，同席与壳都看不到，等于没送达。
+- `openviking-notify.py`：单消费者、尝试前节流、30 秒硬超时。发送前复核可达性和最新状态；用观察时间表述消息，避免把发送中的竞态描述为当前故障。2026-11-02 起只投 **assistant profile 的微信**（`TARGETS = ('weixin',)`，命令带 `-p assistant`）：运维告警不再进可畏的 Telegram，也不占默认 profile 的额度；不经模型、退出码即平台回执。旧的 `hermes chat --resume` 路径把消息写进只有 Hermes 桌面端渲染的历史会话，同席与壳都看不到，等于没送达。
 - `openviking_runtime.py`：原子状态、文件锁、日志轮转、Windows Job 包含子进程。通知 CLI 在挂入 kill-on-close Job 后才恢复运行；超时或 worker 退出只清理这个 Job 的子树。pywin32 不可用或无法分配 Job 时拒绝发送并节流，不降级为失控后台进程。
 - `openviking-recover.ps1`：原恢复语义，补 run/Mode/Caller/父PID/阶段/耗时和启动早退退出码。
 - `openviking-observe.ps1`：独立命名互斥锁；持有已验证服务进程句柄，记录启动身份和退出码。每 10 秒重扫、每秒观察退出、每 5 分钟心跳，日志按 5MB 轮转。短于扫描周期的进程可能漏记，观察器停机期间的退出无法补录。退出码可缩小故障类型，不能单独判定是谁结束进程。

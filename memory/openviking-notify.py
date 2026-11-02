@@ -13,7 +13,7 @@ THROTTLE = 1800
 SEND_TIMEOUT = 30
 # 告警直接发到用户本人的 Telegram 私信和微信私信（两个 home channel）。`hermes send`
 # 不调模型，退出码即平台回执。两路各自独立发送、独立记日志：一路失败或超时不影响另一路。
-TARGETS = ('telegram', 'weixin')
+TARGETS = ('weixin',)   # 2026-11-02: 运维告警只走 assistant profile 的微信
 
 
 def healthy():
@@ -26,7 +26,7 @@ def healthy():
 
 
 def command(message, target):
-    return [HERMES, 'send', '--to', target, '--quiet', message]
+    return [HERMES, '-p', 'assistant', 'send', '--to', target, '--quiet', message]
 
 
 def delivered_targets(item):
