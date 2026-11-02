@@ -11,7 +11,7 @@ Godot 舞台随 Electron 包一起分发。语音模型仍使用 `docs/打包与
 
 构建前安装 .NET 10 SDK、Godot 4.7.1 .NET 版和相同版本的 .NET 导出模板。
 将 `GODOT4` 设为 Godot 可执行文件的绝对路径，或把 `godot` 加入 PATH。
-Godot 自己再去找 .NET：`dotnet` 必须在 PATH 上，或同时设 `DOTNET_ROOT` 指向 .NET 安装目录。
+Godot 自己再去找 .NET：`dotnet` 必须在 PATH 上。.NET 装在自定义目录时，设 `DOTNET_ROOT` 指向它并把同一目录加进 PATH（2026-11-02 实测只设 `DOTNET_ROOT` 会报 `.NET Sdk not found`）。
 两个都没给时 Godot 会以 `Could not create child process: dotnet --list-sdks` 报错并崩溃，构建在 beforePack 阶段失败；只设 `GODOT4` 不够。
 工具路径、下载内容和生成的运行时不入 Git。
 Windows 当前仅有 x64 导出预设，构建 Windows ARM64 会明确失败。

@@ -68,9 +68,11 @@ function bundledRoot(): string | undefined {
   return existsSync(root) ? root : undefined
 }
 
-/** 开发时的仓库根：app.getAppPath() = <repo>/shell/apps/stage-tamagotchi（打包后走 bundled 约定，不靠这个）。 */
+/** 仓库根。开发：app.getAppPath() = <repo>/shell/apps/stage-tamagotchi；构建版：exe 在 <repo>/shell/apps/stage-tamagotchi/dist/win-unpacked/。 */
 function repoRoot(): string {
-  return join(app.getAppPath(), '..', '..', '..')
+  return app.isPackaged
+    ? join(dirname(process.execPath), '..', '..', '..', '..', '..')
+    : join(app.getAppPath(), '..', '..', '..')
 }
 
 export function sidecarDirs(): SidecarDirs {
@@ -80,7 +82,7 @@ export function sidecarDirs(): SidecarDirs {
     || (bundled && existsSync(join(bundled, 'ear')) ? join(bundled, 'ear') : join(repoRoot(), 'ear'))
   return {
     irodoriDir: process.env.ALBION_IRODORI_DIR || cfg.irodoriDir
-      || (bundled && existsSync(join(bundled, 'irodori')) ? join(bundled, 'irodori') : 'D:/AI/Wife/tts/irodori'),
+      || (bundled && existsSync(join(bundled, 'irodori')) ? join(bundled, 'irodori') : join(repoRoot(), 'tts', 'irodori')),
     earDir,
     // 耳朵用自己的 uv 环境（CPU 版 torch + funasr，见 ear/pyproject.toml），不再借 GSV 的 runtime
     pythonExe: process.env.ALBION_EAR_PYTHON || process.env.ALBION_GSV_PYTHON || cfg.pythonExe
