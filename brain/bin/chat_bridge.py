@@ -46,9 +46,9 @@ import group_budget                             # noqa: E402
 PLATFORM_MARKER = wake.PLATFORM_MARKER
 SESSION_DM = "albion-desktop"                  # TG 私聊 / Discord 私信：和桌面同一个会话
 SESSION_GROUP = "albion-discord"               # Discord 群：自己的真会话（长期记忆共享）
-GROUP_BATCH_S = 10.0
-DM_QUIET_S = 2.5                                 # 私信合批：最后一条之后安静这么久再叫醒
-DM_MAX_WAIT_S = 6.0                              # 但从第一条算最多等这么久                           # 群里合批窗口（逐条限制已去掉，只留额度兜底）
+GROUP_BATCH_S = 10.0                           # 群里合批窗口（逐条限制已去掉，只留额度兜底）
+DM_QUIET_S = 2.5                               # 私信合批：最后一条之后安静这么久再叫醒
+DM_MAX_WAIT_S = 6.0                            # 但从第一条算最多等这么久
 TTS_URL = "http://127.0.0.1:9881/v1/audio/speech"
 CHANNELS = ("telegram", "discord", "discord_group")
 # 群里还有可畏（Hermes 那边的 bot）。这句是她群聊说明的一部分，原文照定稿（2026-11-02 用户改）。
