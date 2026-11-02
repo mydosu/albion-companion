@@ -1,0 +1,57 @@
+{
+  "storage": {
+    "workspace": "D:/AI/openviking/data",
+    "vectordb": {
+      "name": "context",
+      "backend": "local"
+    },
+    "agfs": {
+      "backend": "local"
+    }
+  },
+  "embedding": {
+    "allow_metadata_override": false,
+    "max_concurrent": 10,
+    "max_retries": 3,
+    "dense": {
+      "provider": "openai",
+      "api_key": "$OV_EMBEDDING_API_KEY",
+      "api_base": "https://api.example.com/v1",
+      "model": "<embedding-model>",
+      "dimension": 1024,
+      "encoding_format": "float"
+    }
+  },
+  "vlm": {
+    "provider": "openai",
+    "api_key": "$OV_VLM_API_KEY",
+    "api_base": "https://api.example.com/v1",
+    "model": "<chat-model>",
+    "max_concurrent": 32,
+    "max_retries": 3,
+    "credentials": [
+      {
+        "id": "backup-1",
+        "provider": "openai",
+        "api_key": "$OV_VLM_BACKUP1_API_KEY",
+        "api_base": "https://api.example.com/v1",
+        "model": "<chat-model>"
+      }
+    ]
+  },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 1933,
+    "auth_mode": "api_key",
+    "root_api_key": "$OV_ROOT_API_KEY",
+    "cors_origins": [
+      "http://127.0.0.1:5173"
+    ]
+  },
+  "memory": {
+    "custom_templates_dir": ""
+  },
+  "retrieval": {
+    "enable_intent": false
+  }
+}
