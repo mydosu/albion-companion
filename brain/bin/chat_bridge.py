@@ -48,8 +48,8 @@ SESSION_DM = "albion-desktop"                  # TG 私聊 / Discord 私信：�
 SESSION_GROUP = "albion-discord"               # Discord 群：自己的真会话（长期记忆共享）
 GROUP_BATCH_S = 10.0                           # 群里合批窗口（逐条限制已去掉，只留额度兜底）
 DM_QUIET_S = 2.5                               # 私信合批：最后一条之后安静这么久再叫醒
-DM_MAX_WAIT_S = 6.0
-TYPING_REFRESH_S = 4.0                           # TG 的「正在输入」5 秒过期，4 秒续一次                            # 但从第一条算最多等这么久
+DM_MAX_WAIT_S = 6.0                            # 但从第一条算最多等这么久
+TYPING_REFRESH_S = 4.0                         # TG 的「正在输入」5 秒过期，4 秒续一次
 TTS_URL = "http://127.0.0.1:9881/v1/audio/speech"
 CHANNELS = ("telegram", "discord", "discord_group")
 # 群里还有可畏（Hermes 那边的 bot）。这句是她群聊说明的一部分，原文照定稿（2026-11-02 用户改）。
@@ -869,7 +869,7 @@ class DiscordBot:
                 self.remember(member)
         log("discord_members", known=len(self._members))
 
-    async def typing(self):
+    async def typing(self, group=False):
         """他那边的「正在输入」：discord.py 的 channel.typing() 自己会续，退出上下文就停。
 
         频道还没连上时返回一个空上下文，调用方不用特判。
@@ -877,8 +877,9 @@ class DiscordBot:
         channel = None
         try:
             if self.client and self.ready:
-                channel = self.client.get_channel(int(self.cfg["dc_channel"] or 0)) or \
-                    self.client.get_user(int(self.cfg["dc_owner"] or 0))
+                # 私信那一轮显示在他的私聊里，群那一轮显示在 #常规，不能串
+                channel = (self.client.get_channel(int(self.cfg["dc_channel"] or 0)) if group
+                           else self.client.get_user(int(self.cfg["dc_owner"] or 0)))
         except Exception:                       # noqa: BLE001 - 只是状态提示，拿不到就算了
             channel = None
         return channel.typing() if channel is not None else _NullContext()
@@ -953,7 +954,7 @@ class _Typing:
             if self.channel == "telegram":
                 self.task = asyncio.create_task(self._loop())
             elif self.channel in ("discord", "discord_group"):
-                self.cm = await self.svc.dc.typing()
+                self.cm = await self.svc.dc.typing(group=self.channel == "discord_group")
                 await self.cm.__aenter__()
         except Exception as exc:                  # noqa: BLE001 - 只是状态提示
             log("typing_start_failed", channel=self.channel, error=repr(exc)[:120])

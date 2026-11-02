@@ -876,7 +876,7 @@ def check_typing():
         def owner_name_set(self):
             return set()
 
-        async def typing(self):
+        async def typing(self, group=False):
             return _NullCtx()
 
     class _NullCtx:
