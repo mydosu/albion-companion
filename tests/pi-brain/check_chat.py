@@ -277,6 +277,93 @@ def check_drain():
     ok(len(svc.host.calls) == 1 and "帮我看下" in svc.host.calls[0][1], "@她 的消息能叫醒")
 
 
+def check_mentions_and_loop_guard():
+    """群里 @名字 → 真 mention；别的 bot 连着 @ 最多叫醒 3 次，他说话清零（2026-11-02）。"""
+    reset()
+    cfg = chat_bridge.load_config(environ={"API_SERVER_KEY": "k"}, home=os.path.join(_STATE, "nohome"))
+    cfg = dict(cfg, dc_owner="1508482140570914990", dc_channel="1566804961218666671")
+    self_user = type("U", (), {"id": "1566791156824805446", "bot": True,
+                               "name": "Albion", "display_name": "Albion", "nick": None})()
+
+    class _Author:
+        def __init__(self, uid, bot=False, name="x", display="x"):
+            self.id = uid
+            self.bot = bot
+            self.name = name
+            self.display_name = display
+            self.nick = None
+
+    class _Channel:
+        def __init__(self, cid, guild=None):
+            self.id = cid
+            self.guild = guild
+
+    class _Msg:
+        def __init__(self, mid, author, channel, content, clean=None, mentions=()):
+            self.id = mid
+            self.author = author
+            self.channel = channel
+            self.content = content
+            self.clean_content = clean if clean is not None else content
+            self.mentions = list(mentions)
+
+    def make_service():
+        svc = chat_bridge.Service(cfg)
+        svc.dc = chat_bridge.DiscordBot(cfg, None)
+        svc.dc.client = type("C", (), {"user": self_user})()
+        svc.dc.ready = True
+        # 这个用例只看收消息与计数，不起协程（没有事件循环）
+        svc.schedule_group = lambda: None
+        svc.schedule_dm = lambda: None
+        return svc
+
+    form = _Author("1566802611611504680", bot=True, name="Formidable", display="Formidable")
+    owner = _Author(int(cfg["dc_owner"]), bot=False, name="myduso_27930", display="Myduso")
+    group = _Channel(int(cfg["dc_channel"]), guild=object())
+
+    # clean_content：她看到「@Albion」，不是「<@1566791156824805446>」
+    svc = make_service()
+    svc.on_discord_message(_Msg(1, form, group, "<@1566791156824805446> 在吗",
+                                clean="@Albion 在吗", mentions=[self_user]))
+    newest = [i for i in inbox.load()["items"] if i["channel"] == "discord_group"][-1]
+    ok(newest["text"] == "@Albion 在吗", "群消息用 clean_content（看到的是 @Albion 而不是 <@id>）", newest["text"])
+    ok(newest["needs"] is True and newest["why"] == "mention", "bot @她 → 叫醒并把 why 记成 mention")
+
+    # 防对聊：连着 3 次叫醒，第 4 次只当上下文
+    for mid in (2, 3, 4):
+        svc.on_discord_message(_Msg(mid, form, group, "<@1566791156824805446> 再说一句",
+                                    clean="@Albion 再说一句", mentions=[self_user]))
+    woken = [i for i in inbox.load()["items"] if i["channel"] == "discord_group" and i["needs"]]
+    ok(len(woken) == 3, "别的 bot 连着 @ 她：最多叫醒 %d 次" % chat_bridge.MAX_BOT_MENTION_WAKES, len(woken))
+    last = [i for i in inbox.load()["items"] if i["channel"] == "discord_group"][-1]
+    ok(last["state"] == "context" and last["needs"] is False, "第 4 次不叫醒，只入箱当上下文", last["state"])
+    ok(svc._bot_mentions == chat_bridge.MAX_BOT_MENTION_WAKES, "计数停在 3", svc._bot_mentions)
+
+    # 他本人说一句话：清零，下一个 bot @ 又能叫醒
+    svc.on_discord_message(_Msg(5, owner, group, "你们俩聊什么呢", clean="你们俩聊什么呢"))
+    ok(svc._bot_mentions == 0, "他在群里说话：bot 对聊计数清零")
+    svc.on_discord_message(_Msg(6, form, group, "<@1566791156824805446> 再试一次",
+                                clean="@Albion 再试一次", mentions=[self_user]))
+    ok(svc._bot_mentions == 1 and [i for i in inbox.load()["items"] if i["channel"] == "discord_group"][-1]["needs"],
+       "清零之后 bot @ 她又能叫醒")
+
+    # @名字 → <@id>（能匹配 / 不能匹配 / 重名）
+    idx = chat_bridge.build_name_index([("111", ["Formidable"]), ("222", ["Albion"])])
+    ok(chat_bridge.replace_mentions("@formidable 你说呢", idx) == "<@111> 你说呢", "@名字（不区分大小写）换成真 mention")
+    ok(chat_bridge.replace_mentions("@Myduso 你说呢", idx) == "@Myduso 你说呢", "群里没有的人：不换")
+    ok(chat_bridge.replace_mentions("@AlbionBot", idx) == "@AlbionBot", "只有精确整名才换（不吃前缀）")
+    amb = chat_bridge.build_name_index([("111", ["Same"]), ("222", ["same"])])
+    ok(chat_bridge.replace_mentions("@Same", amb) == "@Same", "重名有歧义：不换")
+    svc.dc.remember(form)
+    ok(chat_bridge.replace_mentions("@Formidable 在吗", svc.dc.name_index()) ==
+       "<@1566802611611504680> 在吗", "从消息里认到的名字也能换（不需要 members intent）")
+
+    # 她学到的群说明
+    notice = chat_bridge.group_notice("常规", [inbox.add("discord_group", "在吗", author="Myduso")])
+    ok(chat_bridge.GROUP_PEER_NOTE in notice, "群通知里带着「可畏也在群里…」那句")
+    ok("@Formidable" in notice, "那句里的名字是可畏在群里的实际名字")
+
+
 def main():
     check_inbox()
     check_owner_and_group()
@@ -285,6 +372,7 @@ def main():
     check_host_round()
     check_wake_box()
     check_drain()
+    check_mentions_and_loop_guard()
     print("check_chat: %d passed, %d failed" % (PASS, FAIL))
     return 0 if FAIL == 0 else 1
 

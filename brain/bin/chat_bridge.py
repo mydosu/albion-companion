@@ -30,6 +30,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import sys
 import time
 
@@ -46,8 +47,12 @@ SESSION_DM = "albion-desktop"                  # TG 私聊 / Discord 私信：�
 SESSION_GROUP = "albion-discord"               # Discord 群：自己的真会话（长期记忆共享）
 GROUP_BATCH_S = 10.0                           # 群里合批窗口
 GROUP_COOLDOWN_S = 120.0                       # 同一频道最多这么久叫醒一次
+MAX_BOT_MENTION_WAKES = 3                      # 别的 bot @ 她：连着最多叫醒这么多次，防止两个 bot 对聊死循环
 TTS_URL = "http://127.0.0.1:9881/v1/audio/speech"
 CHANNELS = ("telegram", "discord", "discord_group")
+# 群里还有可畏（Hermes 那边的 bot；DISCORD_ALLOW_BOTS=mentions，她只在被 @ 时看得到别人的话）。
+# 这句是她群聊说明的一部分，原文照定稿；名字是可畏 bot 在群里的实际 display_name（2026-11-02 查到）。
+GROUP_PEER_NOTE = "可畏也在群里。她只有被 @ 才看得到你说的话，想跟她说就写 @Formidable。"
 
 _LOG = {"path": ""}
 
@@ -140,6 +145,62 @@ def group_should_wake(author_id, owner_id, mentions_me):
     return ""
 
 
+def message_text(message):
+    """群/私信里给她看的正文：优先 clean_content。
+
+    discord.py 的 ``clean_content`` 已经把 ``<@id>`` / ``<@&id>`` / ``<#id>`` 换成了成员名/频道名，
+    她看到的才是「@可畏」而不是「<@1566802611611504680>」（2026-11-02）。
+    """
+    return (getattr(message, "clean_content", "") or getattr(message, "content", "") or "").strip()
+
+
+def _member_names(member):
+    """一个成员可能被叫的所有名字：昵称(nick)、显示名(display_name)、用户名(name)。"""
+    out = []
+    for attr in ("nick", "display_name", "name"):
+        value = getattr(member, attr, None)
+        if isinstance(value, str) and value.strip():
+            out.append(value.strip())
+    return out
+
+
+def build_name_index(entries):
+    """[(id, [名字…]), …] → {小写名字: id 或 None}。
+
+    同一个名字对上两个成员时记 None（有歧义就不替换，宁可不 @ 也不 @ 错人）。
+    """
+    index = {}
+    for member_id, names in entries:
+        mid = str(member_id or "").strip()
+        if not mid:
+            continue
+        for name in names:
+            key = str(name or "").strip().lower()
+            if not key:
+                continue
+            if key in index and index[key] != mid:
+                index[key] = None
+            else:
+                index[key] = mid
+    return index
+
+
+def replace_mentions(text, index):
+    """把文本里的 ``@名字`` 换成 Discord 的真 mention ``<@id>``。
+
+    只替换能**精确**（整名、不区分大小写、名字后面不是字母数字下划线）对上的名字；
+    长名字先换，避免 ``@Albion`` 抢掉 ``@Albion Bot``；对不上的原样留着。
+    """
+    out = str(text or "")
+    if not out or not index:
+        return out
+    for name in sorted((n for n in index if index[n]), key=len, reverse=True):
+        target = "<@%s>" % index[name]
+        pattern = re.compile(r"@(" + re.escape(name) + r")(?=$|[^0-9A-Za-z_])", re.IGNORECASE)
+        out = pattern.sub(target, out)
+    return out
+
+
 def _stamp(ts):
     from datetime import datetime
     return datetime.fromtimestamp(float(ts or 0), wake.TZ).strftime("%m-%d %H:%M")
@@ -163,7 +224,8 @@ def dm_notice(channel, items):
 
 def group_notice(channel_name, items, context=None):
     lines = [PLATFORM_MARKER + "Discord 群「%s」里有新消息（群里大家都看得到；我和指挥官之间的私事、当面说过的话不发这儿）："
-             % (channel_name or "群")]
+             % (channel_name or "群"),
+             GROUP_PEER_NOTE]
     if context:
         # 群里刚才还在聊的（别人的话）：只给她看个上下文，不改状态、不驱动叫醒
         lines.append("（刚才群里还在聊的：）")
@@ -425,10 +487,23 @@ class DiscordBot:
         self.client = None
         self.task = None
         self.ready = False
+        # 成员名 → id：给她发群消息时把「@可畏」换成真 mention（2026-11-02）
+        self._members = {}
 
     @property
     def configured(self):
         return bool(self.cfg["dc_token"] and self.cfg["dc_owner"])
+
+    def remember(self, member):
+        """记下一个成员的所有名字（昵称/显示名/用户名）；发群消息时用来认 @。"""
+        mid = getattr(member, "id", None)
+        if not mid:
+            return
+        names = self._members.setdefault(str(mid), set())
+        names.update(_member_names(member))
+
+    def name_index(self):
+        return build_name_index([(mid, sorted(names)) for mid, names in self._members.items()])
 
     def channel_name(self):
         if not self.client or not self.cfg["dc_channel"]:
@@ -460,6 +535,7 @@ class DiscordBot:
             # 频道名解析成什么、有没有解析到，部署时一眼能看出来（2026-11-02）
             log("discord_ready", user=str(self.client.user), guilds=len(self.client.guilds),
                 channel=self.channel_name() or "(未配置或看不到)")
+            await self._warm_members()
 
         @self.client.event
         async def on_message(message):
@@ -481,6 +557,23 @@ class DiscordBot:
             self.ready = False
             log("discord_failed", error=repr(exc)[:200])
 
+    async def _warm_members(self):
+        """启动时先把群成员名字收进来（她第一次发 @可畏 时就能换成真 mention）。
+
+        没有 GUILD_MEMBERS intent 时 guild.members 可能是空的，所以再 best-effort 走一次 REST；
+        拿不到也不影响，之后每收到一条消息都会顺手把作者/被 @ 的人记进来。
+        """
+        for guild in list(self.client.guilds or []):
+            members = list(getattr(guild, "members", []) or [])
+            try:
+                if hasattr(guild, "fetch_members"):
+                    members.extend([m async for m in guild.fetch_members(limit=200)])
+            except Exception as exc:              # noqa: BLE001 - 没 intent / 没权限就算了
+                log("discord_members_partial", guild=str(guild.id), error=repr(exc)[:120])
+            for member in members:
+                self.remember(member)
+        log("discord_members", known=len(self._members))
+
     async def send_dm(self, text):
         if not self.client or not self.ready:
             raise RuntimeError("discord not ready")
@@ -499,7 +592,8 @@ class DiscordBot:
         channel = self.client.get_channel(int(self.cfg["dc_channel"]))
         if channel is None:
             raise RuntimeError("群频道 %s 找不到" % self.cfg["dc_channel"])
-        msg = await channel.send(text)
+        # 「@可畏」→「<@id>」，否则 Discord 只当普通文字，不会真的 @ 到她（2026-11-02）
+        msg = await channel.send(replace_mentions(text, self.name_index()))
         return msg.id
 
     async def close(self):
@@ -519,6 +613,7 @@ class Service:
         self._dm_worker = None
         self._group_worker = None
         self._last_group_notify = 0.0
+        self._bot_mentions = 0                    # 连着被别的 bot @ 叫醒了几次（他说话就清零）
 
     async def start(self):
         await self.tg.start()
@@ -559,12 +654,16 @@ class Service:
         self.schedule_dm()
 
     def on_discord_message(self, message):
-        import discord
         if self.dc.client and message.author.id == self.dc.client.user.id:
             return
         author = getattr(message.author, "display_name", "") or str(message.author)
-        text = (message.content or "").strip()
-        if isinstance(message.channel, discord.DMChannel):
+        # 用 clean_content：她看到的是「@可畏」，不是「<@1566802611611504680>」（2026-11-02）
+        text = message_text(message)
+        self.dc.remember(message.author)
+        for member in (getattr(message, "mentions", None) or []):
+            self.dc.remember(member)              # 被 @ 的人也在里面，名字顺手记住
+        is_dm = getattr(message.channel, "guild", None) is None
+        if is_dm:
             if not is_owner(message.author.id, self.cfg["dc_owner"]):
                 log("discord_ignored", reason="not owner", kind="dm")
                 return
@@ -575,18 +674,32 @@ class Service:
             return
         if not self.cfg["dc_channel"] or str(message.channel.id) != self.cfg["dc_channel"]:
             return
-        mentioned = bool(self.dc.client and self.dc.client.user in message.mentions)
+        if is_owner(message.author.id, self.cfg["dc_owner"]):
+            self._bot_mentions = 0                # 他本人说话了：bot 对聊的计数清零
+        mentioned = bool(self.dc.client and self.dc.client.user in (message.mentions or []))
         reason = group_should_wake(message.author.id, self.cfg["dc_owner"], mentioned)
+        is_bot = bool(getattr(message.author, "bot", False))
+        if reason and is_bot and reason == "mention" and self._bot_mentions >= MAX_BOT_MENTION_WAKES:
+            # 已经连着被别的 bot @ 叫醒 MAX_BOT_MENTION_WAKES 次：这条只当上下文，不再叫醒（防对聊死循环）
+            item = inbox.add("discord_group", text or "（没有文字）", from_="bot",
+                             platform_msg_id=str(message.id), author=author)
+            if item is not None:
+                log("bot_mention_limit", channel="discord_group", id=item["id"],
+                    author=author, count=self._bot_mentions)
+            return
         if reason:
+            if is_bot and reason == "mention":
+                self._bot_mentions += 1
             item = inbox.add("discord_group", text or "（没有文字）", platform_msg_id=str(message.id),
                              author=author, why=reason)
             if item is not None:
-                log("inbox_add", channel="discord_group", id=item["id"], why=reason, author=author)
+                log("inbox_add", channel="discord_group", id=item["id"], why=reason,
+                    author=author, bot_mentions=self._bot_mentions)
                 self.schedule_group()
         else:
             # 别的 bot / 别人：只入箱当上下文，不叫醒她
             item = inbox.add("discord_group", text or "（没有文字）",
-                             from_="bot" if message.author.bot else "member",
+                             from_="bot" if is_bot else "member",
                              platform_msg_id=str(message.id), author=author)
             if item is not None:
                 log("inbox_context", channel="discord_group", id=item["id"], author=author)
@@ -801,6 +914,19 @@ def _selftest():
         gnotice2 = group_notice("albion", [c], [b])
         assert "（刚才群里还在聊的：）" in gnotice2 and "机器人甲：晚上好" in gnotice2, gnotice2
         assert "指挥官：在吗" in gnotice2
+        # clean_content 优先（她看到「@可畏」而不是「<@id>」）、@名字→真 mention（2026-11-02）
+        class _Msg:
+            clean_content = "@可畏 在吗 <@123>"
+            content = "@可畏 在吗 <@1566802611611504680>"
+        assert message_text(_Msg()).startswith("@可畏")
+        idx = build_name_index([("111", ["Formidable"]), ("222", ["Albion"])])
+        assert replace_mentions("@formidable 你看", idx) == "<@111> 你看"
+        assert replace_mentions("@Albion 和 @Formidable", idx) == "<@222> 和 <@111>"
+        assert replace_mentions("@Myduso 你看", idx) == "@Myduso 你看", "对不上的人不替换"
+        assert replace_mentions("@AlbionBot", idx) == "@AlbionBot", "只有精确整名才替换"
+        amb = build_name_index([("111", ["Same"]), ("222", ["same"])])
+        assert replace_mentions("@Same", amb) == "@Same", "重名有歧义就不替换"
+        assert GROUP_PEER_NOTE.startswith("可畏也在群里") and "@Formidable" in GROUP_PEER_NOTE
         # 叫醒只由 unread 驱动：pending 里 notified 的不算新消息
         inbox.mark_notified([a["id"], c["id"]])
         assert Service._unread() == [], "notified 的不再驱动叫醒"
