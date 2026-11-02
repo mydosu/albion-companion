@@ -3173,5 +3173,18 @@
     "new": "tts/irodori/start_bridge.bat",
     "category": "launch-consolidation-20261101",
     "note": "同上；转发壳 start_bridge.bat 的清空+改写由本次合并替代"
-  }
+  },
+  {"old":"integrations/pi-brain","new":"brain","category":"reorg-B-brain-memory-tts-20261101","note":"整目录改名（57 个跟踪文件），WSL 生产仍是 /root/albion-pi"},
+  {"old":"tools/openviking-observe.ps1","new":"memory/openviking-observe.ps1","category":"reorg-B-brain-memory-tts-20261101"},
+  {"old":"tools/openviking-recover.ps1","new":"memory/openviking-recover.ps1","category":"reorg-B-brain-memory-tts-20261101"},
+  {"old":"tools/openviking-memory-health.py","new":"memory/openviking-memory-health.py","category":"reorg-B-brain-memory-tts-20261101"},
+  {"old":"tools/openviking-notify.py","new":"memory/openviking-notify.py","category":"reorg-B-brain-memory-tts-20261101"},
+  {"old":"tools/openviking_runtime.py","new":"memory/openviking_runtime.py","category":"reorg-B-brain-memory-tts-20261101"},
+  {"old":"tools/OPENVIKING_GUARD.md","new":"memory/OPENVIKING_GUARD.md","category":"reorg-B-brain-memory-tts-20261101"},
+  {"old":"config/templates/ov.conf.example","new":"memory/templates/ov.conf.example","category":"reorg-B-brain-memory-tts-20261101"},
+  {"old":"config/templates/ov.conf.notes.md","new":"memory/templates/ov.conf.notes.md","category":"reorg-B-brain-memory-tts-20261101"},
+  {"old":"tts/GPT-sovits/denia_launch.py","new":"tts/gsv/denia_launch.py","category":"reorg-B-brain-memory-tts-20261101","note":"改成按 ALBION_GSV_ROOT 定位上游 api_v2.py（原来假定与本文件同目录）"},
+  {"old":"tts/GPT-sovits/启动Denia后端.bat","new":"tts/gsv/start_denia.bat","category":"reorg-B-brain-memory-tts-20261101","note":"去中文名、改 ASCII+CRLF；读 config/local.env 的 ALBION_GSV_ROOT/ALBION_DENIA_PORT"},
+  {"old":"tts/GPT-sovits/audio","new":"tts/ref_audio","category":"reorg-B-brain-memory-tts-20261101","note":"未跟踪资产（318.6 MB）：仓库脚本改为按 <仓库>/tts/ref_audio 解析，实搬见 _tmp/reorg/move_untracked_B.ps1"},
+  {"old":"tts/GPT-sovits/{api.py,api_v2.py,webui.py,batch_inference.py,config.py,install.ps1,install.sh,go-webui.bat,go-webui.ps1,requirements.txt,extra-req.txt,LICENSE,README.md,.gitignore}","new":"","category":"reorg-B-brain-memory-tts-20261101","note":"上游文件原样、未被我们改过：git rm --cached 移出跟踪，本地保留；整个 install 目录忽略，由 ALBION_GSV_ROOT 指定"}
 ]

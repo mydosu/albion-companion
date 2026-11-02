@@ -1,7 +1,7 @@
 # TTS 验证
 
 离线：`python -B -m unittest discover -s tests/tts -p 'test_*.py'`（要 numpy/httpx，
-系统 python 缺依赖，用 `D:\AI\Wife\tts\irodori\.venv\Scripts\python.exe`；当前 512 项）。
+系统 python 缺依赖，用 `tts\irodori\.venv\Scripts\python.exe`；当前 512 项）。
 注：本机 venv 没装 pytest，用项目一贯的 unittest discover 跑同一批用例。
 `test_first_packet_and_logs.py` 覆盖源句并发上限、顺序、异常排空、首单元预取及取消、日志脱敏与轮转。
 `test_longline_prepare.py` 覆盖 60s 准备预算、客户端超时/HTTP 断开后释放会话名额、重复等待者与重试去重，
@@ -86,11 +86,11 @@
 真实探针 `probes/verify_tts_live.py` 需要 httpx、websockets、可用的翻译桥和真实 GPU 后端。
 使用固定非私密材料；会发真实翻译/合成请求，结果必须写到主树 `tests/output/tts-leftovers/`。
 旧 v4 用 `--legacy`（旧 /tts）；候选用生命周期 v2，不自动兼容旧接口。
-示例：`python -B tests/tts/probes/verify_tts_live.py --out D:/AI/Wife/tests/output/tts-leftovers/live`。
+示例：`python -B tests/tts/probes/verify_tts_live.py --out tests/output/tts-leftovers/live`。
 每个 WAV 独立校验、保存，WS 按 1 倍音频秒数模拟 ack；这只能证明传输，不能证明壳或扬声器出声、人工音质与语义。
 JSON 中的人工项保留 UNVERIFIED/REQUIRES_REVIEW，须另附真实壳、播放时钟、loopback 及人工听审记录。
 
-隔离接线 `probes/run_candidate.py backend|bridge|stream --assets D:/AI/Wife/tts/irodori`：
+隔离接线 `probes/run_candidate.py backend|bridge|stream --assets tts/irodori`：
 使用 19889/19881/19885，后端显式完成真实预热才监听。仅在旧 GPU 服务已安全排空停止后运行；
 不复制模型，不改 assets；生产启动器提供的翻译模型/安全凭据来源应保持一致。
 

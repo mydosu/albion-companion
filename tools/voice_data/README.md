@@ -18,7 +18,7 @@
 - `tts/irodori/bridge.py` `VOICES` 元组里的其余船名；`irodori_serve.py` `SHIPS` / `LORA_NAME` / `INV_NAME` 的代码内默认（新角色走 ships.json 覆盖即可）。
 - `tts/irodori/render_queue.py` `MALE_GUARD_SHIPS = ("albion",)`：新角色是否要查男声需手动决定。
 - `tts/irodori/bridge.py` `TRANSLATE_PROMPT` / `EMOTION_PROMPT`：台词风格写死「アルビオン」，换角色必须重写。
-- `integrations/pi-brain/accept.sh:83` 的 `"id": "albion"`（brain 的 /v1/models 模型 id；本任务不许碰 integrations/）；pi-brain 侧模型名 `albion` 同理。
+- `brain/accept.sh:83` 的 `"id": "albion"`（brain/ 的 /v1/models 模型 id；换个模型 id 时两边一起改）；pi-brain 侧模型名 `albion` 同理。
 - `tools/sync-shell-private-assets.ps1` 里的 `albion.zip` / `albion-spine-38.zip` / `albion-old-aerbien3.zip`，以及 `shell/` 里引用这些 zip 的代码（shell 不在本次范围）。
 - `tests/tts/**`、`tests/pi-brain/**` 探针里大量 `voice="albion"` / `"model": "albion"`（多数有 `--voice` 参数，其余需手改）。
-- `tts/stream/stream_server.py:1279` 的模型 id `albion-stream`；`tts/GPT-sovits/audio/albion` 音频目录、`data_lora/albion_*` 数据路径、`tools/relabel_albion.py`。
+- `tts/stream/stream_server.py:1279` 的模型 id `albion-stream`；`tts/ref_audio/albion` 音频目录、`data_lora/albion_*` 数据路径、`tools/relabel_albion.py`。

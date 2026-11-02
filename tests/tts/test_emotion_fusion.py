@@ -3,7 +3,7 @@
 
 对应 Astra 补充方案 §第 5 条的测试清单：NaN/Inf/缺失、证据冲突、soft≠intimate、
 否定、引号作用域、9 句释放、软切子段不重复计数、失败重试不清状态、v2 字节不变。
-跑法（在 D:/AI/Wife 下）：
+跑法（在仓库根目录下）：
     tts/irodori/.venv/Scripts/python.exe -B -m unittest discover -s tests/tts -p "test_emotion_*.py" -v
 """
 import json
@@ -11,7 +11,7 @@ import os
 import sys
 import unittest
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "tts"))     # D:/AI/Wife/tts
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "tts"))     # 仓库的 tts/
 sys.path.insert(0, os.path.join(ROOT, "irodori"))
 
 import emotion_codebook as CB                                          # noqa: E402

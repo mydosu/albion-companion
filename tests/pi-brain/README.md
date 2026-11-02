@@ -43,13 +43,13 @@ python3 /tmp/probe_free_models.py --out /tmp/free-key1.json --only reflection/be
 仍不证明设备实际出声或听感合格。
 
 ```powershell
-& D:/AI/Wife/tts/irodori/.venv/Scripts/python.exe tests/pi-brain/probe_chat_ui.py --text '语音测试，请回复一句中文。' --out D:/AI/Wife/tests/output/chain-r1 --name ui-probe
+& tts/irodori/.venv/Scripts/python.exe tests/pi-brain/probe_chat_ui.py --text '语音测试，请回复一句中文。' --out tests/output/chain-r1 --name ui-probe
 ```
 
-验 `integrations/pi-brain/`（WSL 里那具身体）的"对话流程"改动在**生产分支**下的实际效果：
+验 `brain/`（WSL 里那具身体）的"对话流程"改动在**生产分支**下的实际效果：
 发言样子（口吃/模板/角色感）、干活交付、看图通路、以及"她自己加工具"时的自检习惯。
 
-`integrations/pi-brain/bin/` 里那几份是**脑自己的自检**（accept.sh 会跑，确定性、不叫模型）；
+`brain/bin/` 里那几份是**脑自己的自检**（accept.sh 会跑，确定性、不叫模型）；
 这里放的是**要真模型、要真进程**的探针，属于 `tests/` 的独立测试，不进生产目录。
 
 ## 前置条件（缺一项脚本就退出 2，不会假装通过）
@@ -117,7 +117,7 @@ bash /root/pi-brain-probe/probe_flow.sh --only T1,T7    # 只挑几轮
 
 度量（只报数）：陪伴/等候姿态命中（整理器口径 + 显式等候腔）、整理器会对每条做什么、口吃总数、时长、长度，
 以及**近义陪伴/等候措辞**（"安静坐着""不会去管你""一直都在""陪着"这类词表盖不到的说法，人工看）。
-整理器（`integrations/pi-brain/agent/extensions/albion-guard.ts`）是仓库里对"陪伴模板"唯一的那份定义，用它比另写词表可靠。
+整理器（`brain/agent/extensions/albion-guard.ts`）是仓库里对"陪伴模板"唯一的那份定义，用它比另写词表可靠。
 
 ## 已知限制
 
@@ -143,7 +143,7 @@ bash /root/pi-brain-probe/probe_flow.sh --only T1,T7    # 只挑几轮
   但那几轮她会整轮没发言，判读时先看 `stopReason=error` 的原文。
 
 - 原来两份 loopguard 定点探针（`check_loopguard_edge.ts`、`check_loopguard_paste.ts`）测的是已撤掉的 bash 解析与兜底注，
-  2026-10-16 随之删除；loopguard 的自检在 `integrations/pi-brain/bin/test_loopguard.ts`（日志走 `ALBION_LOOPGUARD_LOG`，不碰生产日志）。
+  2026-10-16 随之删除；loopguard 的自检在 `brain/bin/test_loopguard.ts`（日志走 `ALBION_LOOPGUARD_LOG`，不碰生产日志）。
 
 ## 跑过的结果
 

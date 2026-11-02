@@ -9,7 +9,7 @@
  */
 import assert from "node:assert/strict";
 import type { NormalizedBuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
-import { ShellToolBridge, type ShellToolset } from "../../integrations/pi-brain/agent/shell-tools-bridge.ts";
+import { ShellToolBridge, type ShellToolset } from "../../brain/agent/shell-tools-bridge.ts";
 
 const PARAMS = { type: "object", properties: { move: { type: "string" } } };
 

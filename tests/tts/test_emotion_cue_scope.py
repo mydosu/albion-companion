@@ -12,7 +12,7 @@
   ③ 断言**最终记录**的 family/caption/cfg/tier/level，并做成对比较（有无已到期 cue）；
   ④ 开关关：与冻结的 v4 输出逐字段相等；另做**反事实**：把旧坏行为放回去，本文件的断言必须变红。
 
-跑法（在 D:/AI/Wife 下）：
+跑法（在仓库根目录下）：
     tts/irodori/.venv/Scripts/python.exe -B -m unittest discover -s tests/tts -p "test_emotion_*.py" -v
 """
 import asyncio

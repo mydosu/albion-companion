@@ -16,7 +16,7 @@ cfg=3.2` —— "明るく、弾んだ声で" 说出的拒绝、"声を張り上
   ④ **反事实**：把闸门拿掉，本文件的正断言必须变红（否则测试是空转的）。
 
 纯 CPU、离线、不加载模型、不联网、不碰 GPU。
-跑法（在 D:/AI/Wife 下）：
+跑法（在仓库根目录下）：
     tts/irodori/.venv/Scripts/python.exe -B -m unittest discover -s tests/tts -p "test_emotion_*.py" -v
 """
 import asyncio

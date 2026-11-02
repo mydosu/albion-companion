@@ -81,7 +81,7 @@ WSL2 的配置：`networkingMode=mirrored`，无 CPU/内存上限，WSL 内可�
 | `tests/` | 独立测试、探针、固定材料；产物在忽略的 `tests/output/` |
 | `tools/` | 仓库检查、权重恢复、WSL 脑看门狗与同步核对、OpenViking 守护等维护工具 |
 | `config/rebuild/` | 无凭据的环境版本、权重路径/哈希及 LoRA 配置 |
-| `integrations/pi-brain/` | WSL 里她的脑（Pi 版，生产在 `/root/albion-pi/`）的源码快照与自检 |
+| `brain/` | WSL 里她的脑（Pi 版，生产在 `/root/albion-pi/`）的源码快照与自检 |
 | `archive/` | 历史存档规则；旧一次性脚本已删除（回看用 git 历史），不再作为入口或参考实现 |
 | `backup/` | 本机回档与私密归档，不入 Git |
 

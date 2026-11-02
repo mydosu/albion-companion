@@ -31,7 +31,7 @@ python tests/regression/run_batch.py --suite tts-unit
 | `tts-unit` | `python -B -m unittest discover -s tests/tts -p 'test_*.py'` | 0 失败（允许 skip） |
 | `tts-translate-rules` | `python -I tests/tts/test_translate_rules.py` | 6 个 TestCase 全过 |
 | `pet-bat` | `python pet/tools/check_bat.py` | 根目录 .bat 全为 GBK + CRLF |
-| `pi-brain-guard` | `node integrations/pi-brain/bin/test_guard_ext.ts` | 输出 `SELFTEST OK` |
+| `pi-brain-guard` | `node brain/bin/test_guard_ext.ts` | 输出 `SELFTEST OK` |
 | `pi-brain-shell-tools` | `python -B -m unittest discover -s tests/pi-brain -p test_shell_tools.py` | 0 失败（本机回环 HTTP；Windows 需 `pip install tzdata`） |
 | `pi-brain-shell-tools-ext` | `node tests/pi-brain/check_shell_tools_ext.ts` | 输出 `SELFTEST OK` |
 | `shell-vitest` | Node 25 `vitest.mjs run --maxWorkers=2` | Vitest 返回 0；缺 Node 25 或安装依赖时 `skipped` |

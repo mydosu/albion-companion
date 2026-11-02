@@ -169,8 +169,8 @@ Pi（Node 程序）直连会稳定超时（`Request timed out.`）。转发把�
 在 WSL(Ubuntu) 里，以 root 跑（仓库在 Windows 盘上就用 `/mnt/<盘符>/...` 路径）：
 
 ```bash
-sudo bash integrations/pi-brain/install.sh          # 装 Node 26.9.0 和 Pi 1.0.4（钉的是作者生产机版本，幂等）
-bash integrations/pi-brain/deploy.sh                # 部署到 /root/albion-pi；换目录：deploy.sh /some/dir 或 ALBION_HOME=…
+sudo bash brain/install.sh          # 装 Node 26.9.0 和 Pi 1.0.4（钉的是作者生产机版本，幂等）
+bash brain/deploy.sh                # 部署到 /root/albion-pi；换目录：deploy.sh /some/dir 或 ALBION_HOME=…
 ```
 
 - `deploy.sh` 只管检查器 `tools/check_pi_brain_sync.py` 管的那批：`bin/`、`agent/extensions/`、`agent/APPEND_SYSTEM.md`、`accept.sh`，
@@ -256,7 +256,7 @@ Magpie 只是作者的"模型管理器"：它往 `/root/.pi/agent/settings.json`
 
 ## 回退
 
-**退回守卫精简之前（2026-10-16 之前）的脑**：从仓库提交 `5f755e83` 取 `integrations/pi-brain/` 的
+**退回守卫精简之前（2026-10-16 之前）的脑**：从仓库提交 `5f755e83` 取 `brain/` 的
 `bin/`、`agent/extensions/`、`agent/APPEND_SYSTEM.md`、`accept.sh` 覆盖回 `/root/albion-pi/` 对应位置
 （先在独立目录 `git worktree add` 出来核对），再 `bash stop.sh && bash start.sh`。`state/voice.json` 留着无害。
 壳端要配套退回同一提交的 `shell/`，否则旧脑的 `[[LOOK]]`/壳内主动没有对应的壳。

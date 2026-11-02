@@ -11,7 +11,7 @@
                  缺的列出来并给官方下载地址。uv / WSL 发行版是所选阶段的硬前提。
       stt        调 tools/setup/setup_stt_runtime.ps1 建耳朵/眼睛的 Python 3.9。
       tts        调 tools/setup/setup_tts_env.ps1 建 tts/irodori/.venv。
-      brain      在 WSL 里跑 integrations/pi-brain/install.sh 和 deploy.sh。
+      brain      在 WSL 里跑 brain/install.sh 和 deploy.sh。
                  install.sh 需要 root；默认 WSL 用户不是 root 时加 -WslUser root。
       templates  把 config/local.env.example 复制成 config/local.env（已存在不覆盖）；
                  脑的 agent/.env.example、SOUL.example.md 由 deploy.sh 在目标缺失时放。
@@ -379,8 +379,8 @@ function Invoke-BrainStage {
     }
     $repoPath = $wslRepo.Path.TrimEnd('/')
     if (-not $repoPath) { $repoPath = '/' }
-    $installScript = $repoPath + '/integrations/pi-brain/install.sh'
-    $deployScript = $repoPath + '/integrations/pi-brain/deploy.sh'
+    $installScript = $repoPath + '/brain/install.sh'
+    $deployScript = $repoPath + '/brain/deploy.sh'
 
     $wslBase = @(Get-WslBaseArgs)
     $installArgs = $wslBase + @('--', 'bash', $installScript)
@@ -458,7 +458,7 @@ function Write-ManualChecklist {
     Write-InfoLine '1. 壳：照 docs/SHELL_FIRST_RUN.md 填 shell/apps/stage-tamagotchi/.env.local（VITE_ALBION_LLM_KEY = 脑的 API_SERVER_KEY），放两个角色 zip，再 pnpm install --frozen-lockfile && pnpm -F @proj-airi/stage-tamagotchi build:unpack。'
     Write-InfoLine '2. 脑：在 WSL 里把 agent/.env.example 复制成 agent/.env（至少 API_SERVER_KEY，和壳一致）、SOUL.example.md 复制成 SOUL.md 并写人设；deploy.sh 只放模板，不覆盖已有文件。'
     Write-InfoLine '3. 环境变量：config/local.env 是 Windows 侧唯一配置处（模板 local.env.example，不入库），launch/load_env.bat 会自动加载，真环境变量优先。'
-    Write-InfoLine '4. OpenViking：照 config/templates/ov.conf.example 和 config/templates/ov.conf.notes.md 建自己的 ov.conf（不入库），再按教程阶段 7 起服务。'
+    Write-InfoLine '4. OpenViking：照 memory/templates/ov.conf.example 和 memory/templates/ov.conf.notes.md 建自己的 ov.conf（不入库），再按教程阶段 7 起服务。'
     Write-InfoLine '5. 视觉机：照 deploy/vision/README.md 装驱动/容器、复制 .env.example 为 .env、下模型、开防火墙。'
     Write-InfoLine '6. 权重：照 docs/REBUILD.md「权重与 Windows 环境」；自训权重在私有仓库 Releases，基础模型/角色包/参考音频按该节恢复，别用别处的下载地址替换。'
     Write-InfoLine '7. 验收：python tools/check_repository.py、python tools/check_pi_brain_sync.py，然后按 docs/REBUILD.md「启动与验收」用一键启动脚本拉服务并做端到端确认。'

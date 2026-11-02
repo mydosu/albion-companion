@@ -73,3 +73,7 @@ tts/irodori/_tmp_v2_golden.json
 
 # Windows 侧唯一环境变量文件（只入库模板 config/local.env.example）
 config/local.env
+
+# GPT-SoVITS 安装目录（上游代码/runtime/权重）与参考音：本机资产，不入库
+tts/GPT-sovits/
+tts/ref_audio/

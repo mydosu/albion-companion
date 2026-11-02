@@ -1,5 +1,5 @@
 #!/bin/bash
-# 把本目录（integrations/pi-brain）里"仓库管"的那批文件部署到 WSL 里的脑目录，默认 /root/albion-pi。
+# 把本目录（brain）里"仓库管"的那批文件部署到 WSL 里的脑目录，默认 /root/albion-pi。
 # 用法：bash deploy.sh [目标目录]      或  ALBION_HOME=/some/dir bash deploy.sh
 #   DRY_RUN=1   只列会动什么，不写
 #   SKIP_CHECK=1  不跑 tools/check_pi_brain_sync.py

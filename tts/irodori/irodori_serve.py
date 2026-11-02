@@ -21,7 +21,8 @@ sys.path.insert(0, ROOT)
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
 CKPT = os.path.join(ROOT, "checkpoints", "model.safetensors")
-AUDIO_ROOT = r"D:/AI/Wife/tts/GPT-sovits/audio"
+# 参考音（各船目录）在 tts/ref_audio/，站点级资产不入库；换位置用 local.env 的 ALBION_REF_AUDIO
+AUDIO_ROOT = os.environ.get("ALBION_REF_AUDIO") or os.path.join(os.path.dirname(os.path.dirname(ROOT)), "tts", "ref_audio")
 SHIPS = ("albion", "taihou", "shinano", "brest", "jinshi")
 DEFAULT_SHIP = os.environ.get("TTS_DEFAULT_VOICE", "albion").strip().lower() or "albion"  # 换角色：设此环境变量，默认 albion
 

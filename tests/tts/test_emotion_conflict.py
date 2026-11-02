@@ -18,7 +18,7 @@ whispered/breathy 才算打架；whispered↔breathy 是同轴强弱，不算冲
 `phonation` 是生产那次翻译 hint 里的值（桥的 hint 由上游 LLM 给，离线替身不产 hint，所以这里
 按实录固定）。断言只落在**最终五字段** family/caption/cfg/tier/level（外加必要的诊断键）。
 
-跑法（在 D:/AI/Wife 下）：
+跑法（在仓库根目录下）：
     tts/irodori/.venv/Scripts/python.exe -B -m unittest discover -s tests/tts -p "test_emotion_*.py"
 """
 import copy

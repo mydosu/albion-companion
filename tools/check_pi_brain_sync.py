@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """pi-brain 仓库与 WSL 生产副本同步核对（只读）。
 
-比较 integrations/pi-brain 下入库的 bin/、agent/extensions/、agent/APPEND_SYSTEM.md、accept.sh
+比较 brain 下入库的 bin/、agent/extensions/、agent/APPEND_SYSTEM.md、accept.sh
 与 WSL 里 /root/albion-pi/ 同相对路径的文件。比较前去掉 CR（工作树可能是 CRLF，生产是 LF）。
 只在 WSL 里跑 sha256 和 find，不写生产、不重启、不改 profile。
 
@@ -18,7 +18,7 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-PREFIX = 'integrations/pi-brain/'
+PREFIX = 'brain/'
 SCOPE = ('bin/', 'agent/extensions/', 'agent/APPEND_SYSTEM.md', 'accept.sh')
 
 

@@ -20,7 +20,7 @@ import bridge_v2   # noqa: E402
 
 URL = "https://x.com/product_id/RJ0123456789.html"
 PATH = "/product_id/RJ0123456789.html"
-WINPATH = r"D:\AI\Wife\tts\irodori\bridge.py"
+WINPATH = str(pathlib.Path(__file__).resolve().parents[2] / "tts" / "irodori" / "bridge.py")  # 带盘符的 Windows 路径样本，跟着仓库走
 ZH = "在的，指挥官。"
 
 

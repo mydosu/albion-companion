@@ -18,7 +18,7 @@
   ③ **每项开关两态对照**（其余三项保持 v6 默认）—— 证明改动可单独归因、可单独回退。
   ④ **反事实**：把旧行为放回去，本文件的断言必须变红。
 
-跑法（在 D:/AI/Wife 下）：
+跑法（在仓库根目录下）：
     tts/irodori/.venv/Scripts/python.exe -B -m unittest discover -s tests/tts -p "test_emotion_*.py"
 """
 import asyncio

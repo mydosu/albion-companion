@@ -7,15 +7,16 @@ stream 运维日志带日期时区；正文只记录长度和 SHA256。
 桥的 `_breq.log`、`_translate_err.log` 写入仓库根 `logs/tts/`，各按 1 MiB、3 份备份轮转；新记录不写原文/译文/上游错误正文。
 旧日志及其轮转备份可能仍有历史正文，保持原位，不改写已有记录。
 
-本目录源码由根 `D:\AI\Wife` 总仓管理；Irodori 与 GPT-SoVITS 已合仓，
-不要按旧文档在子目录 checkout local/master 或另推子仓。
+本目录由仓库根统一管理；不要按旧文档在子目录里 checkout 分支或另推子仓。
 
 | 目录 | 当前职责 |
 |---|---|
 | `irodori/` | 后端 :9889、准备/翻译桥 :9881、情感规划/渲染与上游训练工具 |
 | `stream/` | 壳使用的 unspeech 流式网关 :9885 |
-| `GPT-sovits/` | 备用 Denia 源码，以及本机 STT/采集依赖的忽略 runtime |
+| `gsv/` | GPT-SoVITS（中文角色 Denia）**适配层**：launch、推理配置、README；上游代码与权重不在仓库 |
+| `ref_audio/` | 各船参考音与 Denia 参考音（站点级资产，**不入库**，见 `.gitignore`） |
 | `persona/` | 角色素材（本机素材，不入库），不等同于 WSL 生产 SOUL |
+| `GPT-sovits/` | GPT-SoVITS **安装目录**（上游代码 + runtime + 权重），整目录忽略；路径由 `config/local.env` 的 `ALBION_GSV_ROOT` 指定 |
 
 独立测试在根 `tests/tts/`，A/B 在 `tests/tts/eval/`；旧 bak/rollback
 在根 `backup/code/20261002/tts/`。`bridge_v2.py`、`serve_v2.py` 仍属于生产。

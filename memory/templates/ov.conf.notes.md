@@ -3,9 +3,9 @@
 `ov.conf.example` 是**严格 JSON**，没有注释（OpenViking 用 `json.loads` 读它，注释会让它直接报
 `Invalid JSON in config file`）。所以逐项说明放这里，键的注释以本表为准。
 
-- 用法：复制成 `D:\AI\openviking\ov.conf`（守护脚本默认位置，`tools/openviking-recover.ps1:10-12`、
-  `tools/openviking-observe.ps1:9`、`tools/openviking-memory-health.py:18`），或放
-  `~/.openviking/ov.conf`；`openviking-server --config ov.conf` 启动（`tools/openviking-recover.ps1:232-233`）。
+- 用法：复制成 `D:\AI\openviking\ov.conf`（守护脚本默认位置，`memory/openviking-recover.ps1:10-12`、
+  `memory/openviking-observe.ps1:9`、`memory/openviking-memory-health.py:18`），或放
+  `~/.openviking/ov.conf`；`openviking-server --config ov.conf` 启动（`memory/openviking-recover.ps1:232-233`）。
 - **不用把 key 写进文件**：加载时会先做 `os.path.expandvars()`（`openviking_cli/utils/config/config_loader.py:87-88`），
   所以模板里的 `$OV_EMBEDDING_API_KEY` 这类占位会从环境变量取值；变量没设时保持原样，服务会因为 key 无效而报错——
   这比把明文写进文件安全，出问题时也看得见是哪一项没配。
@@ -52,7 +52,7 @@
 |---|---|---|---|
 | `server.host` / `server.port` | `127.0.0.1` / `1933` | 只本机访问就别改成 `0.0.0.0` | `openviking/server/config.py:323-324` |
 | `server.auth_mode` | `api_key` | 不填时按有没有 `root_api_key` 自动判定（有 ⇒ `api_key`，没有 ⇒ `dev`）；`dev` 不鉴权，别对外 | `server/config.py:335`、`:369-381` |
-| `server.root_api_key` | `$OV_ROOT_API_KEY` | 守护脚本和脑的 `OPENVIKING_API_KEY` 用的是同一把；换 key 要一次改全（教程 07「服务和守护」踩过） | `server/config.py:336`、`tools/openviking-memory-health.py:29-30` |
+| `server.root_api_key` | `$OV_ROOT_API_KEY` | 守护脚本和脑的 `OPENVIKING_API_KEY` 用的是同一把；换 key 要一次改全（教程 07「服务和守护」踩过） | `server/config.py:336`、`memory/openviking-memory-health.py:29-30` |
 | `server.cors_origins` | `["http://127.0.0.1:5173"]` | 只在浏览器里直接调 API 才需要；默认是 `["*"]`，本机自用别放宽 | `server/config.py:341` |
 
 ## memory / retrieval

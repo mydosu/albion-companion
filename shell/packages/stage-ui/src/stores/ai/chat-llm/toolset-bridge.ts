@@ -4,7 +4,7 @@ import type { LlmToolsetPromptContribution } from './toolset-prompts'
 /**
  * Request header that names the toolset-contributed tools in a chat request.
  *
- * The Albion Pi brain (`integrations/pi-brain/bin/shell_tools.py`) reads it.
+ * The Albion Pi brain (`brain/bin/shell_tools.py`) reads it.
  * The brain bridges only the tools named here, not every tool in `body.tools`.
  * When the brain calls one of them, it returns OpenAI `tool_calls`. xsai runs
  * the tool in this renderer and sends a `role: tool` result back.

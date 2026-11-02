@@ -15,12 +15,12 @@ from unittest.mock import patch
 import urllib.error
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / 'tools'))
+sys.path.insert(0, str(ROOT / 'memory'))   # openviking 脚本 2026-11-01 移进 memory/
 import openviking_runtime as runtime
 
 
 def load(name, filename):
-    loader = SourceFileLoader(name, str(ROOT / 'tools' / filename))
+    loader = SourceFileLoader(name, str(ROOT / 'memory' / filename))
     spec = importlib.util.spec_from_loader(name, loader)
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
@@ -34,7 +34,7 @@ guard = load('ov_guard', 'tailscale-guard-conpty.pyw')
 
 class GuardTests(unittest.TestCase):
     def setUp(self):
-        output = Path('D:/AI/Wife/tests/output/ov-leftovers/isolated') if os.name == 'nt' else ROOT/'tests/output/openviking'
+        output = ROOT / 'tests/output/ov-leftovers/isolated' if os.name == 'nt' else ROOT/'tests/output/openviking'
         output.mkdir(parents=True, exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(dir=output)
         self.root = Path(self.temp.name)
@@ -394,7 +394,7 @@ class GuardTests(unittest.TestCase):
         ready = self.root/'ready'
         code = ('import sys,time;sys.path.insert(0,sys.argv[1]);from openviking_runtime import file_lock;'
                 '\nwith file_lock(sys.argv[2]):\n open(sys.argv[3],"w").close();time.sleep(.6)')
-        proc = subprocess.Popen([sys.executable, '-c', code, str(ROOT/'tools'), str(lock), str(ready)])
+        proc = subprocess.Popen([sys.executable, '-c', code, str(ROOT/'memory'), str(lock), str(ready)])
         try:
             deadline = time.monotonic()+4
             while not ready.exists() and time.monotonic()<deadline:
@@ -438,7 +438,7 @@ class GuardTests(unittest.TestCase):
 
     @unittest.skipUnless(os.name == 'nt', 'CMD integration')
     def test_actual_cmd_disabled_llama_and_recovery_before_health(self):
-        source = (ROOT/'tools/tailscale-guard.cmd').read_bytes().decode('utf-8')
+        source = (ROOT/'memory/tailscale-guard.cmd').read_bytes().decode('utf-8')
         source = source.replace('tailscale status --json', 'echo {"BackendState": "Running"}')
         source = source.replace('netstat -ano | findstr ":9800.*LISTENING" >nul', 'ver >nul')
         lines = []

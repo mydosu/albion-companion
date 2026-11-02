@@ -33,7 +33,7 @@ await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
 const port = (srv.address() as any).port;
 writeFileSync(join(root, "models.json"), JSON.stringify({ providers: { grokpool: { baseUrl: `http://127.0.0.1:${port}/v1`, apiKey: "test" } } }));
 
-const ext = (n: string) => new URL(`../../integrations/pi-brain/agent/extensions/${n}`, import.meta.url).href;
+const ext = (n: string) => new URL(`../../brain/agent/extensions/${n}`, import.meta.url).href;
 const tools: Record<string, any> = {};
 for (const n of ["albion-todo.ts", "albion-browser.ts", "albion-draw.ts"]) {
   const { default: f } = await import(ext(n));

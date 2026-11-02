@@ -1,6 +1,6 @@
 # 测试入口
 
-所有命令默认在仓库根 `D:\AI\Wife` 的 PowerShell 执行。可执行测试与生产源码分开；
+所有命令默认在仓库根的 PowerShell 执行。可执行测试与生产源码分开；
 固定材料保留原值，生成结果统一写 `tests/output/`。
 
 ```powershell
@@ -31,7 +31,7 @@ python tools/check_repository.py
 
 ## Windows 前置条件：tzdata
 
-`integrations/pi-brain/bin/wake.py` 在模块导入时就构造 `ZoneInfo("Asia/Shanghai")`，
+`brain/bin/wake.py` 在模块导入时就构造 `ZoneInfo("Asia/Shanghai")`，
 `server.py --selftest` 也经 wake 间接依赖它；Windows 版 Python 不自带 IANA 时区库，
 缺 `tzdata` 时这两个自检在 import 阶段就失败：
 
@@ -55,8 +55,8 @@ TTS 套件仍要求装了 fastapi 等依赖的解释器（见上面的 `--python
 | `pet/tools/check_bat.py` | 全部 .bat 为 GBK + CRLF | `1`：有文件不合格 |
 | `tests/tts` 的 unittest、`tests/tts/test_translate_rules.py` | 全过（允许 skip） | `1`：有失败/错误 |
 | `tests/regression/run_batch.py` | 全部 pass（`skipped` 不算失败） | `1`：有套件 fail/timeout；`2`：`--out` 越界/建不出来（在启动套件之前返回）；超时会终止该套件的子进程树并继续后续套件 |
-| `integrations/pi-brain/bin/wake.py`、`server.py --selftest` | 打印 `WAKE SELFTEST OK` / `HOST SELFTEST OK` | 断言失败抛 `AssertionError` → `1`，没有部分成功一说 |
-| `integrations/pi-brain/bin/test_guard_ext.ts` | 打印 `GUARD_EXT SELFTEST OK` | 抛错 → `1` |
+| `brain/bin/wake.py`、`server.py --selftest` | 打印 `WAKE SELFTEST OK` / `HOST SELFTEST OK` | 断言失败抛 `AssertionError` → `1`，没有部分成功一说 |
+| `brain/bin/test_guard_ext.ts` | 打印 `GUARD_EXT SELFTEST OK` | 抛错 → `1` |
 | `tests/pet/*.mjs` | 结论通过 | `1`：断言不符、连不上 :9335、连接没得出结论就关闭、超时（默认 15s，`ALBION_PROBE_TIMEOUT_MS` 可改）或抛异常；`_verify_calib.mjs` 另用 `3` 表示模块未热更新（要刷新页面后重跑，不算通过） |
 
 `tests/tts/eval/` 真正运行时会请求 :9881/:9889，并可能触发翻译费用与 GPU 推理。

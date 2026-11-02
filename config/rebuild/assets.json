@@ -238,7 +238,7 @@
   "external_directories": [
     "pet/models/modelscope/iic",
     "tts/GPT-sovits/runtime",
-    "tts/GPT-sovits/audio",
+    "tts/ref_audio",
     "tts/GPT-sovits/GPT_SoVITS",
     "her-home"
   ]

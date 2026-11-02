@@ -102,10 +102,10 @@
 
 | 文件 | 行 |
 |---|---|
-| `tts\GPT-sovits\audio\_records\_tools\asr_subset.py` | 18 |
-| `tts\GPT-sovits\audio\_records\_tools\check_asr_spot.py` | 14 |
-| `tts\GPT-sovits\audio\_records\_tools\cut_split.py` | 60 |
-| `tts\GPT-sovits\audio\_records\_tools\prep_asr_ship.py` | 51 |
+| `tts\ref_audio\_records\_tools\asr_subset.py` | 18 |
+| `tts\ref_audio\_records\_tools\check_asr_spot.py` | 14 |
+| `tts\ref_audio\_records\_tools\cut_split.py` | 60 |
+| `tts\ref_audio\_records\_tools\prep_asr_ship.py` | 51 |
 
 > 都是 2026-09-12 五船打标那次用的一次性工具，项目已收工；要用先把模型拉回来或改这四行路径。
 > 依赖声明：`tts\GPT-sovits\extra-req.txt:1`（`faster-whisper`）、`requirements.txt:13,19`（`funasr==1.0.27` / `modelscope`）。

@@ -1,5 +1,5 @@
 /**
- * 说话整理器（integrations/pi-brain/agent/extensions/albion-guard.ts）的口径表：不叫模型、不碰 state/，秒级。
+ * 说话整理器（brain/agent/extensions/albion-guard.ts）的口径表：不叫模型、不碰 state/，秒级。
  * 取代原来的 check_strip_posture.py 与 bin/test_guard.py 里 strip_posture 那几组（guard.py 已于 2026-10-16 删除）；
  * 例句沿用历轮复核（haiku/dsh r4–r6、2026-10-14 截图）定下的口径。
  *
@@ -12,7 +12,7 @@ import { pathToFileURL } from "node:url";
 
 const EXT = process.argv[2]
   ? pathToFileURL(process.argv[2]).href
-  : new URL("../../integrations/pi-brain/agent/extensions/albion-guard.ts", import.meta.url).href;
+  : new URL("../../brain/agent/extensions/albion-guard.ts", import.meta.url).href;
 const { tidy, segments, postureMatches, canonicalAct, foldLabeledAside, fixAsidePronoun, fixTicPhrases } = await import(EXT);
 
 const ACT = '<|ACT:{"emotion":"neutral"}|>\n';

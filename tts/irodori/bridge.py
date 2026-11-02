@@ -32,6 +32,7 @@ from fastapi.responses import StreamingResponse
 import uvicorn
 
 from json_body import read_json_body       # 请求体按 charset 解码，非 UTF-8 不再 500（2026-10-30）
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 本文件在 tts/irodori/，往上三层是仓库根
 
 app = FastAPI()
 
@@ -74,7 +75,8 @@ def _file_log(name, message):
 
 # denia：GSV 中文角色，CPU 常驻 :9880（参考音/提示文本取自定稿配置）
 GSV_TTS = "http://127.0.0.1:9880/tts"
-DENIA_REF = r"D:/AI/Wife/tts/denia/audio/output.wav_0009342720_0009558400.wav"
+# 参考音在 tts/ref_audio/（站点级资产，不入库）；换机器用 local.env 的 ALBION_DENIA_REF 覆盖
+DENIA_REF = os.environ.get("ALBION_DENIA_REF") or os.path.join(REPO_ROOT, "tts", "ref_audio", "output.wav_0009342720_0009558400.wav")
 DENIA_PROMPT = "怎么啊？如果有你在也不放心，那就干脆给我也装个限制器或者炸弹喽。"
 
 # 语种判据与「网址/路径剥除」只留 bridge_v2 一份（v1 路径与 /v2/prepare 共用）
@@ -436,7 +438,8 @@ TRANSLATE_NOTHINK = os.environ.get("TTS_TRANSLATE_NOTHINK", "1").lower() not in 
 # ---- 翻译腿后端：codex 是历史分支名，主路为 Command Code，Codex CLI 仅作最终退路 --------
 # 显式 TTS_TRANSLATE_BACKEND=api 才使用需要独立 API key 的 HTTP 线路。
 TRANSLATE_BACKEND = os.environ.get("TTS_TRANSLATE_BACKEND", "codex").strip().lower()
-CODEX_BIN = os.environ.get("TTS_TRANSLATE_CODEX_BIN", r"D:\AI\codex\bin\codex.cmd")
+# 默认空：没配就当作没有 codex 腿（往下走 HTTP 退路）；路径写在 config/local.env 的 TTS_TRANSLATE_CODEX_BIN
+CODEX_BIN = (os.environ.get("TTS_TRANSLATE_CODEX_BIN") or "").strip()
 CODEX_MODEL = os.environ.get("TTS_TRANSLATE_CODEX_MODEL", "gpt-6-luna")
 CODEX_TIMEOUT = float(os.environ.get("TTS_TRANSLATE_CODEX_TIMEOUT", "90"))
 # 关思考：实测 none 被 codex 接受、译文与 low 逐字相同（minimal 会被拒）。翻译不需要推理。
@@ -567,7 +570,7 @@ def _fallback_key() -> str:
         if not k:
             try:
                 # 2026-09-24：反代已删，key 改为从本机密钥文件读（不复制到别处、不打印）
-                p = os.environ.get("TTS_TRANSLATE_KEY_FILE", r"D:\AI\_secrets\command code.txt")
+                p = (os.environ.get("TTS_TRANSLATE_KEY_FILE") or "").strip()   # 空＝没配，直接走下面的"读不到"
                 k = open(p, encoding="utf-8-sig").read().strip()
             except Exception as e:   # noqa: BLE001
                 print(f"[translate] 读退路 key 失败：{type(e).__name__}", flush=True)

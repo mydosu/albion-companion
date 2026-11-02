@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-. (Join-Path $repo 'tools\openviking-observe.ps1') -Library
+. (Join-Path $repo 'memory\openviking-observe.ps1') -Library
 $passed = 0
 foreach ($name in @('openviking-recover.ps1', 'openviking-observe.ps1')) {
     $tokens = $null; $parseErrors = $null

@@ -35,7 +35,7 @@ const dir = mkdtempSync(join(tmpdir(), "albion-self-"));
 process.env.ALBION_STATE_DIR = dir;
 const ext = process.argv[2]
   ? pathToFileURL(process.argv[2]).href
-  : new URL("../../integrations/pi-brain/agent/extensions/albion-self.ts", import.meta.url).href;
+  : new URL("../../brain/agent/extensions/albion-self.ts", import.meta.url).href;
 const tools: Record<string, any> = {};
 (await import(ext)).default({ registerTool: (t: any) => (tools[t.name] = t) } as any);
 const wake = (p: Record<string, unknown>) => tools.next_wake.execute("t", p);

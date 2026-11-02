@@ -50,6 +50,17 @@ if !PORTFREE!==1 (
   echo [2.5/6] 流式语音已在运行, 跳过
 )
 
+rem 2.8) Denia（可选中文角色，:9880；tts/gsv/start_denia.bat）。默认不起，ALBION_START_DENIA=1 才拉
+if "%ALBION_START_DENIA%"=="1" (
+  call :check 9880
+  if !PORTFREE!==1 (
+    echo [2.8/6] 启动 Denia 后端 :9880 ...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0silent_run.ps1" !CONSOLE_FLAG! -Bat "%WIFE%\tts\gsv\start_denia.bat" -Log "%WIFE%\logs\denia.log"
+  ) else (
+    echo [2.8/6] Denia 后端已在运行, 跳过
+  )
+)
+
 rem 3) 耳朵 STT（paraformer，CPU，加载约 5 秒）
 call :check 9882
 if !PORTFREE!==1 (
@@ -112,7 +123,7 @@ echo ---- 等模型加载, 然后自检（最多 90 秒）----
 echo.
 echo 服务都在后台静默跑; 想全关掉, 双击 一键关闭.bat.
 echo 单独启动: 进 tts\irodori 或 pet 目录双击对应的 .bat.
-echo 可选: 想用 Denia 音色, 再双击 tts\GPT-sovits\启动Denia后端.bat (:9880).
+echo 可选: 想用 Denia 音色, 再双击 tts\gsv\start_denia.bat (:9880).
 echo.
 endlocal
 exit /b

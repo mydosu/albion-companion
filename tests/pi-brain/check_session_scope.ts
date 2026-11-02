@@ -35,7 +35,7 @@ register(
     ),
 );
 
-const agentDir = fileURLToPath(new URL("../../integrations/pi-brain/agent/", import.meta.url));
+const agentDir = fileURLToPath(new URL("../../brain/agent/", import.meta.url));
 process.env.PI_CODING_AGENT_DIR = agentDir;
 const prod = mkdtempSync(join(tmpdir(), "albion-prod-state-"));
 process.env.ALBION_STATE_DIR = prod;
@@ -45,7 +45,7 @@ delete process.env.ALBION_MEMORY_SESSIONS;
 delete process.env.ALBION_SESSION_ID;
 
 const { isEphemeralSession, personalStateDir, personalStatePath, realSessions } = await import(
-  new URL("../../integrations/pi-brain/agent/lib/session-scope.ts", import.meta.url).href
+  new URL("../../brain/agent/lib/session-scope.ts", import.meta.url).href
 );
 
 // ── 1. 名单与判断口径 ──────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ delete process.env.ALBION_PERSONAL_STATE_DIR;
 // ── 3. 真实写入被拦：notebook / todo 在 ephemeral 会话不落生产 ─────────────
 async function loadTools(rel: string): Promise<Record<string, any>> {
   const tools: Record<string, any> = {};
-  const mod = await import(new URL(`../../integrations/pi-brain/agent/extensions/${rel}`, import.meta.url).href);
+  const mod = await import(new URL(`../../brain/agent/extensions/${rel}`, import.meta.url).href);
   mod.default({ registerTool: (t: any) => (tools[t.name] = t) } as any);
   return tools;
 }

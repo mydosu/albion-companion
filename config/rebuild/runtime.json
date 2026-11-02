@@ -2,7 +2,7 @@
   "captured_on": "2026-10-16",
   "brain": {
     "kind": "pi",
-    "repo_snapshot": "integrations/pi-brain",
+    "repo_snapshot": "brain",
     "deploy_path": "/root/albion-pi",
     "host_port": 8650,
     "model": {

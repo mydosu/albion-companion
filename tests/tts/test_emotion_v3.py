@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """v3 情绪条件化：契约与回归测试（纯 CPU、不联网、不加载模型）。
 
-跑法（在 D:/AI/Wife 下）：
+跑法（在仓库根目录下）：
     tts/irodori/.venv/Scripts/python.exe -B -m unittest discover -s tests/tts -p test_emotion_*.py -v
 
 覆盖三件事：
@@ -14,7 +14,7 @@ import os
 import sys
 import unittest
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "tts"))     # D:/AI/Wife/tts
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "tts"))     # 仓库的 tts/
 sys.path.insert(0, os.path.join(ROOT, "irodori"))
 sys.path.insert(0, os.path.join(ROOT, "stream"))
 

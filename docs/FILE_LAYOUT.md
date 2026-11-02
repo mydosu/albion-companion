@@ -17,7 +17,10 @@
 | `backup/code/<日期>/<原相对路径>` | 旧生产副本、回滚目录、手工 `.bak` | 全部忽略，保留磁盘内容 |
 | `backup/profile-archives/`、`backup/` 原个人回档目录 | 私密 profile 与个人回档点 | 全部忽略，禁止强制提交 |
 | `config/rebuild/` | 无凭据的版本清单、权重路径/哈希、adapter 配置 | 跟踪 |
-| `integrations/pi-brain/` | WSL 脑（`/root/albion-pi/`）的源码快照：宿主、扩展、自检 | 跟踪；私人 `.env`、SOUL、`state/` 不入库。原 `integrations/hermes/` 已于 2026-10-16 删除，见 git 历史 |
+| `brain/` | WSL 脑（`/root/albion-pi/`）的源码快照：宿主、扩展、自检（原 `integrations/` 下的 pi-brain，2026-11-01 整体改名搬到顶层） | 跟踪；私人 `.env`、SOUL、`state/` 不入库。原 `integrations/hermes/` 已于 2026-10-16 删除，见 git 历史 |
+| `memory/` | OpenViking 记忆链的守护/观测/恢复脚本、`OPENVIKING_GUARD.md`、`templates/ov.conf.*` | 跟踪；`ov.conf` 本身不入库 |
+| `tts/gsv/` | GPT-SoVITS 适配层（Denia）：`denia_launch.py`、`tts_infer_denia.yaml`、`start_denia.bat`、README；上游代码/权重不在仓库 | 跟踪（不含上游文件与权重） |
+| `tts/ref_audio/` | 各船参考音与 Denia 参考音（站点级资产） | 忽略，不入库 |
 | `logs/`、`_tmp/`、`.local/` | 日志、临时草稿、私人配置和下载 | 全部忽略 |
 | `her-home/`、本地模型/训练/venv 目录 | 个人作品、外部资产与环境 | 全部忽略 |
 

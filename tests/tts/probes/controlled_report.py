@@ -9,7 +9,7 @@
 
 用法（仓库根）：
     tts/irodori/.venv/Scripts/python.exe -B tests/tts/probes/controlled_report.py \\
-        --metrics D:/AI/Wife/tests/output/tts-controlled-caption-20261026/metrics.json
+        --metrics tests/output/tts-controlled-caption-20261026/metrics.json
 """
 import argparse
 import json

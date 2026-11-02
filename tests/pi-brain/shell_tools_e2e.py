@@ -154,7 +154,7 @@ def stage(src, root):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--src", required=True, help="integrations/pi-brain 的拷贝")
+    ap.add_argument("--src", required=True, help="brain 的拷贝")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     for exe in ("pi", "node"):

@@ -139,8 +139,8 @@ SUITES = [
     {
         "name": "pi-brain-guard",
         "what": "脑端整理器自检 test_guard_ext.ts（纯 TS，无网络）",
-        "cmd": lambda py: ["node", "integrations/pi-brain/bin/test_guard_ext.ts"],
-        "needs": ["integrations/pi-brain/bin/test_guard_ext.ts"],
+        "cmd": lambda py: ["node", "brain/bin/test_guard_ext.ts"],
+        "needs": ["brain/bin/test_guard_ext.ts"],
         "parse": parse_selftest,
     },
     {

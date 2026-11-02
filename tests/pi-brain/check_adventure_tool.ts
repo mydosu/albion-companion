@@ -11,7 +11,7 @@ process.env.ALBION_ADVENTURE_MOVES = movesPath;
 rmSync(dirname(movesPath), { recursive: true, force: true });
 mkdirSync(dirname(movesPath), { recursive: true });
 
-const { default: albionPlay } = await import(new URL("../../integrations/pi-brain/agent/extensions/albion-play.ts", import.meta.url).href);
+const { default: albionPlay } = await import(new URL("../../brain/agent/extensions/albion-play.ts", import.meta.url).href);
 let tool: any;
 albionPlay({ registerTool: (t: any) => (tool = t) } as any);
 const run = async (moves: string) => String((await tool.execute("t", { moves })).content[0].text);

@@ -62,7 +62,7 @@ python tools/restore_weights.py
 | `shell/packages/stage-ui/src/assets/live2d/models/albion.zip` | 本机角色 Live2D 包 |
 | `shell/packages/stage-ui/src/assets/spine/models/albion-spine-38.zip` | 本机角色 Spine 包 |
 | `pet/models/modelscope/iic/` | paraformer ASR、fsmn VAD、ct-punc，目录名由 `pet/whisper_serve.py` 指定 |
-| `tts/GPT-sovits/audio/<角色>/` | 参考音频；后端优先 `004.wav`、`068.wav`、`072.wav`、`003.wav`，缺时取已有 WAV |
+| `tts/ref_audio/<角色>/` | 参考音频；后端优先 `004.wav`、`068.wav`、`072.wav`、`003.wav`，缺时取已有 WAV |
 | `tts/GPT-sovits/runtime/` | STT/眼睛启动器目前依赖此 `python.exe`；本机 Python 3.9.13 |
 | `tts/irodori/.venv/` | 本机 Python 3.10.20，torch 2.10.0+cu128；恢复环境或重新安装 |
 | Hugging Face 缓存 | checkpoint 所需 codec/tokenizer，可按上游源码下载或恢复离线缓存 |
@@ -84,7 +84,7 @@ STT 当前默认 CPU paraformer，需要 `funasr==1.0.27` 等对应依赖与三�
 ## WSL 脑与私人配置
 
 **2026-10-14 更正：WSL 上现在跑的是 Pi 版脑**（`/root/albion-pi/`，宿主 :8650），2026-10-07 起就是它；
-Hermes 那份已从 WSL 删除。重建脑照 `integrations/pi-brain/README.md`：把仓库 `integrations/pi-brain/`
+Hermes 那份已从 WSL 删除。重建脑照 `brain/README.md`：把仓库 `brain/`
 放成 `/root/albion-pi/`，恢复私人的 `agent/.env`、`agent/SOUL.md`、`agent/models.json` 里的号池 key、
 `state/`（活动库与心事本），再 `bash start.sh`；验收 `bash accept.sh`。
 号池（grok2api `:8000`，画图/联网搜/看图转述都靠它）在 WSL `/root/grok-pool/` 用 `docker compose` 跑，开机由 `/etc/wsl.conf` 的 `[boot]` 调 `/usr/local/bin/grok-pool-boot.sh` → `grok-pool-up.sh` 拉起；这两个脚本只在 WSL、不入库。

@@ -1,7 +1,7 @@
 /** Offline checks for the request helper used by albion-look. */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { requestCapture } from "../../integrations/pi-brain/agent/eyes-http.ts";
+import { requestCapture } from "../../brain/agent/eyes-http.ts";
 
 const TEST_TOKEN = "unit-test";
 const requests: Array<{ url: URL; init?: RequestInit }> = [];
@@ -9,7 +9,7 @@ const oldFetch = globalThis.fetch;
 
 try {
 	const extension = readFileSync(
-		new URL("../../integrations/pi-brain/agent/extensions/albion-look.ts", import.meta.url),
+		new URL("../../brain/agent/extensions/albion-look.ts", import.meta.url),
 		"utf-8",
 	);
 	assert.ok(extension.includes('import { requestCapture } from "../eyes-http.ts"'));

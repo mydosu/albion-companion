@@ -51,7 +51,7 @@ pwsh -NoProfile -File <工作树绝对路径>/tools/sync-shell-private-assets.ps
 pwsh -NoProfile -File <工作树绝对路径>/tools/sync-shell-private-assets.ps1
 ```
 
-默认源是 `D:\AI\Wife`，目标是脚本所在的仓库；需要时用 `-SourceRoot` 和 `-TargetRoot` 指定。素材是复制的，不用 junction，删除工作树不会删到源文件。
+默认源是主仓库根，目标是脚本所在的仓库；需要时用 `-SourceRoot` 和 `-TargetRoot` 指定。素材是复制的，不用 junction，删除工作树不会删到源文件。
 
 壳的相关 Vitest 用 Node 25，选择 `scripts/godot-build.test.ts` 和
 `src/main/services/airi/godot-stage/launch-options.test.ts`；包含 electron-builder 原生配置校验，不产出平台包。

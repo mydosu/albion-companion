@@ -12,7 +12,7 @@ process.env.ALBION_SKILLS_DIR = join(root, "技能");
 process.env.ALBION_STATE_DB = join(root, "state.db");
 process.env.ALBION_SESSION_ID = "albion-desktop";
 
-const ext = (n: string) => new URL(`../../integrations/pi-brain/agent/extensions/${n}`, import.meta.url).href;
+const ext = (n: string) => new URL(`../../brain/agent/extensions/${n}`, import.meta.url).href;
 const tools: Record<string, any> = {};
 for (const n of ["albion-skills.ts", "albion-history.ts"]) {
   const { default: f } = await import(ext(n));

@@ -11,7 +11,7 @@
 
 反事实：把那两行去掉，本文件必须变红（已实测）。
 
-跑法（在 D:/AI/Wife 下）：
+跑法（在仓库根目录下）：
     tts/irodori/.venv/Scripts/python.exe -B -m unittest discover -s tests/tts -p "test_emotion_*.py"
 """
 import math

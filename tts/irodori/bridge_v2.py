@@ -567,7 +567,7 @@ def make_bridge_translator():
 
     def translate(text: str) -> str:
         if "fn" not in state:
-            d = os.environ.get("ALBION_BRIDGE_DIR", r"D:/AI/Wife/tts/irodori")
+            d = os.environ.get("ALBION_BRIDGE_DIR") or os.path.dirname(os.path.abspath(__file__))  # 默认本目录（tts/irodori）
             if d not in sys.path:
                 sys.path.insert(0, d)
             import importlib
