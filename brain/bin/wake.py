@@ -253,6 +253,11 @@ def next_due(st, plan, now=None):
     p = lane(plan, "speak")
     planned = _num(p.get("wake_at")) if _num(p.get("set_at")) >= last_speak else 0.0
     due = planned or (anchor + DEFAULT_NEXT_S * backoff(st))
+    if not planned:
+        # 没定说话时间：按她自己的开口节奏来，别每半小时醒一次只看他一眼（2026-11-02 生活轮分出去以后）
+        spoken = [t for t in (st.get("spoken_at") or []) if isinstance(t, (int, float))]
+        if spoken:
+            due = max(due, max(spoken) + speak_every_s(plan))
     due = max(due, last_speak + MIN_GAP_S * backoff(st))
     due = max(due, max(last_speak, last_life) + MIN_GAP_S)   # 两条计时之间也至少隔 MIN_GAP_S
     due = max(due, last_user + RECENT_USER_S)
@@ -340,6 +345,7 @@ def note_user(now=None):
         st = load()
         st["last_user_at"] = time.time() if now is None else now
         st["unanswered"] = 0
+        st["round_kind"] = ""     # 他开口了：哪怕生活轮没走到 after_wake（出错/中断），look 也立刻放行
         save(st)
 
 
@@ -530,6 +536,14 @@ def _selftest():
     assert load()["unanswered"] == 1
     note_user(noon + 10)
     assert load()["unanswered"] == 0
+    # 没定说话时间：按开口节奏醒，不是每半小时；定了就照她定的
+    st2 = {"last_user_at": 0.0, "last_wake_at": noon, "last_speak_wake_at": noon, "spoken_at": [noon], "unanswered": 0}
+    assert next_due(st2, {}, noon) == noon + 3 * 3600
+    assert next_due(st2, {"speak": {"wake_at": noon + 900, "set_at": noon}}, noon) == noon + 900
+    # 他开口就解除生活轮的 look 闸门
+    save({"round_kind": "life", "round_at": noon})
+    note_user(noon + 20)
+    assert load()["round_kind"] == ""
     # 门铃：到点响一次，RING_HOLD_S 内不重复；忙时不响
     save({"last_user_at": noon - 3600, "last_wake_at": noon - 3600})
     assert ring(False, noon)[0] is True and ring(False, noon + 5)[0] is False
