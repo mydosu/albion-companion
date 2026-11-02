@@ -153,14 +153,14 @@ class GuardTests(unittest.TestCase):
         self.deliver(send)
         self.deliver(send)
         item = self.state()['incidents']['service']
-        self.assertEqual(item['last_result'], 'telegram=failed weixin=failed')
+        self.assertEqual(item['last_result'], 'weixin=failed')
         self.assertEqual(item['delivered_at'], 0)
         self.assertEqual(len(sent), len(notify.TARGETS))
 
     def test_timeout_and_exception_are_throttled(self):
         self.sample_fail()
         self.deliver(lambda *_: (124, True))
-        self.assertEqual(self.state()['incidents']['service']['last_result'], 'telegram=timeout weixin=timeout')
+        self.assertEqual(self.state()['incidents']['service']['last_result'], 'weixin=timeout')
         self.deliver(lambda *_: self.fail('timeout repeated'))
         self.now += 1801
         self.sample_fail()
@@ -168,7 +168,7 @@ class GuardTests(unittest.TestCase):
             raise RuntimeError('synthetic secret')
         self.deliver(fail)
         self.assertEqual(self.state()['incidents']['service']['last_result'],
-                         'telegram=failed_RuntimeError weixin=failed_RuntimeError')
+                         'weixin=failed_RuntimeError')
 
     def test_success_does_not_repeat_same_extraction_batch(self):
         task = {'task_type': 'session_commit', 'status': 'failed', 'created_at': self.now}
@@ -259,39 +259,35 @@ class GuardTests(unittest.TestCase):
     def test_notification_command_pushes_directly_without_a_model(self):
         # The alert must reach channels the user actually reads, and must not
         # burn a model call: an exhausted provider must not silence the guard.
-        self.assertEqual(set(notify.TARGETS), {'telegram', 'weixin'})
+        # 2026-11-02: 运维告警只走 assistant profile 的微信，不再进可畏的 Telegram
+        self.assertEqual(set(notify.TARGETS), {'weixin'})
         for target in notify.TARGETS:
             argv = notify.command('synthetic message', target)
-            self.assertEqual(argv[1], 'send')
+            self.assertEqual(argv[1:4], ['-p', 'assistant', 'send'])
             self.assertEqual(argv[argv.index('--to')+1], target)
             self.assertNotIn('--model', argv)
             self.assertNotIn('--resume', argv)
             self.assertEqual(argv[-1], 'synthetic message')
 
-    def test_one_channel_failure_does_not_block_the_other(self):
+    def test_weixin_failure_is_recorded_and_retried_next_round(self):
+        # 只剩微信一路：失败要记进日志、不泄漏异常文本，下一轮重试这一路。
         task = {'task_type': 'session_commit', 'status': 'failed', 'created_at': self.now}
         extraction = lambda status, *_: [task] if status == 'failed' else []
         health.sample(self.root, extraction, self.clock)
         sent = []
         def send(argv, *_):
-            target = argv[argv.index('--to')+1]
-            sent.append(target)
-            if target == 'weixin':
-                raise RuntimeError('synthetic secret')
-            return 0, False
+            sent.append(argv[argv.index('--to')+1])
+            raise RuntimeError('synthetic secret')
         self.deliver(send, check=lambda: True)
-        self.assertEqual(sent, ['telegram', 'weixin'])
+        self.assertEqual(sent, ['weixin'])
         log = (self.root / 'openviking-notify.log').read_text()
-        self.assertIn('delivered incident=', log)
-        self.assertIn('target=telegram exit=0', log)
         self.assertIn('failed_RuntimeError incident=', log)
         self.assertIn('target=weixin exit=-1', log)
         self.assertNotIn('synthetic secret', log)
-        # The next batch round retries only the channel that has not received it.
         self.now += 1801
         health.sample(self.root, extraction, self.clock)
         self.deliver(lambda argv, *_: (sent.append(argv[argv.index('--to')+1]) or (0, False)), check=lambda: True)
-        self.assertEqual(sent[2:], ['weixin'])
+        self.assertEqual(sent[1:], ['weixin'])
 
     def test_legacy_telegram_only_state_does_not_resend_telegram(self):
         task = {'task_type': 'session_commit', 'status': 'failed', 'created_at': self.now}
