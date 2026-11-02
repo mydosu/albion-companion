@@ -41,18 +41,19 @@ if BIN not in sys.path:                       # 桥和宿主不在同一个进�
 
 import inbox                                   # noqa: E402
 import wake                                     # noqa: E402
+import group_budget                             # noqa: E402
 
 PLATFORM_MARKER = wake.PLATFORM_MARKER
 SESSION_DM = "albion-desktop"                  # TG 私聊 / Discord 私信：和桌面同一个会话
 SESSION_GROUP = "albion-discord"               # Discord 群：自己的真会话（长期记忆共享）
-GROUP_BATCH_S = 10.0                           # 群里合批窗口
-GROUP_COOLDOWN_S = 120.0                       # 同一频道最多这么久叫醒一次
-MAX_BOT_MENTION_WAKES = 3                      # 别的 bot @ 她：连着最多叫醒这么多次，防止两个 bot 对聊死循环
+GROUP_BATCH_S = 10.0                           # 群里合批窗口（逐条限制已去掉，只留额度兜底）
 TTS_URL = "http://127.0.0.1:9881/v1/audio/speech"
 CHANNELS = ("telegram", "discord", "discord_group")
-# 群里还有可畏（Hermes 那边的 bot；DISCORD_ALLOW_BOTS=mentions，她只在被 @ 时看得到别人的话）。
-# 这句是她群聊说明的一部分，原文照定稿；名字是可畏 bot 在群里的实际 display_name（2026-11-02 查到）。
-GROUP_PEER_NOTE = "可畏也在群里。她只有被 @ 才看得到你说的话，想跟她说就写 @Formidable。"
+# 群里还有可畏（Hermes 那边的 bot）。这句是她群聊说明的一部分，原文照定稿（2026-11-02 用户改）。
+GROUP_PEER_NOTE = "可畏也在群里，群里说的话她都看得到。"
+GROUP_INVITE_NOTE = "这些你可以回，也可以不回，想说再说。"
+GROUP_BUDGET_LOW = "群里你们俩这一轮已经说了 %d 条，还能再说 %d 条，差不多该收尾了。"
+GROUP_BUDGET_EMPTY = "这一轮群里说得够多了，等指挥官再开口吧。"
 
 _LOG = {"path": ""}
 
@@ -136,13 +137,15 @@ def is_owner(user_id, owner_id):
     return bool(owner_id) and str(user_id) == str(owner_id)
 
 
-def group_should_wake(author_id, owner_id, mentions_me):
-    """群里这条消息值不值得叫醒她：他发言 / 有人 @她。别的 bot 只当上下文。"""
+def group_should_wake(author_id, owner_id, is_bot=False):
+    """群里每条消息都叫醒她看一眼（2026-11-02 用户定：两个 bot 都看得到每条，自己决定回不回）。
+
+    返回这条消息的来源：owner（指挥官）/ bot / member。够不够额度由 group_budget 决定，
+    不再按「谁 @ 了谁」逐条限制。
+    """
     if is_owner(author_id, owner_id):
         return "owner"
-    if mentions_me:
-        return "mention"
-    return ""
+    return "bot" if is_bot else "member"
 
 
 def message_text(message):
@@ -222,7 +225,19 @@ def dm_notice(channel, items):
     return "\n".join(lines)
 
 
-def group_notice(channel_name, items, context=None):
+def budget_note(budget):
+    """额度提醒（原文照定稿）：R≤3 时提醒收尾，R=0 时让她等指挥官开口。"""
+    if not budget:
+        return ""
+    remaining = int(budget.get("remaining") or 0)
+    if remaining <= 0:
+        return GROUP_BUDGET_EMPTY
+    if remaining <= 3:
+        return GROUP_BUDGET_LOW % (int(budget.get("used") or 0), remaining)
+    return ""
+
+
+def group_notice(channel_name, items, context=None, budget=None):
     lines = [PLATFORM_MARKER + "Discord 群「%s」里有新消息（群里大家都看得到；我和指挥官之间的私事、当面说过的话不发这儿）："
              % (channel_name or "群"),
              GROUP_PEER_NOTE]
@@ -235,6 +250,10 @@ def group_notice(channel_name, items, context=None):
     for item in items:
         lines.append("#%s %s %s：%s" % (item["id"], _hhmm(item.get("at")),
                                        item.get("author") or "有人", item.get("text")))
+    lines.append(GROUP_INVITE_NOTE)
+    note = budget_note(budget)
+    if note:
+        lines.append(note)
     lines.append("想说话就用 send_message（channel=discord_group）；这里写的字群里看不到。")
     return "\n".join(lines)
 
@@ -256,14 +275,12 @@ def proactive_gate(channel, pending_count, can_speak_result=None, quiet=None):
     return (True, "") if ok else (False, why)
 
 
-def group_wait_seconds(items, now, last_notify_at, batch_s=GROUP_BATCH_S, cooldown_s=GROUP_COOLDOWN_S):
-    """群里还要等多久才叫醒：合批窗口 + 同频道冷却，取更晚的那个。"""
+def group_wait_seconds(items, now, batch_s=GROUP_BATCH_S):
+    """群里还要等多久才叫醒：只等合批窗口（同频道冷却已去掉，额度由 group_budget 兜底）。"""
     if not items:
         return 0.0
     first = min(float(i.get("at") or 0) for i in items)
-    # 0.0 是「还没叫醒过」的哨兵：第一次不该等冷却
-    cooldown_left = (float(last_notify_at or 0) + cooldown_s - now) if last_notify_at else 0.0
-    return max(0.0, first + batch_s - now, cooldown_left)
+    return max(0.0, first + batch_s - now)
 
 
 def send_result_text(channel, *, voiced=False, notes=(), answered=0, proactive=False):
@@ -596,6 +613,25 @@ class DiscordBot:
         msg = await channel.send(replace_mentions(text, self.name_index()))
         return msg.id
 
+    async def recent_events(self, limit=300, since_s=None):
+        """群里最近一小时的 (作者 id, 是否 bot, 时间戳)，给 group_budget 重放用。"""
+        window = group_budget.WINDOW_S if since_s is None else since_s
+        if not self.client or not self.ready or not self.cfg["dc_channel"]:
+            return []
+        channel = self.client.get_channel(int(self.cfg["dc_channel"]))
+        if channel is None:
+            return []
+        import datetime as _dt
+        after = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(seconds=window)
+        events = []
+        async for message in channel.history(limit=limit, after=after, oldest_first=True):
+            author = getattr(message, "author", None)
+            if author is None:
+                continue
+            events.append((str(author.id), bool(getattr(author, "bot", False)),
+                           message.created_at.timestamp()))
+        return events
+
     async def close(self):
         if self.client and not self.client.is_closed():
             await self.client.close()
@@ -612,8 +648,7 @@ class Service:
         self.dc = DiscordBot(cfg, self.on_discord_message)
         self._dm_worker = None
         self._group_worker = None
-        self._last_group_notify = 0.0
-        self._bot_mentions = 0                    # 连着被别的 bot @ 叫醒了几次（他说话就清零）
+        self._budget_cache = (0.0, None)          # (取的时刻, 结果)：5 秒内复用，别每句话都翻频道历史
 
     async def start(self):
         await self.tg.start()
@@ -674,35 +709,51 @@ class Service:
             return
         if not self.cfg["dc_channel"] or str(message.channel.id) != self.cfg["dc_channel"]:
             return
-        if is_owner(message.author.id, self.cfg["dc_owner"]):
-            self._bot_mentions = 0                # 他本人说话了：bot 对聊的计数清零
-        mentioned = bool(self.dc.client and self.dc.client.user in (message.mentions or []))
-        reason = group_should_wake(message.author.id, self.cfg["dc_owner"], mentioned)
         is_bot = bool(getattr(message.author, "bot", False))
-        if reason and is_bot and reason == "mention" and self._bot_mentions >= MAX_BOT_MENTION_WAKES:
-            # 已经连着被别的 bot @ 叫醒 MAX_BOT_MENTION_WAKES 次：这条只当上下文，不再叫醒（防对聊死循环）
-            item = inbox.add("discord_group", text or "（没有文字）", from_="bot",
-                             platform_msg_id=str(message.id), author=author)
-            if item is not None:
-                log("bot_mention_limit", channel="discord_group", id=item["id"],
-                    author=author, count=self._bot_mentions)
-            return
-        if reason:
-            if is_bot and reason == "mention":
-                self._bot_mentions += 1
-            item = inbox.add("discord_group", text or "（没有文字）", platform_msg_id=str(message.id),
-                             author=author, why=reason)
-            if item is not None:
-                log("inbox_add", channel="discord_group", id=item["id"], why=reason,
-                    author=author, bot_mentions=self._bot_mentions)
-                self.schedule_group()
-        else:
-            # 别的 bot / 别人：只入箱当上下文，不叫醒她
-            item = inbox.add("discord_group", text or "（没有文字）",
-                             from_="bot" if is_bot else "member",
-                             platform_msg_id=str(message.id), author=author)
-            if item is not None:
-                log("inbox_context", channel="discord_group", id=item["id"], author=author)
+        reason = group_should_wake(message.author.id, self.cfg["dc_owner"], is_bot)
+        if is_bot and reason != "owner":
+            # 额度用完时，bot 的话只当上下文，不叫醒；他本人的消息永远叫醒（2026-11-02 用户定）
+            try:
+                budget = self.budget_cached()
+            except Exception:                     # noqa: BLE001 - 算不出来就别拦
+                budget = None
+            if budget is not None and int(budget.get("remaining") or 0) <= 0:
+                item = inbox.add("discord_group", text or "（没有文字）", from_="bot",
+                                 platform_msg_id=str(message.id), author=author)
+                if item is not None:
+                    log("group_budget_empty", channel="discord_group", id=item["id"], author=author)
+                return
+        item = inbox.add("discord_group", text or "（没有文字）", platform_msg_id=str(message.id),
+                         author=author, why=reason)
+        if item is not None:
+            log("inbox_add", channel="discord_group", id=item["id"], why=reason, author=author)
+            self.schedule_group()
+
+    # ── 额度（两个 bot 共用）──
+    async def refresh_budget(self):
+        """翻一遍频道最近一小时，重放出剩余额度；失败返回 None（拿不到就不拦）。"""
+        import inspect
+        try:
+            events = self.dc.recent_events()
+            if inspect.isawaitable(events):       # 真身是 async；自检里的假 dc 是同步的
+                events = await events
+            value = group_budget.compute(events, time.time(), owner_id=self.cfg["dc_owner"],
+                                         bot_ids=self.cfg.get("dc_bot_ids") or group_budget.DEFAULT_BOT_IDS)
+        except Exception as exc:                  # noqa: BLE001
+            log("group_budget_failed", error=repr(exc)[:160])
+            return None
+        self._budget_cache = (time.time(), value)
+        return value
+
+    def budget_cached(self, max_age_s=120.0):
+        """同步取最近一次额度；太旧就在后台刷一次（没有事件循环时只返回旧值）。"""
+        ts, value = self._budget_cache
+        if value is None or time.time() - ts > max_age_s:
+            try:
+                asyncio.get_running_loop().create_task(self.refresh_budget())
+            except RuntimeError:
+                pass                              # 自检/同步上下文
+        return value
 
     # ── 叫醒 ──
     def schedule_dm(self):
@@ -743,20 +794,26 @@ class Service:
             items = self._unread("discord_group")
             if not items:
                 return
-            wait = group_wait_seconds(items, time.time(), self._last_group_notify)
+            wait = group_wait_seconds(items, time.time())
             if wait > 0:
                 await asyncio.sleep(min(wait, 5.0))
                 continue
             context = inbox.context_items("discord_group", since_s=600, limit=10)
+            budget = await self.refresh_budget()
             ok = await notify(self.cfg, self.host, SESSION_GROUP,
-                              group_notice(self.dc.channel_name(), items, context), [i["id"] for i in items])
-            self._last_group_notify = time.time()
+                              group_notice(self.dc.channel_name(), items, context, budget),
+                              [i["id"] for i in items])
             if not ok:
                 return
 
     # ── 她发消息 ──
     async def send(self, channel, text, voice=False):
         """返回 (ok, 文字/原因)。"""
+        if channel == "discord_group":
+            budget = await self.refresh_budget()
+            if budget is not None and int(budget.get("remaining") or 0) <= 0:
+                log("group_send_rejected", remaining=0)
+                return False, GROUP_BUDGET_EMPTY
         pending = inbox.pending(channel)
         proactive = not pending
         if proactive:
@@ -834,11 +891,29 @@ async def handle_health(service, request):
     })
 
 
+async def handle_group_budget(service, request):
+    """给可畏（Hermes）那边用的额度查询：GET /group_budget，Bearer 和 /send 一样。"""
+    from aiohttp import web
+    cfg = service.cfg
+    if cfg["api_key"]:
+        got = (request.headers.get("Authorization") or "").replace("Bearer ", "").strip()
+        if got != cfg["api_key"]:
+            return web.json_response({"ok": False, "error": "unauthorized"}, status=401)
+    budget = await service.refresh_budget()
+    if budget is None:
+        return web.json_response({"ok": False, "error": "budget unavailable"}, status=503)
+    out = dict(budget)
+    out["ok"] = True
+    out["note"] = budget_note(budget)
+    return web.json_response(out)
+
+
 async def serve(cfg):
     from aiohttp import web
     service = Service(cfg)
     app = web.Application()
     app.router.add_get("/health", lambda request: handle_health(service, request))
+    app.router.add_get("/group_budget", lambda request: handle_group_budget(service, request))
     app.router.add_post("/send", lambda request: handle_send(service, request))
     runner = web.AppRunner(app)
     await runner.setup()
@@ -881,16 +956,15 @@ def _selftest():
         shutil.rmtree(home, ignore_errors=True)
         # 只认他
         assert is_owner(42, "42") and is_owner("42", "42") and not is_owner(43, "42") and not is_owner(42, "")
-        # 群里叫醒条件
+        # 群里每条消息都叫醒（逐条限制已去掉），来源只用来区分他 / bot / 别人
         assert group_should_wake(42, "42", False) == "owner"
-        assert group_should_wake(9, "42", True) == "mention"
-        assert group_should_wake(9, "42", False) == ""
-        # 合批与冷却
+        assert group_should_wake(9, "42", True) == "bot"
+        assert group_should_wake(9, "42", False) == "member"
+        # 合批（不再有同频道冷却）
         items = [{"id": 1, "at": 100.0}]
-        assert group_wait_seconds(items, 101.0, 0.0) == 9.0
-        assert group_wait_seconds(items, 200.0, 0.0) == 0.0
-        assert group_wait_seconds(items, 200.0, 150.0) == 70.0, "同一频道 120 秒最多一次"
-        assert group_wait_seconds([], 200.0, 150.0) == 0.0
+        assert group_wait_seconds(items, 101.0) == 9.0
+        assert group_wait_seconds(items, 200.0) == 0.0
+        assert group_wait_seconds([], 200.0) == 0.0
         # 主动 vs 回复
         assert proactive_gate("telegram", 1, (False, "还没到节奏")) == (True, "")
         assert proactive_gate("telegram", 0, (True, "")) == (True, "")
@@ -926,7 +1000,12 @@ def _selftest():
         assert replace_mentions("@AlbionBot", idx) == "@AlbionBot", "只有精确整名才替换"
         amb = build_name_index([("111", ["Same"]), ("222", ["same"])])
         assert replace_mentions("@Same", amb) == "@Same", "重名有歧义就不替换"
-        assert GROUP_PEER_NOTE.startswith("可畏也在群里") and "@Formidable" in GROUP_PEER_NOTE
+        assert GROUP_PEER_NOTE == "可畏也在群里，群里说的话她都看得到。"
+        # 额度提醒文案（原文照定稿）
+        assert budget_note({"remaining": 0, "used": 9}) == GROUP_BUDGET_EMPTY
+        assert budget_note({"remaining": 3, "used": 9}) == GROUP_BUDGET_LOW % (9, 3)
+        assert budget_note({"remaining": 4, "used": 8}) == ""
+        assert budget_note(None) == ""
         # 叫醒只由 unread 驱动：pending 里 notified 的不算新消息
         inbox.mark_notified([a["id"], c["id"]])
         assert Service._unread() == [], "notified 的不再驱动叫醒"

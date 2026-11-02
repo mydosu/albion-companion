@@ -103,14 +103,14 @@ def check_owner_and_group():
     reset()
     ok(chat_bridge.is_owner(42, "42") and chat_bridge.is_owner("42", "42"), "owner id 数字/字符串都认")
     ok(not chat_bridge.is_owner(43, "42") and not chat_bridge.is_owner(42, ""), "别人/空 owner 一律不认（fail-closed）")
+    # 群里每条消息都叫醒（逐条限制已去掉），返回值只标来源
     ok(chat_bridge.group_should_wake(42, "42", False) == "owner", "群里他发言要叫醒")
-    ok(chat_bridge.group_should_wake(9, "42", True) == "mention", "群里 @她 要叫醒")
-    ok(chat_bridge.group_should_wake(9, "42", False) == "", "别的 bot 闲聊不叫醒")
+    ok(chat_bridge.group_should_wake(9, "42", True) == "bot", "可畏说话也叫醒（不再按 @ 限）")
+    ok(chat_bridge.group_should_wake(9, "42", False) == "member", "别的成员说话也叫醒")
     items = [{"id": 1, "at": 100.0}, {"id": 2, "at": 103.0}]
-    ok(chat_bridge.group_wait_seconds(items, 101.0, 0.0) == 9.0, "合批：最老那条满 10 秒才叫")
-    ok(chat_bridge.group_wait_seconds(items, 200.0, 0.0) == 0.0, "过了窗口立刻叫")
-    ok(chat_bridge.group_wait_seconds(items, 200.0, 150.0) == 70.0, "同频道 120 秒内不再叫")
-    ok(chat_bridge.group_wait_seconds([], 200.0, 150.0) == 0.0, "没有要叫的就别等")
+    ok(chat_bridge.group_wait_seconds(items, 101.0) == 9.0, "合批：最老那条满 10 秒才叫")
+    ok(chat_bridge.group_wait_seconds(items, 200.0) == 0.0, "过了窗口立刻叫（不再等同频道冷却）")
+    ok(chat_bridge.group_wait_seconds([], 200.0) == 0.0, "没有要叫的就别等")
 
 
 def check_proactive():
@@ -145,6 +145,17 @@ def check_texts():
     g2 = chat_bridge.group_notice("albion-群", [inbox.add("discord_group", "在吗", at=now, author="指挥官")], [ctx])
     ok("（刚才群里还在聊的：）" in g2 and "机器人甲：我先睡了" in g2, "群通知里带上刚才的上下文")
     ok(ctx["state"] == "context" and inbox.pending("discord_group") != [], "上下文条目不进待回（但他在的进）")
+    ok(chat_bridge.GROUP_PEER_NOTE in g, "群通知里带着「可畏也在群里，群里说的话她都看得到。」")
+    ok(chat_bridge.GROUP_INVITE_NOTE in g, "群通知里带着「你可以回，也可以不回」那句")
+    g_low = chat_bridge.group_notice("albion-群", [inbox.add("discord_group", "在吗", at=now, author="指挥官")],
+                                     budget={"remaining": 3, "used": 9})
+    ok("群里你们俩这一轮已经说了 9 条，还能再说 3 条，差不多该收尾了。" in g_low, "R=3 的收尾提醒（原文）")
+    g_zero = chat_bridge.group_notice("albion-群", [inbox.add("discord_group", "在吗", at=now, author="指挥官")],
+                                      budget={"remaining": 0, "used": 12})
+    ok(chat_bridge.GROUP_BUDGET_EMPTY in g_zero, "R=0 的提醒（原文）")
+    g_ok = chat_bridge.group_notice("albion-群", [inbox.add("discord_group", "在吗", at=now, author="指挥官")],
+                                    budget={"remaining": 6, "used": 6})
+    ok(chat_bridge.GROUP_BUDGET_EMPTY not in g_ok and "收尾" not in g_ok, "额度还够时不念额度")
     ok(inbox.channel_label("discord_group") == "Discord 群", "渠道名：discord_group = Discord 群")
     ok(inbox.channel_label("telegram") == "Telegram" and inbox.channel_label("discord") == "Discord 私信", "渠道名其它两个")
     ok(chat_bridge.send_result_text("telegram", voiced=True) ==
@@ -263,11 +274,10 @@ def check_drain():
     ok("机器人甲：晚上好" in svc.host.calls[0][1] and "指挥官：在吗" in svc.host.calls[0][1],
        "群通知里带上刚才的上下文")
     asyncio.run(svc._drain_group())
-    ok(len(svc.host.calls) == 1, "群：她不回也不再叫醒（冷却过了也不叫）")
-    svc._last_group_notify = 0.0          # 假装 120 秒冷却早就过了，不必真等
+    ok(len(svc.host.calls) == 1, "群：她不回也不再叫醒")
     inbox.add("discord_group", "那我睡了", at=now - 1, author="指挥官")
     asyncio.run(svc._drain_group())
-    ok(len(svc.host.calls) == 2, "群里又来新消息：再叫一次")
+    ok(len(svc.host.calls) == 2, "群里又来新消息：再叫一次（不再等 120 秒冷却）")
 
     # 群里有人 @她：也算待回、会叫醒
     reset()
@@ -277,8 +287,44 @@ def check_drain():
     ok(len(svc.host.calls) == 1 and "帮我看下" in svc.host.calls[0][1], "@她 的消息能叫醒")
 
 
-def check_mentions_and_loop_guard():
-    """群里 @名字 → 真 mention；别的 bot 连着 @ 最多叫醒 3 次，他说话清零（2026-11-02）。"""
+def check_budget():
+    """额度算法（group_budget）与提醒文案：起点 8、他说话 +4 封顶 16、bot -1、60 条强制 0。"""
+    gb = chat_bridge.group_budget
+    owner = gb.DEFAULT_OWNER_ID
+    albion, form = gb.DEFAULT_BOT_IDS
+    now = 1_800_000_000.0
+
+    def run(events):
+        return gb.compute(events, now)
+
+    ok(run([])["remaining"] == 8, "空频道起点 8")
+    ok(run([(owner, False, now - 300)])["remaining"] == 12, "他说一句 → 12")
+    ok(run([(owner, False, now - 300), (owner, False, now - 200)])["remaining"] == 16, "他说两句 → 16 封顶")
+    ok(run([(owner, False, now - 400), (owner, False, now - 300), (owner, False, now - 200)])["remaining"] == 16,
+       "他再说也不超过 16（min(16, …)）")
+    drained = [(albion, True, now - 900 - i) for i in range(9)]
+    ok(run(drained)["remaining"] == 0, "bot 说到 0")
+    ok(run(drained + [(owner, False, now - 60)])["remaining"] == 8, "R=0 时他开口 → 回到 8（max(8, …)）")
+    ok(run([(albion, True, now - 120), (form, True, now - 60)])["remaining"] == 6, "两个 bot 各一条 → 6")
+    mixed = [(owner, False, now - 600), (albion, True, now - 500), (albion, True, now - 400),
+             (owner, False, now - 300), (form, True, now - 200)]
+    ok(run(mixed)["remaining"] == 13, "交替重放 → 13", run(mixed))
+    ok(run(mixed)["used"] == 1, "used = 他最后一句之后 bot 说了几条", run(mixed))
+    flood = [((albion if i % 2 else form), True, now - 3500 + i) for i in range(60)]
+    ok(run(flood)["remaining"] == 0, "一小时 60 条 → 强制 0")
+    ok(run([(albion, True, now - 7 * 3600)])["remaining"] == 8, "窗口外的不算")
+    ok(run([("999", False, now - 100), ("999", False, now - 90)])["remaining"] == 8, "别的成员不改额度")
+    # 提醒文案（原文照定稿）
+    ok(chat_bridge.budget_note({"remaining": 0, "used": 12}) == chat_bridge.GROUP_BUDGET_EMPTY, "R=0 文案")
+    ok(chat_bridge.budget_note({"remaining": 2, "used": 10}) ==
+       "群里你们俩这一轮已经说了 10 条，还能再说 2 条，差不多该收尾了。", "R≤3 文案")
+    ok(chat_bridge.budget_note({"remaining": 9, "used": 3}) == "", "额度够时不提醒")
+
+
+def check_group_gate():
+    """R=0：bot 消息只入箱不叫醒、他说话永远叫醒；send_group 被拒。另含 @名字替换与群说明。"""
+    import asyncio as _asyncio
+    import time as _time
     reset()
     cfg = chat_bridge.load_config(environ={"API_SERVER_KEY": "k"}, home=os.path.join(_STATE, "nohome"))
     cfg = dict(cfg, dc_owner="1508482140570914990", dc_channel="1566804961218666671")
@@ -307,61 +353,90 @@ def check_mentions_and_loop_guard():
             self.clean_content = clean if clean is not None else content
             self.mentions = list(mentions)
 
-    def make_service():
+    class _FakeDC:
+        ready = True
+
+        def __init__(self):
+            self.client = type("C", (), {"user": self_user})()
+            self.sent = []
+            self.events = []
+
+        def remember(self, member):
+            pass
+
+        def name_index(self):
+            return {}
+
+        def channel_name(self):
+            return "常规"
+
+        def recent_events(self, *a, **k):
+            return list(self.events)
+
+        async def send_group(self, text):
+            self.sent.append(text)
+            return 1
+
+        async def send_dm(self, text):
+            self.sent.append(text)
+            return 2
+
+    def make_service(events):
         svc = chat_bridge.Service(cfg)
-        svc.dc = chat_bridge.DiscordBot(cfg, None)
-        svc.dc.client = type("C", (), {"user": self_user})()
-        svc.dc.ready = True
-        # 这个用例只看收消息与计数，不起协程（没有事件循环）
+        svc.dc = _FakeDC()
+        svc.dc.events = events
         svc.schedule_group = lambda: None
         svc.schedule_dm = lambda: None
         return svc
 
     form = _Author("1566802611611504680", bot=True, name="Formidable", display="Formidable")
     owner = _Author(int(cfg["dc_owner"]), bot=False, name="myduso_27930", display="Myduso")
+    other = _Author("999", bot=False, name="someone", display="Someone")
     group = _Channel(int(cfg["dc_channel"]), guild=object())
+    exhausted = [("1566802611611504680", True, _time.time() - i) for i in range(12)]
 
-    # clean_content：她看到「@Albion」，不是「<@1566791156824805446>」
-    svc = make_service()
-    svc.on_discord_message(_Msg(1, form, group, "<@1566791156824805446> 在吗",
-                                clean="@Albion 在吗", mentions=[self_user]))
-    newest = [i for i in inbox.load()["items"] if i["channel"] == "discord_group"][-1]
-    ok(newest["text"] == "@Albion 在吗", "群消息用 clean_content（看到的是 @Albion 而不是 <@id>）", newest["text"])
-    ok(newest["needs"] is True and newest["why"] == "mention", "bot @她 → 叫醒并把 why 记成 mention")
+    # ---- R=0：bot 消息只当上下文，他/别人说话照常叫醒 ----
+    svc = make_service(exhausted)
+    svc._budget_cache = (_time.time(), {"remaining": 0, "used": 12, "owner_last_at": None})
+    svc.on_discord_message(_Msg(1, form, group, "在吗", clean="在吗"))
+    last = inbox.load()["items"][-1]
+    ok(last["state"] == "context" and last["needs"] is False, "R=0：bot 消息不叫醒，只入箱当上下文", last["state"])
+    svc.on_discord_message(_Msg(2, owner, group, "你们聊什么呢", clean="你们聊什么呢"))
+    ok(inbox.load()["items"][-1]["needs"] is True, "R=0：他说话永远叫醒")
+    svc.on_discord_message(_Msg(3, other, group, "我也来看看", clean="我也来看看"))
+    ok(inbox.load()["items"][-1]["needs"] is True, "R=0：别的成员说话也叫醒")
 
-    # 防对聊：连着 3 次叫醒，第 4 次只当上下文
-    for mid in (2, 3, 4):
-        svc.on_discord_message(_Msg(mid, form, group, "<@1566791156824805446> 再说一句",
-                                    clean="@Albion 再说一句", mentions=[self_user]))
-    woken = [i for i in inbox.load()["items"] if i["channel"] == "discord_group" and i["needs"]]
-    ok(len(woken) == 3, "别的 bot 连着 @ 她：最多叫醒 %d 次" % chat_bridge.MAX_BOT_MENTION_WAKES, len(woken))
-    last = [i for i in inbox.load()["items"] if i["channel"] == "discord_group"][-1]
-    ok(last["state"] == "context" and last["needs"] is False, "第 4 次不叫醒，只入箱当上下文", last["state"])
-    ok(svc._bot_mentions == chat_bridge.MAX_BOT_MENTION_WAKES, "计数停在 3", svc._bot_mentions)
+    # ---- R>0：bot 消息也叫醒；clean_content 生效 ----
+    svc = make_service([])
+    svc.on_discord_message(_Msg(4, form, group, "<@1566791156824805446> 在吗", clean="@Albion 在吗"))
+    last = inbox.load()["items"][-1]
+    ok(last["text"] == "@Albion 在吗", "群消息用 clean_content（看到的是 @Albion 而不是 <@id>）", last["text"])
+    ok(last["needs"] is True, "R=8：可畏说话也叫醒（不要求 @）")
 
-    # 他本人说一句话：清零，下一个 bot @ 又能叫醒
-    svc.on_discord_message(_Msg(5, owner, group, "你们俩聊什么呢", clean="你们俩聊什么呢"))
-    ok(svc._bot_mentions == 0, "他在群里说话：bot 对聊计数清零")
-    svc.on_discord_message(_Msg(6, form, group, "<@1566791156824805446> 再试一次",
-                                clean="@Albion 再试一次", mentions=[self_user]))
-    ok(svc._bot_mentions == 1 and [i for i in inbox.load()["items"] if i["channel"] == "discord_group"][-1]["needs"],
-       "清零之后 bot @ 她又能叫醒")
+    # ---- send_group：R>0 能发；R=0 拒发（回复路径，不掺主动限流） ----
+    inbox.add("discord_group", "在吗", author="Myduso")
+    sent, msg = _asyncio.run(svc.send("discord_group", "嗯"))
+    ok(sent and svc.dc.sent == ["嗯"], "R>0：能发", msg)
 
-    # @名字 → <@id>（能匹配 / 不能匹配 / 重名）
+    reset()
+    svc = make_service(exhausted)
+    inbox.add("discord_group", "在吗", author="Myduso")
+    sent, msg = _asyncio.run(svc.send("discord_group", "嗯"))
+    ok(not sent and msg == chat_bridge.GROUP_BUDGET_EMPTY, "R=0：send_group 被拒，返回定稿原文", msg)
+    ok(svc.dc.sent == [], "R=0：一个字都没发出去")
+
+    # ---- @名字 → <@id>（能匹配 / 不能匹配 / 重名）----
     idx = chat_bridge.build_name_index([("111", ["Formidable"]), ("222", ["Albion"])])
     ok(chat_bridge.replace_mentions("@formidable 你说呢", idx) == "<@111> 你说呢", "@名字（不区分大小写）换成真 mention")
     ok(chat_bridge.replace_mentions("@Myduso 你说呢", idx) == "@Myduso 你说呢", "群里没有的人：不换")
     ok(chat_bridge.replace_mentions("@AlbionBot", idx) == "@AlbionBot", "只有精确整名才换（不吃前缀）")
     amb = chat_bridge.build_name_index([("111", ["Same"]), ("222", ["same"])])
     ok(chat_bridge.replace_mentions("@Same", amb) == "@Same", "重名有歧义：不换")
-    svc.dc.remember(form)
-    ok(chat_bridge.replace_mentions("@Formidable 在吗", svc.dc.name_index()) ==
-       "<@1566802611611504680> 在吗", "从消息里认到的名字也能换（不需要 members intent）")
 
-    # 她学到的群说明
+    # ---- 群说明 ----
     notice = chat_bridge.group_notice("常规", [inbox.add("discord_group", "在吗", author="Myduso")])
-    ok(chat_bridge.GROUP_PEER_NOTE in notice, "群通知里带着「可畏也在群里…」那句")
-    ok("@Formidable" in notice, "那句里的名字是可畏在群里的实际名字")
+    ok(chat_bridge.GROUP_PEER_NOTE in notice and chat_bridge.GROUP_INVITE_NOTE in notice,
+       "群通知里带着「可畏也在群里…」和「可以回，也可以不回」")
 
 
 def main():
@@ -372,7 +447,8 @@ def main():
     check_host_round()
     check_wake_box()
     check_drain()
-    check_mentions_and_loop_guard()
+    check_budget()
+    check_group_gate()
     print("check_chat: %d passed, %d failed" % (PASS, FAIL))
     return 0 if FAIL == 0 else 1
 
