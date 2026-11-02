@@ -158,9 +158,15 @@ def dm_notice(channel, items):
     return "\n".join(lines)
 
 
-def group_notice(channel_name, items):
+def group_notice(channel_name, items, context=None):
     lines = [PLATFORM_MARKER + "Discord 群「%s」里有新消息（群里大家都看得到；我和指挥官之间的私事、当面说过的话不发这儿）："
              % (channel_name or "群")]
+    if context:
+        # 群里刚才还在聊的（别人的话）：只给她看个上下文，不改状态、不驱动叫醒
+        lines.append("（刚才群里还在聊的：）")
+        for item in context:
+            lines.append("#%s %s %s：%s" % (item["id"], _hhmm(item.get("at")),
+                                           item.get("author") or "有人", item.get("text")))
     for item in items:
         lines.append("#%s %s %s：%s" % (item["id"], _hhmm(item.get("at")),
                                        item.get("author") or "有人", item.get("text")))
@@ -564,7 +570,8 @@ class Service:
         mentioned = bool(self.dc.client and self.dc.client.user in message.mentions)
         reason = group_should_wake(message.author.id, self.cfg["dc_owner"], mentioned)
         if reason:
-            item = inbox.add("discord_group", text or "（没有文字）", platform_msg_id=str(message.id), author=author)
+            item = inbox.add("discord_group", text or "（没有文字）", platform_msg_id=str(message.id),
+                             author=author, why=reason)
             if item is not None:
                 log("inbox_add", channel="discord_group", id=item["id"], why=reason, author=author)
                 self.schedule_group()
@@ -585,10 +592,19 @@ class Service:
         if self._group_worker is None or self._group_worker.done():
             self._group_worker = asyncio.create_task(self._drain_group())
 
+    @staticmethod
+    def _unread(channel=None):
+        """只拿「新来的」：叫醒只由 unread 驱动。
+
+        pending() 里还有之前叫醒过、她还没回的（notified）——那些下一次醒来时会念给她，
+        不能在这里再叫醒一轮（否则就是无限循环、每轮一次真模型调用）。2026-11-02 复审。
+        """
+        return [i for i in inbox.pending(channel) if i["state"] == "unread"]
+
     async def _drain_dm(self):
-        """私信：把两个渠道分开念；一个渠道念完（含她回话）再看有没有新的。"""
+        """私信：把两个渠道的新消息分开念；念完就不再叫，除非又来了新的 unread。"""
         while True:
-            items = [i for i in inbox.pending() if i["channel"] in ("telegram", "discord")]
+            items = [i for i in self._unread() if i["channel"] in ("telegram", "discord")]
             if not items:
                 return
             for channel in ("telegram", "discord"):
@@ -603,15 +619,16 @@ class Service:
 
     async def _drain_group(self):
         while True:
-            items = inbox.pending("discord_group")
+            items = self._unread("discord_group")
             if not items:
                 return
             wait = group_wait_seconds(items, time.time(), self._last_group_notify)
             if wait > 0:
                 await asyncio.sleep(min(wait, 5.0))
                 continue
+            context = inbox.context_items("discord_group", since_s=600, limit=10)
             ok = await notify(self.cfg, self.host, SESSION_GROUP,
-                              group_notice(self.dc.channel_name(), items), [i["id"] for i in items])
+                              group_notice(self.dc.channel_name(), items, context), [i["id"] for i in items])
             self._last_group_notify = time.time()
             if not ok:
                 return
@@ -768,10 +785,18 @@ def _selftest():
         assert notice.startswith(PLATFORM_MARKER + "指挥官在Telegram上给我发了消息"), notice
         assert "#1 " in notice and "在忙吗" in notice
         assert "channel=telegram" in notice and "这一轮我在这里写的字他看不到" in notice
-        b = inbox.add("discord_group", "晚上好", at=1762000000.0, author="机器人甲")
+        b = inbox.add("discord_group", "晚上好", at=1762000000.0, author="机器人甲", from_="bot")
         gnotice = group_notice("albion", [b])
         assert gnotice.startswith(PLATFORM_MARKER + "Discord 群「albion」里有新消息"), gnotice
         assert "机器人甲：晚上好" in gnotice and "channel=discord_group" in gnotice
+        c = inbox.add("discord_group", "在吗", at=1762000000.0, author="指挥官")
+        gnotice2 = group_notice("albion", [c], [b])
+        assert "（刚才群里还在聊的：）" in gnotice2 and "机器人甲：晚上好" in gnotice2, gnotice2
+        assert "指挥官：在吗" in gnotice2
+        # 叫醒只由 unread 驱动：pending 里 notified 的不算新消息
+        inbox.mark_notified([a["id"], c["id"]])
+        assert Service._unread() == [], "notified 的不再驱动叫醒"
+        assert Service._unread("discord_group") == []
         # 结果文字
         assert send_result_text("telegram", voiced=True) == "已发到Telegram，语音条也发了（caption 是我的中文原文）。"
         assert "语音没合成出来，只发了文字。" in send_result_text("telegram", notes=["语音没合成出来，只发了文字。"])

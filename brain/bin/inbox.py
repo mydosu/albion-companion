@@ -28,7 +28,8 @@ VERSION = 1
 KEEP = 200                     # 只留最近这么多条
 MAX_TEXT = 4000                # 单条正文上限（TG 一条消息上限 4096）
 MAX_AUTHOR = 80
-STATES = ("unread", "notified", "answered", "closed")
+# context = 群里别人的话：只给她当上下文看，永远不进待回、也不驱动叫醒（2026-11-02 复审）
+STATES = ("unread", "notified", "answered", "closed", "context")
 CHANNELS = ("telegram", "discord", "discord_group")
 CHANNEL_LABELS = {"telegram": "Telegram", "discord": "Discord 私信", "discord_group": "Discord 群"}
 
@@ -78,11 +79,18 @@ def _norm(data):
         except (TypeError, ValueError):
             continue
         state = x.get("state") if x.get("state") in STATES else "closed"
+        sender = str(x.get("from") or "owner")
+        why = str(x.get("why") or "")
+        needs = bool(x.get("needs")) if "needs" in x else (sender == "owner" or why == "mention")
+        if not needs and state in ("unread", "notified"):
+            state = "context"          # 旧数据/上下文条目：留在箱里当上下文，不进待回
         items.append({
             "id": iid,
             "channel": str(x.get("channel") or "telegram"),
             "at": float(x.get("at") or 0.0),
-            "from": str(x.get("from") or "owner"),
+            "from": sender,
+            "why": why,
+            "needs": needs,
             "kind": str(x.get("kind") or "text"),
             "text": str(x.get("text") or "")[:MAX_TEXT],
             "author": str(x.get("author") or "")[:MAX_AUTHOR],
@@ -139,10 +147,10 @@ def _guard():
 
 
 def _prune(items):
-    """只留最近 KEEP 条；先丢已经了结的旧的，再丢没了的（不让未回的被上下文挤掉）。"""
+    """只留最近 KEEP 条；先丢已经了结的/上下文，再丢没了的（不让未回的被上下文挤掉）。"""
     if len(items) <= KEEP:
         return items
-    done = [i for i in items if i["state"] in ("answered", "closed")]
+    done = [i for i in items if i["state"] in ("answered", "closed", "context")]
     live = [i for i in items if i["state"] in ("unread", "notified")]
     live = live[-(KEEP // 2):]                      # 未回的留一半配额，够用
     room = KEEP - len(live)
@@ -156,27 +164,49 @@ def load():
 
 
 def pending(channel=None):
-    """还没了结的（他发来的）消息，按时间顺序。群里的上下文条目不算。"""
+    """真正要她处理的：他发来的，或群里有人 @她的（state=unread/notified 且 needs）。
+
+    群里别人的话是上下文（state=context），永远不在这里——否则会让她把「主动发言」误判成回复，
+    也会把叫醒循环点着（2026-11-02 复审）。
+    """
     with _guard():
         items = _read()["items"]
-    out = [i for i in items if i["state"] in ("unread", "notified")]
+    out = [i for i in items if i["state"] in ("unread", "notified") and i.get("needs", True)]
     if channel:
         out = [i for i in out if i["channel"] == channel]
     return out
+
+
+def context_items(channel=None, since_s=600, limit=10, now=None):
+    """群里别人的话（上下文）：最近 since_s 秒内、最多 limit 条，按时间顺序。只读，不改状态。"""
+    now = time.time() if now is None else now
+    with _guard():
+        items = _read()["items"]
+    out = [i for i in items if i["state"] == "context"
+           and (channel is None or i["channel"] == channel)
+           and now - float(i["at"] or 0) <= since_s]
+    return out[-limit:] if limit else []
 
 
 def unread_count():
     return len(pending())
 
 
-def add(channel, text, *, from_="owner", kind="text", at=None, platform_msg_id="", author=""):
-    """收一条消息。返回条目；同一条平台消息重复投递（重启后重放）返回 None。"""
+def add(channel, text, *, from_="owner", kind="text", at=None, platform_msg_id="", author="", why=""):
+    """收一条消息。返回条目；同一条平台消息重复投递（重启后重放）返回 None。
+
+    needs = 他发的（from=owner）或群里 @她（why=mention）→ unread，进待回；
+    其余（群里别人/别的 bot）→ context，只当上下文，不驱动叫醒。
+    """
     if channel not in CHANNELS:
         raise ValueError("unknown channel: %r" % (channel,))
     body = str(text or "").strip()[:MAX_TEXT]
     if not body and kind == "text":
         return None
     pid = str(platform_msg_id or "")
+    sender = str(from_ or "owner")
+    why = str(why or "")
+    needs = sender == "owner" or why == "mention"
     with _guard():
         data = _read()
         if pid and any(i["channel"] == channel and i["platform_msg_id"] == pid for i in data["items"]):
@@ -186,12 +216,14 @@ def add(channel, text, *, from_="owner", kind="text", at=None, platform_msg_id="
             "id": data["seq"],
             "channel": channel,
             "at": float(time.time() if at is None else at),
-            "from": str(from_ or "owner"),
+            "from": sender,
+            "why": why,
+            "needs": needs,
             "kind": str(kind or "text"),
             "text": body,
             "author": str(author or "")[:MAX_AUTHOR],
             "platform_msg_id": pid,
-            "state": "unread" if str(from_) == "owner" else "closed",
+            "state": "unread" if needs else "context",
             "notified_at": 0.0,
             "notified_n": 0,
             "answered_at": 0.0,
@@ -265,12 +297,18 @@ def _selftest():
         assert a["id"] == 1 and a["state"] == "unread"
         assert add("telegram", "重复投递", platform_msg_id="1") is None, "同一条平台消息不该进两次"
         b = add("discord_group", "机器人甲：晚上好", from_="bot", platform_msg_id="2")
-        assert b["state"] == "closed", "别的 bot 的话只当上下文"
-        assert [i["id"] for i in pending()] == [1]
+        assert b["state"] == "context" and b["needs"] is False, "别的 bot 的话只是上下文，不进待回"
+        assert [i["id"] for i in pending()] == [1], "上下文条目不算待回"
+        m = add("discord_group", "阿尔比恩在吗", from_="member", why="mention", platform_msg_id="3")
+        assert m["state"] == "unread" and m["needs"] is True, "群里 @她 的进待回"
+        assert [i["id"] for i in pending("discord_group")] == [m["id"]]
+        assert [i["id"] for i in context_items("discord_group")] == [b["id"]], "上下文能单独取出来给她看"
+        assert context_items("discord_group", since_s=0) == [], "上下文只取最近的"
+        assert [i["id"] for i in pending()] == [1, m["id"]], "待回＝他发的 + 群里 @她的"
         assert [i["id"] for i in pending("telegram")] == [1] and pending("discord") == []
         mark_notified([1])
         assert pending()[0]["state"] == "notified" and load()["items"][0]["notified_n"] == 1
-        mark_answered([1])
+        mark_answered([1, m["id"]])
         assert pending() == [] and load()["items"][0]["answered_at"] > 0
         c = add("telegram", "第二条")
         close([c["id"]])

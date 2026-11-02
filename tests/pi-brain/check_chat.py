@@ -35,6 +35,8 @@ import inbox                            # noqa: E402
 import server                           # noqa: E402
 import wake                             # noqa: E402
 
+chat_bridge._LOG["path"] = os.path.join(_STATE, "chat.log")   # 桥的日志写临时文件，别刷屏
+
 PASS = 0
 FAIL = 0
 
@@ -68,12 +70,18 @@ def check_inbox():
     ok(a and a["id"] == 1 and a["state"] == "unread" and a["from"] == "owner", "inbox.add 基本字段")
     ok(inbox.add("telegram", "重复", at=now, platform_msg_id="tg-1") is None, "同一条平台消息只进一次")
     bot = inbox.add("discord_group", "机器人甲：晚上好", from_="bot", at=now, platform_msg_id="dc-1", author="甲")
-    ok(bot and bot["state"] == "closed", "别人的话只当上下文（closed）")
+    ok(bot and bot["state"] == "context" and bot["needs"] is False, "别人的话只当上下文（context）")
     ok([i["id"] for i in inbox.pending()] == [1], "pending 只剩他发来的未了结的")
+    mention = inbox.add("discord_group", "@阿尔比恩 在吗", from_="member", why="mention", at=now, platform_msg_id="dc-2")
+    ok(mention["state"] == "unread" and mention["needs"] is True, "群里 @她 的进待回")
+    ok([i["id"] for i in inbox.pending("discord_group")] == [mention["id"]], "群里只有 @她的算待回，闲聊不算")
+    ok([i["id"] for i in inbox.context_items("discord_group", now=now)] == [bot["id"]], "上下文能单独取出来给她看")
+    ok(inbox.context_items("discord_group", since_s=1, now=now + 5) == [], "上下文只取最近一段时间的")
+    ok(inbox.context_items("discord_group", limit=0, now=now) == [], "上下文有条数上限")
     ok([i["id"] for i in inbox.pending("telegram")] == [1] and inbox.pending("discord") == [], "pending 可按渠道过滤")
     inbox.mark_notified([1], now)
     ok(inbox.pending()[0]["state"] == "notified" and inbox.load()["items"][0]["notified_n"] == 1, "标 notified 记账")
-    inbox.mark_answered([1], now)
+    inbox.mark_answered([1, mention["id"]], now)
     ok(inbox.pending() == [] and inbox.load()["items"][0]["answered_at"] == now, "标 answered")
     c = inbox.add("telegram", "第二条", at=now)
     inbox.close([c["id"]], now)
@@ -129,10 +137,16 @@ def check_texts():
     ok("也可以先不回，下次醒来还会看到" in text, "告诉她可以先不回")
     d = chat_bridge.dm_notice("discord", [inbox.add("discord", "睡了吗", at=now)])
     ok(d.startswith(wake.PLATFORM_MARKER + "指挥官在Discord 私信上给我发了消息"), "Discord 私信通知轮抬头")
-    g = chat_bridge.group_notice("albion-群", [inbox.add("discord_group", "晚上好", at=now, author="机器人甲")])
+    g = chat_bridge.group_notice("albion-群", [inbox.add("discord_group", "晚上好", at=now, author="指挥官")])
     ok(g.startswith(wake.PLATFORM_MARKER + "Discord 群「albion-群」里有新消息"), "群通知轮抬头")
-    ok("群里大家都看得到" in g and "机器人甲：晚上好" in g and "channel=discord_group" in g, "群通知轮内容")
+    ok("群里大家都看得到" in g and "指挥官：晚上好" in g and "channel=discord_group" in g, "群通知轮内容")
     ok("这里写的字群里看不到" in g, "群通知轮结尾")
+    ctx = inbox.add("discord_group", "机器人甲：我先睡了", from_="bot", at=now, author="机器人甲")
+    g2 = chat_bridge.group_notice("albion-群", [inbox.add("discord_group", "在吗", at=now, author="指挥官")], [ctx])
+    ok("（刚才群里还在聊的：）" in g2 and "机器人甲：我先睡了" in g2, "群通知里带上刚才的上下文")
+    ok(ctx["state"] == "context" and inbox.pending("discord_group") != [], "上下文条目不进待回（但他在的进）")
+    ok(inbox.channel_label("discord_group") == "Discord 群", "渠道名：discord_group = Discord 群")
+    ok(inbox.channel_label("telegram") == "Telegram" and inbox.channel_label("discord") == "Discord 私信", "渠道名其它两个")
     ok(chat_bridge.send_result_text("telegram", voiced=True) ==
        "已发到Telegram，语音条也发了（caption 是我的中文原文）。", "发语音条的结果文字")
     ok("语音没合成出来，只发了文字。" in chat_bridge.send_result_text("telegram", notes=["语音没合成出来，只发了文字。"]),
@@ -170,13 +184,15 @@ def check_wake_box():
     b = inbox.add("discord", "睡了吗", at=now - 30)
     inbox.mark_answered([b["id"]], now)
     c = inbox.add("discord_group", "晚上好", from_="bot", at=now - 20)
+    d = inbox.add("discord_group", "群里叫我做什么？", at=now - 10, author="指挥官")
     prompt = wake.wake_prompt(now)
     ok("还没回的消息（他发来的）：" in prompt, "醒来提示里有未回消息段")
     ok(("#%s " % a["id"]) in prompt and "在忙吗" in prompt and "Telegram" in prompt, "念出编号/渠道/原文")
+    ok(("Discord 群：" in prompt) and "群里叫我做什么？" in prompt, "群里他发的消息也念，渠道名是「Discord 群」")
     ok("睡了吗" not in prompt, "回过的（answered）不再念")
     ok("晚上好" not in prompt, "群里别人的话不念（只当上下文）")
     ok("这一轮把它们了结" in prompt and "不回也行" in prompt, "这一轮了结的说法照定稿")
-    ok(wake.load()["inbox_shown"] == [a["id"]], "记下这一轮念了哪几条")
+    ok(wake.load()["inbox_shown"] == [a["id"], d["id"]], "记下这一轮念了哪几条")
     wake.after_wake('<|ACT:{"emotion":"calm"}|>', now + 1)
     ok(inbox.pending() == [], "这一轮结束后没了结的也了结")
     states = {i["id"]: i["state"] for i in inbox.load()["items"]}
@@ -190,6 +206,77 @@ def check_wake_box():
     ok(wake.note_spoken(now + wake.SPOKEN_DEDUPE_S + 1) is True and wake.load()["unanswered"] == 2, "过了 10 分钟才再记")
 
 
+def check_drain():
+    """叫醒只由「新来的 unread」驱动：宿主成功但她不回，不许无限再叫醒（复审问题 1/2）。"""
+    import asyncio
+    now = reset()
+
+    class FakeHost:
+        def __init__(self):
+            self.calls = []
+
+        async def chat(self, session, text):
+            self.calls.append((session, text))
+            return "ok"
+
+    class FakeDC:
+        ready = True
+        client = object()
+
+        def channel_name(self):
+            return "albion"
+
+    def service():
+        cfg = chat_bridge.load_config(environ={"API_SERVER_KEY": "k"}, home=os.path.join(_STATE, "nohome"))
+        svc = chat_bridge.Service(cfg)
+        svc.host = FakeHost()
+        svc.dc = FakeDC()
+        return svc
+
+    # 私信：叫醒一次就退出；她不回也不再叫
+    svc = service()
+    inbox.add("telegram", "在忙吗", at=now)
+    asyncio.run(svc._drain_dm())
+    ok(len(svc.host.calls) == 1, "私信：新消息叫醒一次", svc.host.calls)
+    ok(svc.host.calls[0][0] == chat_bridge.SESSION_DM, "私信叫醒用 albion-desktop")
+    asyncio.run(svc._drain_dm())
+    ok(len(svc.host.calls) == 1, "她不回：不会立刻再叫醒（无限循环会烧额度）")
+    ok("在忙吗" in svc.host.calls[0][1], "通知里带着他刚发的那条")
+    inbox.add("telegram", "睡了吗", at=now + 1)
+    asyncio.run(svc._drain_dm())
+    ok(len(svc.host.calls) == 2, "又来了新消息：再叫醒一次")
+    ok("睡了吗" in svc.host.calls[1][1] and "在忙吗" not in svc.host.calls[1][1],
+       "第二次只念新来的那批（旧的等醒来再念）")
+
+    # 群：别的 bot 只当上下文，不驱动叫醒；他发言才叫，且只叫一次
+    import time as _time
+    reset()
+    svc = service()
+    inbox.add("discord_group", "机器人甲：晚上好", from_="bot", at=_time.time() - 20, author="机器人甲")
+    asyncio.run(svc._drain_group())
+    ok(svc.host.calls == [], "群里别人的话不驱动叫醒")
+    ok(inbox.pending("discord_group") == [], "上下文条目不算待回（不会绕过夜间安静）")
+    inbox.add("discord_group", "在吗", at=now - 11, author="指挥官")
+    asyncio.run(svc._drain_group())
+    ok(len(svc.host.calls) == 1, "他发言：群里叫醒一次", svc.host.calls)
+    ok(svc.host.calls[0][0] == chat_bridge.SESSION_GROUP, "群叫醒用 albion-discord")
+    ok("机器人甲：晚上好" in svc.host.calls[0][1] and "指挥官：在吗" in svc.host.calls[0][1],
+       "群通知里带上刚才的上下文")
+    asyncio.run(svc._drain_group())
+    ok(len(svc.host.calls) == 1, "群：她不回也不再叫醒（冷却过了也不叫）")
+    svc._last_group_notify = 0.0          # 假装 120 秒冷却早就过了，不必真等
+    inbox.add("discord_group", "那我睡了", at=now - 1, author="指挥官")
+    asyncio.run(svc._drain_group())
+    ok(len(svc.host.calls) == 2, "群里又来新消息：再叫一次")
+
+    # 群里有人 @她：也算待回、会叫醒
+    reset()
+    svc = service()
+    inbox.add("discord_group", "@阿尔比恩 帮我看下", from_="member", why="mention", at=now - 11, author="某人")
+    asyncio.run(svc._drain_group())
+    ok(len(svc.host.calls) == 1 and "帮我看下" in svc.host.calls[0][1], "@她 的消息能叫醒")
+
+
 def main():
     check_inbox()
     check_owner_and_group()
@@ -197,6 +284,7 @@ def main():
     check_texts()
     check_host_round()
     check_wake_box()
+    check_drain()
     print("check_chat: %d passed, %d failed" % (PASS, FAIL))
     return 0 if FAIL == 0 else 1
 
