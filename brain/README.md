@@ -145,6 +145,37 @@ bash /root/albion-pi/accept.sh     # 验一遍：直跑 pi 是不是她、两个
 
 Windows 侧：`D:\AI\Wife\launch\start_brain.ps1`（只有 `launch\start_all.bat` 的第 4 步调它；两个根入口都先到 start_all）。
 
+## 消息平台（Telegram / Discord，2026-11-02）
+
+她的社交渠道，不是自动转发网关：只有她用 `send_message`（`agent/extensions/albion-chat.ts`）发的，他才在手机上收得到；
+那一轮的回复正文照旧只回给壳（桌面），不会自动发到任何平台。
+
+```
+TG Bot API ──长轮询──┐
+                     ├─ bin/chat_bridge.py（chat-venv，127.0.0.1:8660）──> POST 8650 /v1/chat/completions（【平台消息】）
+Discord Gateway ─────┘        │  ▲
+                              │  └─ 9881 TTS → ffmpeg → ogg/opus（语音条）
+                              └─ state/inbox.json（未回箱）
+```
+
+- **桥**：`bin/chat_bridge.py`（单文件，跑在 `chat-venv`：discord.py + aiohttp）。`start.sh` / `stop.sh` 按 8660 幂等起停，日志 `logs/chat.log`；
+  `GET /health` 给 `start.sh`、看门狗和自检看，`POST /send` 只给她那个扩展（Bearer = `agent/.env` 的 `API_SERVER_KEY`）。
+- **凭据**：`/root/albion-pi/.env`（`ALBION_TG_BOT_TOKEN`、`ALBION_TG_OWNER_ID`、`ALBION_DISCORD_BOT_TOKEN`、`ALBION_DISCORD_OWNER_ID`、
+  `ALBION_DISCORD_CHANNEL_ID`），`agent/.env` 只提供 `API_SERVER_KEY`。缺 Discord 配置就只跑 TG，日志里直说。
+  外网只走代理 `127.0.0.1:7897`（aiohttp / discord.py 都显式给 proxy），回环（8650 / 9881）不走代理。
+- **只认他**：TG 只收 `ALBION_TG_OWNER_ID` 的私聊；Discord 私信只收 `ALBION_DISCORD_OWNER_ID`；群只看 `ALBION_DISCORD_CHANNEL_ID`，
+  他发言或 @ 她才叫醒（10 秒合批、同频道 120 秒最多一次），别的 bot 的话只入箱当上下文。
+- **会话**：TG 私聊 / Discord 私信与桌面共用 `albion-desktop`；群用 `albion-discord`（在 `agent/real-sessions.json` 里，
+  写生产 state、进 OpenViking，长期记忆共享）。
+- **未回箱**：`state/inbox.json`（`bin/inbox.py`；桥写、宿主读）。他发来的消息进箱 → 桥叫醒一轮（正文以 `【平台消息】` 开头，
+  宿主认它：不算醒来、不自动回）→ 她回不回都行；没回的在下一次醒来提示里念一遍，那一轮结束（`wake.after_wake`）统统了结。
+- **语音条**：`send_message(voice=true)` 只对 Telegram；桥打 `127.0.0.1:9881/v1/audio/speech`（Irodori 日语）→ `ffmpeg -c:a libopus`
+  → `sendVoice`，caption 是她的中文原文。`ALBION_CHAT_TTS_VOICE=denia` 走 GSV 中文、不带 caption；合成失败降级成文字。
+- **主动找他**要守她自己的开口节奏（`wake.can_speak`），回复不受限；群里主动发言只受夜间安静限制。
+- 回退：取改动前提交的 `bin/server.py`、`bin/wake.py`、`start.sh`、`stop.sh` 覆盖回去，`bash stop.sh && bash start.sh`；
+  `state/inbox.json` 与 `logs/chat.log` 留着无害。
+
+
 ### 看门狗（WSL 整机停掉后自动把脑拉回来）
 
 2026-10-24 00:44 前后疑似待机事件把 WSL 虚拟机整个停了，01:40 又起来，但没人拉起脑，桌面和聊天断了一个多小时。

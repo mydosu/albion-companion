@@ -407,6 +407,10 @@ def compose(session, msgs):
     name = getattr(session, "name", SESSION_DEFAULT)
     own = name == SESSION_DEFAULT
     woke = own and any(wake.is_wake(t) for t in texts)
+    # 桥（bin/chat_bridge.py）叫醒的那一轮：正文以【平台消息】开头，是「他给我发了消息」的通知。
+    # 不是她醒来（不走 after_wake），也不是他这一轮的话（不触发【接着说完】）；但确实是他有话说，
+    # 记一次 last_user_at，别让门铃 5 分钟后把她叫醒去打断他（2026-11-02）。
+    platform = own and any(wake.is_platform(t) for t in texts)
     if woke:
         # 壳只按了门铃；醒来时看到什么由 wake.wake_prompt 定（时间、他多久没说话、她定的事、心事本）
         # 门铃前后夹着他真说的话都算他在说话（haiku 复核 r34-P1）
@@ -419,6 +423,8 @@ def compose(session, msgs):
         else:
             # 门铃只带标记，不分种类；醒来时看到什么全由 wake.wake_prompt() 定
             texts = [wake.wake_prompt()]
+    elif platform:
+        wake.note_user()
     elif own and any(wake.is_real_user(t) for t in texts):
         wake.note_user()
     current = "\n\n".join(t for t in texts if t)
@@ -488,6 +494,7 @@ def ephemeral_state_dir(session_id):
 # 规则里不能出现英文逗号（宿主按逗号拼成一条环境变量交给扩展）。
 CAPTURE_FILTERS = (
     r"user:d|^【自主醒来】|",
+    r"user:d|^【平台消息】|",          # 桥叫醒的那条通知：他发来的原文在里面，但不能记成「他说过」的事实
     r"user:d|^【接着说完】|",
     r"user:d|^（阿尔比恩自己醒来）$|",
     r"user:d|^（阿尔比恩接着把刚才的话说完）$|",
@@ -882,6 +889,15 @@ def _selftest():
     assert not needs_finish_followup("[2026-10-16 09:00] " + wake.WAKE_MARKER, "")
     assert not needs_finish_followup("（这是我自己想到的事，不是谁发来的话。）", "")
     assert not needs_finish_followup("在吗", '<|ACT:{"emotion":"happy"}|>在呢。')
+    # 桥叫醒的【平台消息】那一轮：不是他这一轮说的话（不补【接着说完】）、不算醒来、只记他确实在说话
+    plat = wake.PLATFORM_MARKER + "Telegram 上他给我发了消息（写给自己看的，不用念）：\n#1 11-02 21:14 在忙吗"
+    assert not needs_finish_followup(plat, ""), "平台通知不是他的话，不补【接着说完】"
+    assert wake.is_platform(plat) and not wake.is_real_user(plat)
+    save_before = wake.load()["last_user_at"]
+    text, _, woke = compose(_S(), msgs[:2] + [{"role": "user", "content": plat}])
+    assert not woke and text == plat, (woke, text[:60])
+    assert wake.load()["last_user_at"] > save_before, "他发了消息：last_user_at 要记"
+    assert any("【平台消息】" in rule for rule in CAPTURE_FILTERS), "通知不能进长期记忆"
     assert FINISH_FOLLOWUP.startswith("【接着说完】") and "不编结果" in FINISH_FOLLOWUP and "先不动手" in FINISH_FOLLOWUP
     # 两轮各用同一可覆盖的时限；已有正文直接交付，只有空正文才补问一次。
     from unittest.mock import Mock, patch

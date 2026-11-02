@@ -26,6 +26,7 @@
 """
 from __future__ import annotations
 
+import inbox
 import json
 import os
 import re
@@ -35,6 +36,8 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 WAKE_MARKER = "【自主醒来】"
+# 桥（bin/chat_bridge.py）叫醒她时用的标记：那是「他给我发了消息」的通知，不是他这一轮说的话（2026-11-02）
+PLATFORM_MARKER = "【平台消息】"
 TZ = ZoneInfo(os.environ.get("ALBION_TZ", "Asia/Shanghai"))   # WSL 是 America/Chicago，指挥官在北京时间
 QUIET_START = (0, 30)
 QUIET_END = (9, 0)
@@ -320,9 +323,15 @@ def is_wake(text):
 _NOT_HIM = re.compile(r"^（(?:你要的【|这是我自己|这是一次自主开口|一次自主开口)")
 
 
+def is_platform(text):
+    """桥叫醒她时用的通知（【平台消息】）：不是他这一轮说的话，也不算她醒来。"""
+    return _TS_PREFIX.sub("", (text or "").strip()).startswith(PLATFORM_MARKER)
+
+
 def is_real_user(text):
     body = _TS_PREFIX.sub("", (text or "").strip())
-    return bool(body) and not body.startswith(WAKE_MARKER) and not _NOT_HIM.match(body)
+    return (bool(body) and not body.startswith(WAKE_MARKER)
+            and not body.startswith(PLATFORM_MARKER) and not _NOT_HIM.match(body))
 
 
 def note_user(now=None):
@@ -333,14 +342,52 @@ def note_user(now=None):
         save(st)
 
 
+SPOKEN_DEDUPE_S = 10 * 60      # 桥主动开口：#7 定稿——10 分钟内已经记过就不重复 +1
+
+
+def note_spoken(now=None):
+    """她在桥那边主动找他（不是回复）记一次：和桌面说出口共用 spoken_at / unanswered 这一套。
+
+    10 分钟内已经记过就不重复记（她那一下可能连发两条）。返回 True = 这次真记上了。
+    """
+    now = time.time() if now is None else now
+    with _lock:
+        st = load()
+        plan = self_plan()
+        keep = max(speak_every_s(plan), SILENT_GAP_S)
+        spoken = [t for t in (st.get("spoken_at") or [])
+                  if isinstance(t, (int, float)) and now - t < keep]
+        if spoken and now - max(spoken) < SPOKEN_DEDUPE_S:
+            st["spoken_at"] = spoken
+            save(st)
+            return False
+        spoken.append(now)
+        st["spoken_at"] = spoken
+        st["unanswered"] = int(_num(st.get("unanswered"))) + 1
+        save(st)
+        return True
+
+
+def _inbox_line(item):
+    """未回消息一行：#编号 月-日 时:分 渠道：原文。"""
+    at = _num(item.get("at"))
+    when = datetime.fromtimestamp(at, TZ).strftime("%m-%d %H:%M") if at else ""
+    return "#%s %s %s：%s" % (item.get("id"), when, inbox.channel_label(item.get("channel")),
+                              item.get("text"))
+
+
 def wake_prompt(now=None):
     """门铃换成的那段话：她醒来时自己知道的事，用她自己的口吻写；没有"你应该说什么"。"""
     now = time.time() if now is None else now
+    # 未回箱：他发来的、还没了结的（群里的上下文条目不算）。这一轮要念给她，结束后由 after_wake 了结。
+    unseen = [i for i in inbox.pending() if i.get("from") == "owner"]
+    seen = unseen[:10]                      # 一次最多念 10 条，多出来的留到下次
     with _lock:
         st = load()
         prev_wake = _num(st.get("last_wake_at"))
         st["last_wake_at"] = now
         st["rung_at"] = 0.0
+        st["inbox_shown"] = [int(i["id"]) for i in seen]
         save(st)
     plan = merged_plan(self_plan())
     t = datetime.fromtimestamp(now, TZ)
@@ -366,6 +413,10 @@ def wake_prompt(now=None):
     if notes:
         lines.append("心事本里还开着的（我自己记的，可能记错；等合适的时候再问，问过一次就划掉）："
                      + "；".join(_note_item(n, now) for n in notes[:10]))
+    # 未回箱（2026-11-02）：他发来的、还没回的消息。这一轮了结：回就用 send_message，不回也算处理完。
+    if seen:
+        lines.append("还没回的消息（他发来的）：" + "；".join(_inbox_line(i) for i in seen))
+        lines.append("这一轮把它们了结：想回就用 send_message 回；不回也行，这轮过后就不再提醒。")
     ok, reason = can_speak(st, self_plan(), now)
     if ok:
         lines.append("想他了就去找他：可以先用 look 看看他（cam 是摄像头里真实的他）或屏幕；"
@@ -422,7 +473,15 @@ def after_wake(reply, now=None):
         rounds = [r for r in (st.get("rounds") or []) if isinstance(r, dict)][-(ROUNDS_KEEP - 1):]
         rounds.append({"at": wake_at, "self": has_self, "spoke": spoke})
         st["rounds"] = rounds[-ROUNDS_KEEP:]
+        # 这一轮醒来提示里念过的未回消息，到这里了结：回过的已经是 answered，没回的就是她决定不回（2026-11-02）
+        shown = [int(x) for x in (st.get("inbox_shown") or []) if isinstance(x, (int, float))]
+        st["inbox_shown"] = []
         save(st)
+    if shown:
+        try:
+            inbox.close(shown, now)
+        except OSError:
+            pass
     return reply
 
 
@@ -624,6 +683,28 @@ def _selftest():
         wake_prompt(base + i)
         after_wake("（安静）", base + i + 1)
     assert len(load()["rounds"]) == ROUNDS_KEEP, load()["rounds"]
+    # ── 未回箱与平台通知（2026-11-02）────────────────────────────────────
+    assert is_platform("【平台消息】Telegram 上他给我发了消息") and is_platform("[2026-11-02 21:00] 【平台消息】…")
+    assert not is_real_user("【平台消息】Telegram 上他给我发了消息"), "平台通知不是他这一轮说的话"
+    assert not is_wake("【平台消息】…") and is_real_user("在吗")
+    # 桥替她主动开口：和桌面说出口同一套；10 分钟内不重复 +1
+    save(dict(empty, last_wake_at=0.0))
+    assert note_spoken(base) is True and load()["spoken_at"] == [base] and load()["unanswered"] == 1
+    assert note_spoken(base + 60) is False and load()["spoken_at"] == [base] and load()["unanswered"] == 1
+    assert note_spoken(base + SPOKEN_DEDUPE_S + 1) is True and load()["unanswered"] == 2
+    # 醒来提示里念还没回的；醒来轮结束后了结（没回 = 她决定不回）
+    item = inbox.add("telegram", "在忙吗", at=base - 60)
+    p_box = wake_prompt(base)
+    assert "还没回的消息（他发来的）：#%d" % item["id"] in p_box, p_box
+    assert "这一轮把它们了结" in p_box
+    assert load()["inbox_shown"] == [item["id"]]
+    after_wake("（安静）", base + 1)
+    assert load()["inbox_shown"] == [] and inbox.pending() == []
+    assert inbox.load()["items"][-1]["state"] == "closed"
+    # 已经回过的（answered）不再念
+    item2 = inbox.add("discord", "睡了吗", at=base - 30)
+    inbox.mark_answered([item2["id"]])
+    assert "睡了吗" not in wake_prompt(base + 2)
     print("WAKE SELFTEST OK")
 
 

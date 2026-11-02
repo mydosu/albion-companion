@@ -3,9 +3,9 @@
 # 用法：bash deploy.sh [目标目录]      或  ALBION_HOME=/some/dir bash deploy.sh
 #   DRY_RUN=1   只列会动什么，不写
 #   SKIP_CHECK=1  不跑 tools/check_pi_brain_sync.py
-# 范围 = tools/check_pi_brain_sync.py 的 SCOPE（bin/、agent/extensions/、agent/APPEND_SYSTEM.md、accept.sh）
+# 范围 = tools/check_pi_brain_sync.py 的 SCOPE（bin/、agent/extensions/、agent/APPEND_SYSTEM.md、accept.sh、start.sh、stop.sh）
 #        + install.sh、deploy.sh 本身；两个模板 agent/.env.example、agent/SOUL.example.md 仅目标里没有时才放。
-# README、start.sh、cli.sh、models.json、settings.json、.env、SOUL.md 等生产自管的文件一律不碰。
+# README、cli.sh、models.json、settings.json、.env、SOUL.md 等生产自管的文件一律不碰。
 # 每个会被覆盖的已有文件，先原样备份到 <目标>/backup/deploy-<时间>/<相对路径>；比较时两边都去掉 CR，
 # 落地的文本文件是 LF。文件来源：SRC 在 git 仓库里用 git ls-files（不带未入库的垃圾），否则 find。
 set -euo pipefail
@@ -16,7 +16,7 @@ STAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP="$DEST/backup/deploy-$STAMP"
 DRY="${DRY_RUN:-0}"
 
-in_scope() { case "$1" in bin/*|agent/extensions/*|agent/APPEND_SYSTEM.md|accept.sh|install.sh|deploy.sh) return 0 ;; *) return 1 ;; esac; }
+in_scope() { case "$1" in bin/*|agent/extensions/*|agent/APPEND_SYSTEM.md|accept.sh|start.sh|stop.sh|install.sh|deploy.sh) return 0 ;; *) return 1 ;; esac; }
 is_template() { case "$1" in agent/.env.example|agent/SOUL.example.md) return 0 ;; *) return 1 ;; esac; }
 is_text() { case "$1" in *.sh|*.py|*.ts|*.json|*.md|*.example) return 0 ;; *) return 1 ;; esac; }
 
