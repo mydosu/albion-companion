@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "pet" / "tools" / "eyes"))
+sys.path.insert(0, str(ROOT / "eyes"))
 
 import capture_agent as eyes  # noqa: E402
 
@@ -222,7 +222,7 @@ class TokenSourceTests(unittest.TestCase):
     def test_missing_token_file_refuses_to_start(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             result = eyes.subprocess.run(
-                [sys.executable, str(ROOT / "pet" / "tools" / "eyes" / "capture_agent.py"),
+                [sys.executable, str(ROOT / "eyes" / "capture_agent.py"),
                  "--token-file", str(Path(temp) / "missing.txt"), "--bind", "127.0.0.1", "--port", "0"],
                 capture_output=True, text=True, encoding="utf-8", timeout=30,
                 env={**os.environ, eyes.TOKEN_ENV: "", "PYTHONIOENCODING": "utf-8"},

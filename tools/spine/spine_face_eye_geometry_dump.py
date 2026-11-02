@@ -4,8 +4,8 @@
 （本地文件，不入库）。只读，不改壳的状态。
 
 用法：
-  python pet/tools/spine_face_eye_geometry_dump.py
-  python pet/tools/spine_face_eye_geometry_dump.py --port 9335 --out D:/AI/Wife/shell/.../albion-eye-geometry.json
+  python tools/spine/spine_face_eye_geometry_dump.py
+  python tools/spine/spine_face_eye_geometry_dump.py --port 9335 --out D:/AI/Wife/shell/.../albion-eye-geometry.json
 """
 import argparse
 import asyncio

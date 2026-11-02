@@ -72,7 +72,7 @@ WSL2 的配置：`networkingMode=mirrored`，无 CPU/内存上限，WSL 内可�
 | 目录 | 内容 |
 |---|---|
 | `shell/` | AIRI 桌面壳（本地 fork）：Spine 3.8 与 Live2D 两条展示链路、托盘与布局持久化 |
-| `pet/` | 运行侧：眼睛采集端、耳朵 STT、状态挂件、模型与工具脚本 |
+| `ear/`、`eyes/`、`widget/` | 运行侧：耳朵 STT、眼睛采集端、状态挂件（各自的模型与依赖清单在旁边） |
 | `tts/irodori/` | Irodori-TTS（上游 fork，分支 `local`）：语音后端与桥 |
 | `tts/GPT-sovits/` | GPT-SoVITS：另一音色的后端（保留） |
 | `tts/stream/` | 流式切句服务 |

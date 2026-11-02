@@ -26,15 +26,15 @@ flowchart LR
 | 开发入口 | 根 `一键启动-dev.bat`（加 `show`＝各服务开控制台）→ `launch/start_all.bat dev` | 两个入口都只是一两行转发，所有入口共用 `launch/start_all.bat` |
 | 本机环境变量 | `config/local.env`（模板 `config/local.env.example`，不入库）→ `launch/load_env.bat` | 每个服务启动 bat 开头都会 call 它；真环境变量优先 |
 | 桌面壳、聊天、主动存在、展示与播放 | `shell/apps/stage-tamagotchi/`、`shell/packages/stage-ui/`、`shell/packages/core-agent/`、音频 packages | 对应目录 `AGENTS.md`、package README 与 Vitest |
-| 耳朵 | `pet/start_ear.bat` → `pet/whisper_serve.py` | `tests/pet/check_ear.py`，模型在本地 `pet/models/` |
-| 眼睛 | `pet/tools/eyes/capture_agent.py`、启动脚本 | `pet/tools/eyes/README.md`；脑里 `look` 打的就是它的 :8790 |
-| 状态摆件 | `pet/widget/albion_status_widget.pyw` | 本地位置状态不入库 |
+| 耳朵 | `ear/start_ear.bat` → `ear/whisper_serve.py` | `tests/ear/check_ear.py`，模型在本地 `ear/models/` |
+| 眼睛 | `eyes/capture_agent.py`、启动脚本 | `eyes/README.md`；脑里 `look` 打的就是它的 :8790 |
+| 状态摆件 | `widget/albion_status_widget.pyw` | 本地位置状态不入库 |
 | 语音后端 | `tts/irodori/start_backend.bat` → `irodori_serve.py`，以及 `serve_v2.py`、规划/情感/渲染模块 | `ships.json`，`tests/tts/` |
 | 准备/翻译桥 | `tts/irodori/start_bridge.bat` → `bridge.py` + `bridge_v2.py` | 默认 `codex` 历史分支：Command Code 主路，Codex CLI 最终退路；`api` 需独立 key |
 | 流式切句与会话 | `tts/stream/start_stream.bat` → `stream_server.py` + `session_text.py` | `tests/tts/test_credit_patience.py` 与壳音频 tests |
 | 备用 Denia | `tts/GPT-sovits/启动Denia后端.bat` | 备用链路，不作为当前 Irodori 主线 |
 | 脑（阿尔比恩本人） | WSL `/root/albion-pi/`（`start.sh`／`accept.sh`，宿主 :8650） | 仓库镜像 `integrations/pi-brain/`（与现网逐文件一致）；见其 README |
-| 她自己的眼睛 | 脑里 `look` 工具 → 主力机/本机采集端 :8790 | 主力机上单独部署一份；仓库来源见 `pet/tools/eyes/` |
+| 她自己的眼睛 | 脑里 `look` 工具 → 主力机/本机采集端 :8790 | 主力机上单独部署一份；仓库来源见 `eyes/` |
 
 脑不再是 Hermes 网关，也没有单独的语音插件：她的话由壳从自己的 store 取正文再送 TTS（端点契约没变）。
 WSL 旧脑（Hermes `albion` profile）已于 2026-10-07 删除，归档在 `/root/albion-pi/archive/hermes-profile-20261007/`。

@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 """阿尔比恩的耳朵：OpenAI 兼容的 /v1/audio/transcriptions（faster-whisper）。
 
-用 GSV runtime 的 python 跑（它自带 faster_whisper + torch + CUDA）：
-  D:/AI/Wife/tts/GPT-sovits/runtime/python.exe whisper_serve.py
+用 ear/ 自己的 uv 环境跑（CPU 版 torch + funasr + faster-whisper，见 ear/pyproject.toml）：
+  uv sync --directory ear
+  ear/.venv/Scripts/python.exe whisper_serve.py
 监听 127.0.0.1:9882。AIRI 里选 openai-audio-transcription，BaseURL 填 http://127.0.0.1:9882/v1。
 
 引擎（ALBION_STT_ENGINE）：
   paraformer  默认。中文专用 paraformer-zh + fsmn-vad + ct-punc，跑 **CPU**，不吃显存；
-              9 秒语音约 0.6s。只有中文输入时用它。
+              9 秒语音约 0.3s（加载时先用 0.3s 静音预热，消掉 fbank 首次初始化的 1s）。只有中文输入时用它。
   whisper     faster-whisper（多语种，CUDA ~3G 显存）。要听日语/英文时切它。
 
 环境变量：
@@ -69,6 +70,27 @@ def get_model():
     return _model
 
 
+def _warmup(model):
+    """加载时先用 0.3s 静音跑一遍：kaldi-native-fbank 首次 fbank 要初始化 ~1s，
+    不预热的话开机/重启后第一句真人语音要多等这一秒。失败不影响识别。"""
+    import tempfile
+    tmpdir = tempfile.mkdtemp(prefix='albion_ear_warmup_')
+    tmp = os.path.join(tmpdir, 'warmup.wav')
+    try:
+        import wave
+        with wave.open(tmp, 'wb') as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(16000)
+            w.writeframes(b'\x00\x00' * 4800)   # 0.3s @16k 单声道静音
+        model.generate(input=tmp, batch_size_s=60, cache={})
+    except Exception as e:
+        print(f'[ear] 预热失败（不影响识别）：{type(e).__name__}: {str(e)[:120]}', flush=True)
+    finally:
+        import shutil
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 def _load_model():
     t0 = time.time()
     if ENGINE == 'paraformer':
@@ -80,6 +102,7 @@ def _load_model():
             device='cpu' if DEVICE in ('auto', 'cpu') else DEVICE,
             disable_update=True, disable_pbar=True,
         )
+        _warmup(model)
         print(f'[ear] paraformer 三件套就绪 device={DEVICE} 用时 {time.time() - t0:.1f}s', flush=True)
         return model
     from faster_whisper import WhisperModel

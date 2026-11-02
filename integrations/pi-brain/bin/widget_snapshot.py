@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""给 Windows 桌面摆件（pet/widget/albion_status_widget.pyw）定时写最近活动快照。
+"""给 Windows 桌面摆件（widget/albion_status_widget.pyw）定时写最近活动快照。
 
 宿主每 INTERVAL 秒把 state/state.db 的只读查询结果原子写到 state/widget.json；
 摆件只读这份 JSON，不再自己起 wsl + python 轮询。

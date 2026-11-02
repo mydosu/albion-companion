@@ -8,7 +8,7 @@ llama.cpp server，开一个 OpenAI 兼容接口，端口 8080。
 没有视觉机也能用：摄像头那一路会「这次看不到」，屏幕两路（`his`/`mine`）不受影响。
 
 ```
-deploy/vision/
+eyes/vision-server/
 ├── README.md            这份
 ├── .env.example         参数模板（复制成 .env 再改，.env 不进 Git）
 ├── docker-compose.yml   容器：镜像、端口、挂载、GPU、llama-server 参数
@@ -47,7 +47,7 @@ docker run --rm --gpus all nvcr.io/nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-sm
 ## 步骤
 
 ```bash
-git clone <本仓库> && cd <本仓库>/deploy/vision   # 或者只把这几个文件拷到视觉机上
+git clone <本仓库> && cd <本仓库>/eyes/vision-server   # 或者只把这几个文件拷到视觉机上
 cp .env.example .env
 $EDITOR .env                                     # 至少确认 MODEL_FILE / MMPROJ_FILE / MODEL_DIR
 bash download_models.sh                          # 下到 .env 里的 MODEL_DIR（默认 ./models）

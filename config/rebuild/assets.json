@@ -236,7 +236,7 @@
     }
   ],
   "external_directories": [
-    "pet/models/modelscope/iic",
+    "ear/models/modelscope/iic",
     "tts/GPT-sovits/runtime",
     "tts/GPT-sovits/audio",
     "tts/GPT-sovits/GPT_SoVITS",

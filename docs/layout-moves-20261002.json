@@ -3173,5 +3173,125 @@
     "new": "tts/irodori/start_bridge.bat",
     "category": "launch-consolidation-20261101",
     "note": "同上；转发壳 start_bridge.bat 的清空+改写由本次合并替代"
+  },
+  {
+    "old": "pet/whisper_serve.py",
+    "new": "ear/whisper_serve.py",
+    "category": "step-6-directory-split-A",
+    "note": "ear keeps its own uv env (pyproject + uv.lock)"
+  },
+  {
+    "old": "pet/start_ear.bat",
+    "new": "ear/start_ear.bat",
+    "category": "step-6-directory-split-A",
+    "note": "now runs the ear uv venv python, not the GSV runtime"
+  },
+  {
+    "old": "pet/models/",
+    "new": "ear/models/",
+    "category": "step-6-directory-split-A",
+    "note": "untracked models; moved by _tmp/reorg/move_untracked_A.ps1"
+  },
+  {
+    "old": "pet/tools/eyes/",
+    "new": "eyes/",
+    "category": "step-6-directory-split-A",
+    "note": "step-6 directory split"
+  },
+  {
+    "old": "deploy/vision/",
+    "new": "eyes/vision-server/",
+    "category": "step-6-directory-split-A",
+    "note": "vision deployment bundle folded into eyes/"
+  },
+  {
+    "old": "pet/widget/",
+    "new": "widget/",
+    "category": "step-6-directory-split-A",
+    "note": "step-6 directory split"
+  },
+  {
+    "old": "pet/tools/patch_model.py",
+    "new": "tools/spine/patch_model.py",
+    "category": "step-6-directory-split-A",
+    "note": "spine tooling collected under tools/spine/"
+  },
+  {
+    "old": "pet/tools/spine_face_eye_geometry_dump.py",
+    "new": "tools/spine/spine_face_eye_geometry_dump.py",
+    "category": "step-6-directory-split-A",
+    "note": "step-6"
+  },
+  {
+    "old": "pet/tools/spine_face_eye_masks.py",
+    "new": "tools/spine/spine_face_eye_masks.py",
+    "category": "step-6-directory-split-A",
+    "note": "step-6"
+  },
+  {
+    "old": "pet/tools/check_bat.py",
+    "new": "tools/check_bat.py",
+    "category": "step-6-directory-split-A",
+    "note": "generic maintenance tool"
+  },
+  {
+    "old": "pet/docs/",
+    "new": "docs/pet/",
+    "category": "step-6-directory-split-A",
+    "note": "pet docs kept as a pointer index"
+  },
+  {
+    "old": "pet/README.md",
+    "new": "docs/pet/README.md",
+    "category": "step-6-directory-split-A",
+    "note": "rewritten as a pointer index"
+  },
+  {
+    "old": "pet/.gitignore",
+    "new": "ear/.gitignore",
+    "category": "step-6-directory-split-A",
+    "note": "ignore rules split per feature directory"
+  },
+  {
+    "old": "tests/pet/check_ear.py",
+    "new": "tests/ear/check_ear.py",
+    "category": "step-6-directory-split-A",
+    "note": "tests follow their component"
+  },
+  {
+    "old": "tests/pet/test_ear_offline.py",
+    "new": "tests/ear/test_ear_offline.py",
+    "category": "step-6-directory-split-A",
+    "note": "step-6"
+  },
+  {
+    "old": "tests/pet/data/_zh_test.wav",
+    "new": "tests/ear/data/_zh_test.wav",
+    "category": "step-6-directory-split-A",
+    "note": "fixed test audio"
+  },
+  {
+    "old": "tests/pet/test_capture_agent_auth.py",
+    "new": "tests/eyes/test_capture_agent_auth.py",
+    "category": "step-6-directory-split-A",
+    "note": "step-6"
+  },
+  {
+    "old": "tests/pet/_author_engine_check.mjs",
+    "new": "tests/spine/_author_engine_check.mjs",
+    "category": "step-6-directory-split-A",
+    "note": "spine/CDP probes"
+  },
+  {
+    "old": "tests/pet/_look_tag_filter_check.mjs",
+    "new": "tests/spine/_look_tag_filter_check.mjs",
+    "category": "step-6-directory-split-A",
+    "note": "step-6"
+  },
+  {
+    "old": "tests/pet/_verify_calib.mjs",
+    "new": "tests/spine/_verify_calib.mjs",
+    "category": "step-6-directory-split-A",
+    "note": "step-6"
   }
 ]

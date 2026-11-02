@@ -18,8 +18,8 @@ __pycache__/
 *.db
 *.db-wal
 # 模型与语料（第三方，来源仓库远端已有）
-pet/models/
-pet/archive/
+ear/models/
+ear/logs/
 tts/irodori/checkpoints/
 tts/irodori/outputs/
 tts/GPT-sovits/GPT_SoVITS/
@@ -64,7 +64,7 @@ tts/persona/*.txt
 tts/persona/render_persona.py
 tts/persona/*_完整.wav
 tests/output/
-tests/pet/spine-official/sr38/
+tests/spine/spine-official/sr38/
 .pytest_cache/
 *.ckpt
 *.bin

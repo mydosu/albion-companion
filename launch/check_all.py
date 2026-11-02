@@ -2,7 +2,7 @@
 """阿尔比恩桌宠 · 八项自检（launch/start_all.bat 收尾会调它）
 
 用法:
-  D:/AI/Wife/tts/GPT-sovits/runtime/python.exe D:/AI/Wife/launch/check_all.py [等待秒数] [--json]
+  python launch/check_all.py [等待秒数] [--json]   （系统 Python 即可，只用标准库；ALBION_PYTHON 优先）
 
 默认最多等 90 秒（Irodori 后端要加载模型，起得慢）。每 5 秒轮询一次，全绿就提前结束。
 --json：只在 stdout 输出一份 JSON（ok / ready / total / checks[{name, ok, detail}]），不打印表格；退出码不变。

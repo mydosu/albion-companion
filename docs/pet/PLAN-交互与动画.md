@@ -141,8 +141,8 @@ localStorage['settings/albion/ear-enabled'] = 'true'   // 然后刷新窗口
 | `apps/stage-tamagotchi/src/renderer/pages/index.vue` | 噪音不再弹报警 |
 | `D:/AI/Wife/tts/irodori/bridge.py` | 加 `[req] voice/model/len` 日志 |
 | `packages/stage-ui/src/albion-pet.ts` | 34 组动作映射 + 触摸分区 + `motion` 标记 + `play()` 调试口；自建耳朵改为默认不开 |
-| `pet/tools/patch_model.py` | 新增：模型补丁（Idle 组 + 淡入淡出 + 关内部循环） |
-| `pet/docs/MOTION-MAP.md` | 新增：34 组动作对照表 |
+| `tools/spine/patch_model.py` | 新增：模型补丁（Idle 组 + 淡入淡出 + 关内部循环） |
+| `docs/pet/MOTION-MAP.md` | 新增：34 组动作对照表 |
 | `profiles/albion/SOUL.md` | 加"动作（可选）"说明，她知道能指定 `motion` |
 ## §7 第二轮反馈 9 条（2026-09-14 晚，来自《问题和想法1.md》）
 

@@ -29,19 +29,19 @@ ENTRY_BATS = [
     "tts/irodori/start_backend.bat",
     "tts/irodori/start_bridge.bat",
     "tts/stream/start_stream.bat",
-    "pet/start_ear.bat",
+    "ear/start_ear.bat",
 ]
 
 SERVICE_BATS = [
     "tts/irodori/start_backend.bat",
     "tts/irodori/start_bridge.bat",
     "tts/stream/start_stream.bat",
-    "pet/start_ear.bat",
-    "pet/tools/eyes/start_eyes.bat",
+    "ear/start_ear.bat",
+    "eyes/start_eyes.bat",
 ]
 
-EYES_TOKEN = "/".join(["pet", "tools", "eyes", "token.txt"])
-EYES_DIR = "/".join(["pet", "tools", "eyes"])
+EYES_TOKEN = "/".join(["eyes", "token.txt"])
+EYES_DIR = "eyes"
 
 
 @unittest.skipUnless(os.name == "nt", "Windows cmd/PowerShell required")
@@ -51,7 +51,8 @@ class Launchers(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.records = self.root / "records.jsonl"
-        self.env = dict(os.environ, L3_RECORDS=str(self.records))
+        # start_all.bat 用 ALBION_PYTHON 覆盖系统 Python（眼睛和自检都只依赖标准库）
+        self.env = dict(os.environ, L3_RECORDS=str(self.records), ALBION_PYTHON=sys.executable)
         self.env.pop("ALBION_SHOW_CONSOLES", None)
         for name in ENTRY_BATS + ["launch/hidden.vbs"]:
             dst = self.root / name
@@ -62,7 +63,7 @@ class Launchers(unittest.TestCase):
         text = p.read_bytes().decode("gbk")
         text = text[:text.index(":check\r\n")].rstrip() + "\r\n:check\r\nset PORTFREE=1\r\nexit /b\r\n"
         text = text.replace("ping -n 11 127.0.0.1 >nul", "rem skipped fixture wait")
-        text = text.replace('"%WIFE%\\tts\\GPT-sovits\\runtime\\python.exe" "%WIFE%\\launch\\check_all.py" 90',
+        text = text.replace('"%SYS_PY%" "%WIFE%\\launch\\check_all.py" 90',
                             "echo FIXTURE_SELF_CHECK")
         text = text.replace('start "" "%WIFE%\\shell\\apps\\stage-tamagotchi\\dist\\win-unpacked\\airi.exe" '
                             '--remote-debugging-port=9335', "echo FIXTURE_EXE")
@@ -75,7 +76,7 @@ class Launchers(unittest.TestCase):
             ' | ConvertTo-Json -Compress | Add-Content -LiteralPath $env:L3_RECORDS\n',
             encoding="utf-8")
         (self.root / "launch/start_brain.ps1").write_text("exit 0\n", encoding="utf-8")
-        widget = self.root / "pet/widget/AlbionStatus.vbs"
+        widget = self.root / "widget/AlbionStatus.vbs"
         widget.parent.mkdir(parents=True, exist_ok=True)
         widget.write_text("WScript.Quit 0\n", encoding="ascii")
         token = self.root / EYES_TOKEN
@@ -151,7 +152,7 @@ class Launchers(unittest.TestCase):
     def test_only_start_all_starts_things(self):
         start_all = (ROOT / "launch/start_all.bat").read_bytes()
         self.assertIn(b"netstat", start_all)
-        for name in ENTRY_BATS + ["pet/tools/eyes/start_eyes.bat"]:
+        for name in ENTRY_BATS + ["eyes/start_eyes.bat"]:
             if name == "launch/start_all.bat":
                 continue
             raw = (ROOT / name).read_bytes()
@@ -162,7 +163,7 @@ class Launchers(unittest.TestCase):
     def test_old_forwarders_are_gone(self):
         for name in ["_silent_run.ps1", "_启动脑Pi.ps1", "_收控制台.ps1", "_静默启动.vbs",
                      "一键启动-构建版.bat", "一键启动-构建版-隐藏.vbs",
-                     "pet/start_all.bat", "pet/start_all_prod.bat", "pet/check_all.py",
+                     "pet",
                      "tools/albion_brain_watch.ps1",
                      "tts/irodori/启动Irodori后端.bat", "tts/irodori/启动TTS桥.bat"]:
             self.assertFalse((ROOT / name).exists(), name)
@@ -198,7 +199,6 @@ class Launchers(unittest.TestCase):
         marker = self.root / "arguments.json"
         script.write_text("import sys,json\nfrom pathlib import Path\nPath(" + repr(str(marker)) +
                           ").write_text(json.dumps(sys.argv[1:]))\n", encoding="utf-8")
-        command = command.replace(str(self.root / "tts/GPT-sovits/runtime/python.exe"), sys.executable)
         subprocess.run(["powershell", "-NoProfile", "-File", str(ROOT / "launch/silent_run.ps1"),
                         "-Cmd", command], check=True, capture_output=True, timeout=10)
         for _ in range(100):

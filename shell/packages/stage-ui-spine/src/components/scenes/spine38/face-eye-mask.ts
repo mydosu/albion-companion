@@ -1,7 +1,7 @@
 /**
  * 脸图「擦眼」：把脸上画出来的眼睛从贴图里抠掉，让底下真正的眼槽（会眨、会看人）从洞里透出来。
  *
- * 静态数据（mask）由 `pet/tools/spine_face_eye_masks.py` 离线生成，放在模型素材目录旁边的
+ * 静态数据（mask）由 `tools/spine/spine_face_eye_masks.py` 离线生成，放在模型素材目录旁边的
  * `albion-eye-masks/`（本地文件、不入库）。运行时只做一件事：在 mask 矩形内逐像素把预乘的
  * RGBA 四个通道都乘 `(255-m)/255`。**不要用 canvas 的 filter / 合成模式**——2026-10-26 实测
  * `ctx.filter + destination-out` 会把整张 4096² 画布的 alpha 一起压掉，软腮红当场消失。

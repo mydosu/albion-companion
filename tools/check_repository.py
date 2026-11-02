@@ -21,7 +21,8 @@ def main():
     names = subprocess.check_output(['git', '-C', str(ROOT), 'ls-files', '-z', '--cached', '--others', '--exclude-standard']).decode('utf-8').split('\0')
     problems = []
     checked = 0
-    old = re.compile(r'(?<![\w/])(?:pet[/\\]tests|tts[/\\]tests|tts[/\\]eval|pet[/\\]tools[/\\]spine-official)(?:[/\\\s`"\']|$)')
+    # 2026-11-02 重组：pet/ 拆成 ear/ eyes/ widget/，deploy/vision 改 eyes/vision-server；tests/pet 同理
+    old = re.compile(r'(?<![\w/])(?:pet[/\\]|tts[/\\]tests|tts[/\\]eval|deploy[/\\]vision|tests[/\\]pet[/\\])')
     private = re.compile(r'(^|/)(?:backup|her-home|_archive|\.local)(/|$)|(^|/)\.env(?:\.|$)|\.bak|\.obsolete-|agent-keys\.json$|\.token$|(?:^|/)token\.txt$')
     for name in sorted(set(names) - {''}):
         path = ROOT / name
@@ -30,11 +31,11 @@ def main():
         checked += 1
         if private.search(name) and not name.endswith('.example'):
             problems.append({'file': name, 'reason': 'private or backup file would enter repository'})
-        if name.startswith(('pet/', 'tts/')) and re.search(r'(^|/)test_[^/]+\.py$', name):
+        if name.startswith(('ear/', 'eyes/', 'widget/', 'tts/')) and re.search(r'(^|/)test_[^/]+\.py$', name):
             problems.append({'file': name, 'reason': 'independent test belongs under tests/'})
-        if name.startswith('archive/') or name in {'docs/layout-moves-20261002.json', 'tools/check_repository.py'}:
+        if name.startswith(('archive/', 'docs/history/')) or name in {'docs/layout-moves-20261002.json', 'tools/check_repository.py'}:
             continue
-        if path.suffix.lower() in {'.py', '.ts', '.mjs', '.js', '.md', '.bat', '.ps1', '.vbs', '.sh', '.yaml', '.yml'}:
+        if path.suffix.lower() in {'.py', '.ts', '.mjs', '.js', '.md', '.bat', '.ps1', '.vbs', '.sh', '.yaml', '.yml', '.toml'}:
             data = path.read_bytes()
             try:
                 text = data.decode('utf-8')

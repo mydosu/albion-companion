@@ -2,7 +2,7 @@
 """耳朵（whisper_serve.py）验收：三种输入都要给出正确回应，且不 500。
 
 用法（服务已在 :9882 跑着时）:
-  D:/AI/Wife/tts/GPT-sovits/runtime/python.exe check_ear.py
+  python tests/ear/check_ear.py            （系统 Python 即可，只用标准库）
 
 检查项：
   1) 正常中文语音 → 文本非空且包含关键词

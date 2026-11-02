@@ -61,9 +61,9 @@ python tools/restore_weights.py
 | `tts/irodori/checkpoints/model.safetensors` | 当前基础 checkpoint，3,064,295,596 字节；核对清单 SHA256，不能直接用 README 最新模型替换 |
 | `shell/packages/stage-ui/src/assets/live2d/models/albion.zip` | 本机角色 Live2D 包 |
 | `shell/packages/stage-ui/src/assets/spine/models/albion-spine-38.zip` | 本机角色 Spine 包 |
-| `pet/models/modelscope/iic/` | paraformer ASR、fsmn VAD、ct-punc，目录名由 `pet/whisper_serve.py` 指定 |
+| `ear/models/modelscope/iic/` | paraformer ASR、fsmn VAD、ct-punc，目录名由 `ear/whisper_serve.py` 指定 |
 | `tts/GPT-sovits/audio/<角色>/` | 参考音频；后端优先 `004.wav`、`068.wav`、`072.wav`、`003.wav`，缺时取已有 WAV |
-| `tts/GPT-sovits/runtime/` | STT/眼睛启动器目前依赖此 `python.exe`；本机 Python 3.9.13 |
+| `tts/GPT-sovits/runtime/` | 只给 GSV/Denia 用（Python 3.9.13）；耳朵改用 `ear/.venv`（uv），眼睛与 check_all 用系统 Python |
 | `tts/irodori/.venv/` | 本机 Python 3.10.20，torch 2.10.0+cu128；恢复环境或重新安装 |
 | Hugging Face 缓存 | checkpoint 所需 codec/tokenizer，可按上游源码下载或恢复离线缓存 |
 
@@ -145,7 +145,7 @@ New-Item -ItemType Directory -Path logs -Force
 & .\tts\irodori\.venv\Scripts\python.exe -B -m unittest discover -s tests/tts -p 'test_*.py'
 python tools/check_repository.py
 python tools/restore_weights.py
-& .\tts\GPT-sovits\runtime\python.exe launch\check_all.py 0
+python launch\check_all.py 0
 ```
 
 还要实测：壳显示角色、中文输入/回复、STT、日语发声与切句播放、眼睛、摆件、WSL profile 隔离。
