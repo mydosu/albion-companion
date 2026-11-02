@@ -119,7 +119,10 @@ def log(msg, **fields):
                 f.write(line + "\n")
         except OSError:
             pass
-    print(line, flush=True)
+    # start.sh 把 stdout 也接到 logs/chat.log：同时开文件又打印会让每行出现两次（2026-11-02 部署时发现）。
+    # 所以只在终端里手动跑（stdout 是 tty）才回显；有文件日志时以文件为准。
+    if not path or sys.stdout.isatty():
+        print(line, flush=True)
 
 
 # ── 纯判定与文字（自检和真跑共用）──────────────────────────────────────────
@@ -430,7 +433,10 @@ class DiscordBot:
     def channel_name(self):
         if not self.client or not self.cfg["dc_channel"]:
             return ""
-        channel = self.client.get_channel(int(self.cfg["dc_channel"]))
+        try:
+            channel = self.client.get_channel(int(self.cfg["dc_channel"]))
+        except (TypeError, ValueError):
+            return ""                              # 配错了别在事件回调里炸
         return getattr(channel, "name", "") or ""
 
     async def start(self):
@@ -451,7 +457,9 @@ class DiscordBot:
         @self.client.event
         async def on_ready():
             self.ready = True
-            log("discord_ready", user=str(self.client.user), guilds=len(self.client.guilds))
+            # 频道名解析成什么、有没有解析到，部署时一眼能看出来（2026-11-02）
+            log("discord_ready", user=str(self.client.user), guilds=len(self.client.guilds),
+                channel=self.channel_name() or "(未配置或看不到)")
 
         @self.client.event
         async def on_message(message):
