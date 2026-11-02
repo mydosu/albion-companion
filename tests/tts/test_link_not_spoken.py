@@ -4,8 +4,12 @@
 背景：她的中文回复按单元切开、逐段送翻译再合成。某个单元只是一段网址或路径时
 （`/product_id/RJ….html`、`https://…`），翻译模型不翻译它，而是自己编一句
 「はい、指揮官。アルビオンに何かご用ですか？」念出去。修法：送翻译前把 URL/路径剥掉；
-剥完一个汉字、一个假名都不剩就当不可读，返回空串（`to_japanese_ex` 返回 `("", None)`），
+剥离后一个汉字、一个假名都不剩就当不可读，返回空串（`to_japanese_ex` 返回 `("", None)`），
 调用方回 0.05s 静音 —— 字幕照常显示，那是壳的事。
+
+2026-11 补：翻译首腿改成「跟着脑的模型走」（`ask_brain`，commit 7f9f904）。测试原先只打了
+`_ask` 的替身，脑那一腿会打本机真脑（magpie 有回包），于是断言里的假译文被真译文换掉、
+`_ask` 一次都不调。沿用原意：脑首腿一起打空替身，只验「剥链接 + 不占翻译名额」这套契约。
 """
 import asyncio
 import pathlib
@@ -23,22 +27,36 @@ PATH = "/product_id/RJ0123456789.html"
 WINPATH = str(pathlib.Path(__file__).resolve().parents[2] / "tts" / "irodori" / "bridge.py")  # 带盘符的 Windows 路径样本，跟着仓库走
 ZH = "在的，指挥官。"
 
+# 首腿 `ask_brain`（2026-10-30「翻译跟着脑走」）必须一起打替身：不打就走本机真脑，
+# 本机 magpie 有回包 ⇒ 译文/情绪来自真模型，`_ask` 一次都不会被调（故 test 里的假回复失效）。
+_BRAIN_SEEN = []
+
+
+def _offline_brain(text, prompt=None):
+    """脑首腿的离线替身：记下被谁调过，然后返回空串让桥走 `_ask` 那条老链。"""
+    _BRAIN_SEEN.append(text)
+    return ""
+
 
 def _run_ex(text, reply="", emotion=False):
     """跑 `to_japanese_ex`：翻译腿全打替身，回 (结果, _ask 替身)。"""
+    _BRAIN_SEEN.clear()
     with patch.object(bridge, "TRANSLATE_BACKEND", "codex"), \
             patch.object(bridge, "EMOTION_HINT", emotion), \
             patch.object(bridge, "CODEX_API_FALLBACK", False), \
             patch.object(bridge, "_cc_keys", return_value=["offline-placeholder"]), \
+            patch.object(bridge, "ask_brain", side_effect=_offline_brain), \
             patch.object(bridge, "_ask", return_value=reply) as ask:
         return bridge.to_japanese_ex(text), ask
 
 
 def _run(text, reply=""):
-    """跑 `to_japanese`：同样全打替身，回 (译文, _ask 替身)。"""
+    """跑 `to_japanese`：同样全打替身（含脑首腿），回 (译文, _ask 替身)。"""
+    _BRAIN_SEEN.clear()
     with patch.object(bridge, "TRANSLATE_BACKEND", "codex"), \
             patch.object(bridge, "CODEX_API_FALLBACK", False), \
             patch.object(bridge, "_cc_keys", return_value=["offline-placeholder"]), \
+            patch.object(bridge, "ask_brain", side_effect=_offline_brain), \
             patch.object(bridge, "_ask", return_value=reply) as ask:
         return bridge.to_japanese(text), ask
 
@@ -76,18 +94,21 @@ class UnreadableUnitTest(unittest.TestCase):
             (ja, emo), ask = _run_ex(text)
             self.assertEqual((ja, emo), ("", None), text)
             self.assertEqual(ask.call_count, 0, text)
+            self.assertEqual(_BRAIN_SEEN, [], text)       # 脑首腿也不该被打（纯链接在进翻译前一刀切掉）
 
     def test_pure_path_is_not_translated(self):
         for text in (PATH, "~/docs/a.md", WINPATH, "a/b/c.py"):
             (ja, emo), ask = _run_ex(text)
             self.assertEqual((ja, emo), ("", None), text)
             self.assertEqual(ask.call_count, 0, text)
+            self.assertEqual(_BRAIN_SEEN, [], text)
 
     def test_pure_code_or_latin_is_not_translated(self):
         for text in ("const x = 1;", "def foo(bar): return 1", "OK"):
             (ja, emo), ask = _run_ex(text)
             self.assertEqual((ja, emo), ("", None), text)
             self.assertEqual(ask.call_count, 0, text)
+            self.assertEqual(_BRAIN_SEEN, [], text)
 
     def test_to_japanese_returns_empty_too(self):
         # v1 老路径（`/v1/audio/speech`）走的是 `to_japanese`，同一个口径
@@ -95,6 +116,7 @@ class UnreadableUnitTest(unittest.TestCase):
             ja, ask = _run(text)
             self.assertEqual(ja, "", text)
             self.assertEqual(ask.call_count, 0, text)
+            self.assertEqual(_BRAIN_SEEN, [], text)
 
 
 class UrlInsideChineseTest(unittest.TestCase):
@@ -154,6 +176,7 @@ class V2PrepareTest(unittest.TestCase):
 
     def test_chinese_with_url_is_still_ready(self):
         seen = []
+        _BRAIN_SEEN.clear()
 
         def ask(*a, **kw):
             seen.append(a[1])
@@ -163,6 +186,7 @@ class V2PrepareTest(unittest.TestCase):
                 patch.object(bridge, "EMOTION_HINT", False), \
                 patch.object(bridge, "CODEX_API_FALLBACK", False), \
                 patch.object(bridge, "_cc_keys", return_value=["offline-placeholder"]), \
+                patch.object(bridge, "ask_brain", side_effect=_offline_brain), \
                 patch.object(bridge, "_ask", side_effect=ask):
             svc = bridge_v2.PrepareService(bridge.to_japanese)
             r = asyncio.run(svc.prepare(_req("我把链接放在 %s 了。" % URL)))

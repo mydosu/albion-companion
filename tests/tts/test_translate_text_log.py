@@ -147,11 +147,15 @@ class BrainModelTest(unittest.TestCase):
                 raise RuntimeError("脑没起")
 
         old_main = sys.modules.get("__main__")
+        # 整包跑时别的用例已经 import 过 bridge，`_brain_model` 会先命中它并问到本机真脑 ⇒ 必须摘掉
+        old_bridge = sys.modules.pop("bridge", None)
         sys.modules["__main__"] = Boom
         try:
             self.assertEqual(bridge_v2._brain_model(), "")
         finally:
             sys.modules["__main__"] = old_main
+            if old_bridge is not None:
+                sys.modules["bridge"] = old_bridge
 
 
 if __name__ == "__main__":

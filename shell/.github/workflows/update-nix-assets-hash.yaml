@@ -1,13 +1,9 @@
 name: Update Nix assets Hash
 
 on:
+  # 原来还挂了 push(main) + paths 过滤，但过滤的两条路径都属于已移出仓库的 stage-web
+  # ⇒ 触发永远命中不了，只留手动触发。
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - 'apps/stage-web/package.json'
-      - 'apps/stage-web/vite.config.ts'
 
 permissions:
   contents: write

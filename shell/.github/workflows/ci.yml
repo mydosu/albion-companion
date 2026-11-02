@@ -38,13 +38,8 @@ jobs:
         working-directory: ./engines/stage-tamagotchi-godot
         run: dotnet format stage-tamagotchi-godot.slnx --verify-no-changes
 
-      - run: docker run -v `pwd`:`pwd` -w `pwd` ghcr.io/realm/swiftlint:latest
-        working-directory: ./apps/stage-pocket
-
       - run: pnpm install --frozen-lockfile
       - run: pnpm run lint
-      - run: docker run -v `pwd`:`pwd` -w `pwd` ghcr.io/realm/swiftlint:latest
-        working-directory: ./apps/stage-pocket
 
   build-test:
     name: Build Test (${{ matrix.app_name }})
@@ -61,9 +56,6 @@ jobs:
 
           - app_name: ui-transitions
             command: pnpm -F @proj-airi/ui-transitions run play:build
-
-          - app_name: ui-loading-screens
-            command: pnpm -F @proj-airi/ui-loading-screens run play:build
 
     runs-on: ubuntu-latest
     steps:

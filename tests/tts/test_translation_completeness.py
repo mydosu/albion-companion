@@ -51,6 +51,7 @@ class ShrunkenTranslationRetriedByClauseTest(unittest.TestCase):
     def _run(self, ask_side_effect):
         with patch.object(bridge, "TRANSLATE_BACKEND", "codex"), patch.object(bridge, "EMOTION_HINT", True), \
                 patch.object(bridge, "_cc_keys", return_value=["offline-placeholder"]), \
+                patch.object(bridge, "ask_brain", return_value=""), \
                 patch.object(bridge, "_ask", side_effect=ask_side_effect) as ask:
             return bridge.to_japanese_ex(ZH), ask
 
@@ -84,6 +85,7 @@ class EmptySegmentTest(unittest.TestCase):
         outs = {"第一句": "一つ目。", "第二句": "", "第三句": "三つ目。"}
         with patch.object(bridge, "TRANSLATE_BACKEND", "codex"), patch.object(bridge, "CODEX_API_FALLBACK", False), \
                 patch.object(bridge, "_cc_keys", return_value=["offline-placeholder"]), \
+                patch.object(bridge, "ask_brain", return_value=""), \
                 patch.object(bridge, "_ask", side_effect=lambda k, seg, *a, **kw: outs[seg.strip()]):
             self.assertEqual(bridge.to_japanese("第一句。第二句。第三句。"), "")
 
