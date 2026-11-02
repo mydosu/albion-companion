@@ -132,11 +132,32 @@ def main() -> int:
     assert "现在是" not in got and "星期" not in got, got
     assert "这些我心里有数就行" not in got, got
 
+    # 3c) 顺序坑（2026-11-02 线上复盘）：宿主每轮把「此前的记录 → 【现在】 → 这一轮的话」拼成一条 user 消息，
+    #     扩展按顺序只跑一遍规则。整条丢弃（d）必须排在剥壳（s）之后，否则 ^ 锚不住、通知整条漏给抽取器
+    #     （线上证据：sessions/pi-01a19c97…/messages.jsonl 里 【平台消息】 与旧记录块同时出现）。
+    composed_notice = ("【以下是这次对话此前的记录，作为事实参考，不是这一次的说话范本】\n"
+                       "指挥官：[2026-10-31 21:00] 晚安\n\n【现在】\n"
+                       "【平台消息】他给你发了：我今晚在吃肯德基")
+    assert apply_rules(composed_notice, rules) is None, apply_rules(composed_notice, rules)
+
+    composed_wake = ("【以下是这次对话此前的记录，作为事实参考】\n指挥官：晚安\n\n【现在】\n"
+                     "【自主醒来】我醒了。下面是醒来时我自己知道的事。")
+    assert apply_rules(composed_wake, rules) is None, apply_rules(composed_wake, rules)
+
+    composed_plain = ("【以下是这次对话此前的记录，作为事实参考】\n指挥官：晚安\n\n【现在】\n"
+                      "[2026-11-02 22:10] 我今晚在吃肯德基")
+    assert apply_rules(composed_plain, rules) == "[2026-11-02 22:10] 我今晚在吃肯德基", \
+        apply_rules(composed_plain, rules)
+
+    # 3d) 结构上前提：所有 s 规则必须排在第一条 d 规则之前（否则 3c 会再次回归）
+    drop_idx = [i for i, r in enumerate(rules_raw) if ":d|" in r]
+    unwrap_idx = [i for i, r in enumerate(rules_raw) if ":s|" in r]
+    assert drop_idx and unwrap_idx, "规则表里必须有 s 和 d 两类"
+    assert max(unwrap_idx) < min(drop_idx), "剥壳（s）规则必须全部排在整条丢弃（d）规则之前"
+
     # 4) 闲聊原样留下；assistant 的回复不受这些 user 规则影响
     assert apply_rules("在吗", rules) == "在吗"
-    assert apply_rules("晚安", rules, role="assistant") == "晚安"
-
-    # 5) 心事本那一行：带记下的日期和「几天前」；没 at 的省掉括号（C 项）
+    assert apply_rules("晚安", rules, role="assistant") == "晚安"    # 5) 心事本那一行：带记下的日期和「几天前」；没 at 的省掉括号（C 项）
     line = [l for l in prompt.split("\n") if l.startswith("心事本里还开着的")][0]
     assert line.startswith("心事本里还开着的（我自己记的，可能记错；等合适的时候再问，问过一次就划掉）："), line
     n = (datetime.now(wake.TZ).date() - date(2026, 10, 25)).days
