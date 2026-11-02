@@ -1,43 +1,36 @@
 # 视觉机：llama.cpp server 加载 Qwen3-VL 4B，只开视觉这一路（一个模型、一个容器），
 # 对外只提供 /v1/chat/completions（带图）和 /health。
-# 用法见 README.md；参数从同目录 .env 读，缺省值就是参考部署（GTX 1660 Ti 6 GB）的值。
-#
-# 已确认（从生产 /props 读到的）：模型文件 Qwen3VL-4B-Instruct-Q4_K_M.gguf、n_ctx 5120、
-#   total_slots 1、端口 8080、modalities.vision=true。
-# 未确认（按通用默认，没进视觉机核对）：镜像 tag、容器名、mmproj 文件名、GPU 层数、
-#   restart 策略、绑定地址。
+# 用法见 README.md；参数从同目录 .env 读，默认值是一台生产机的实际值（GTX 1660 Ti 6 GB）。
 services:
   vision:
-    # 未确认：生产镜像的具体 tag（构建号）。
+    # 生产钉的是通用 tag（本地实例是构建 b9859）；要固定构建就写 server-cuda-b9859。
     image: ${VLM_IMAGE:-ghcr.io/ggml-org/llama.cpp:server-cuda}
-    # 未确认：生产容器名。
-    container_name: ${CONTAINER_NAME:-llama-vl}
-    # 未确认：生产的 restart 策略；unless-stopped 是 Docker 上常见的选择，开机自起、手动停的不自己回来。
+    container_name: ${CONTAINER_NAME:-llama-cpp}
     restart: unless-stopped
     ports:
       - "${VLM_LISTEN:-0.0.0.0}:${VLM_PORT:-8080}:8080"
     volumes:
+      # 生产挂的是 rw；模型只读就够，这里给 ro。
       - "${MODEL_DIR:-./models}:/models:ro"
     environment:
+      - CUDA_VISIBLE_DEVICES=${GPU_DEVICE:-0}
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-    # Compose v2.30+ 用这一行；更老的 docker compose 删掉它，改用下面注释的 deploy 写法。
-    gpus: all
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
-    # 已确认的这几项和生产的 /props 一致：模型文件、--ctx-size 5120、--parallel 1、容器内 8080。
-    # mmproj 文件名和 --n-gpu-layers 是未确认的通用值。
+    # 生产用的就是这种写法，老版本 compose 也认；gpus: all 要 compose v2.30 以上。
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     command: >
-      --host 0.0.0.0
-      --port 8080
       -m /models/${MODEL_FILE:-Qwen3VL-4B-Instruct-Q4_K_M.gguf}
       --mmproj /models/${MMPROJ_FILE:-mmproj-Qwen3VL-4B-Instruct-F16.gguf}
+      --host 0.0.0.0
+      --port 8080
+      -ngl ${N_GPU_LAYERS:-99}
       --ctx-size ${CTX_SIZE:-5120}
+      --threads ${THREADS:-4}
       --parallel ${PARALLEL:-1}
-      --n-gpu-layers ${N_GPU_LAYERS:-99}
       ${EXTRA_ARGS:-}

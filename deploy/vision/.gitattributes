@@ -1,0 +1,5 @@
+# 这几个文件要原样落到 Linux 上跑：CRLF 的 .sh 在 Linux 报 command not found，
+# CRLF 的 .env 会把 \r 读进变量值，所以强制 LF。
+*.sh          text eol=lf
+*.yml         text eol=lf
+.env.example  text eol=lf

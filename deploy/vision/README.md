@@ -13,7 +13,8 @@ deploy/vision/
 ├── .env.example         参数模板（复制成 .env 再改，.env 不进 Git）
 ├── docker-compose.yml   容器：镜像、端口、挂载、GPU、llama-server 参数
 ├── download_models.sh   从 Hugging Face 下主模型 + mmproj，校验文件头是 GGUF
-└── firewall.sh          只让局域网和 tailnet 访问 8080；装成 systemd 服务，docker 重启后自动重写
+├── firewall.sh          只让局域网和 tailnet 访问 8080；装成 systemd 服务，docker 重启后自动重写
+└── .gitattributes       这几个文件强制 LF（CRLF 的 .sh 在 Linux 上跑不起来）
 ```
 
 ## 前置
@@ -35,8 +36,7 @@ sudo systemctl restart docker
 ```
 
 4. **Docker Engine + compose 插件**（`docker compose version` 有输出）。
-   `gpus: all` 需要 compose v2.30 以上；更老的把 `docker-compose.yml` 里那行换成文件里注释掉的
-   `deploy.resources.reservations.devices` 写法。
+   文件里用的是 `deploy.resources.reservations.devices` 写法，老版本 compose 也认。
 
 验证容器能看见卡：
 
@@ -120,23 +120,37 @@ Docker 发布端口时会绕过 `INPUT` 链，直接走 `DOCKER-USER`；而 Dock
 
 这台机器上如果还有别的容器要放行，别直接跑 `apply`（会清空整条链），把规则并进 `firewall.sh`。
 
-## 已确认和未确认
+## 实机核对结果
 
-**已确认**（直接问生产上那个 llama-server 的 `/props` 和 `/health`，不是猜的）：
-模型文件 `Qwen3VL-4B-Instruct-Q4_K_M.gguf`（`model_path` 就在 `/models/` 下）、
-`n_ctx` 5120、`total_slots` 1、端口 8080、`modalities.vision=true`（图片能进）。
+以下是从一台在跑的生产部署上逐项读出来的（`docker inspect`、`/props`、模型目录 `ls -la`、`/etc`
+下的配置），不是通用猜测值；`.env.example` 和 `docker-compose.yml` 里的默认值就是这些。
 
-**未确认**（没进过视觉机实机核对，文件里按通用默认写，并在注释里标了「未确认」）：
+- **系统 / 运行时**：Ubuntu 26.04 LTS（内核 7.0），Docker Engine 29.x + compose 插件 v5.x，
+  NVIDIA 驱动 595.x，nvidia-container-toolkit 1.19.x，GTX 1660 Ti 6 GB。
+- **容器**：名字 `llama-cpp`，镜像 `ghcr.io/ggml-org/llama.cpp:server-cuda`
+  （本地实际解析到的构建号是 `b9859`），`restart: unless-stopped`，`8080:8080` 发布在所有网卡
+  （IPv4 + IPv6），只挂模型目录到 `/models`，GPU 走 `deploy.resources.reservations.devices`
+  （driver nvidia、count 1、capabilities [gpu]）并设 `CUDA_VISIBLE_DEVICES=0`。
+- **实际命令**（`/props` 也对得上：`model_path` 在 `/models/` 下、`n_ctx` 5120、`total_slots` 1、
+  `modalities.vision=true`）：
 
-- mmproj 文件名：按 Qwen 官方 GGUF 仓库 `mmproj-Qwen3VL-4B-Instruct-F16.gguf` 写，生产上叫什么没核对；
-- docker 镜像 tag：`server-cuda` 是 CUDA 通用 tag，生产钉的构建号不知道；
-- `--n-gpu-layers`：99（全放显存）是通用值；
-- restart 策略：`unless-stopped` 是通用值；
-- 宿主机绑定地址：`0.0.0.0` + 防火墙，生产是不是这样没核对；
-- 防火墙脚本：生产上是一份手写的 `/usr/local/bin/docker-user-rules.sh`，具体规则行和它由谁触发
-  （systemd？docker 的钩子？）都没读到；本包的 `firewall.sh` 只是照「只放行局域网 + tailnet」
-  这个行为用 `PartOf=docker.service` 复刻，`ALLOWED_SOURCES` 的网段也是通用值；
-- 视觉机的发行版和内核、NVIDIA 驱动版本、nvidia-container-toolkit 配置：都没读到。
+  ```bash
+  llama-server -m /models/Qwen3VL-4B-Instruct-Q4_K_M.gguf     --mmproj /models/mmproj-Qwen3VL-4B-Instruct-F16.gguf     --host 0.0.0.0 --port 8080 -ngl 99 --ctx-size 5120 --threads 4 --parallel 1
+  ```
 
-只有 `docker inspect`（镜像、完整命令行、挂载、端口、GPU 参数、restart 策略）和
-`ls -la` 模型目录能把这些坐实；拿到之后照实际值改 `.env` 和 `docker-compose.yml` 就行。
+- **模型文件**：目录里确认了 `Qwen3VL-4B-Instruct-Q4_K_M.gguf`（约 2.5 GB）和
+  `mmproj-Qwen3VL-4B-Instruct-F16.gguf`（约 0.8 GB），`download_models.sh` 默认下的就是这两个。
+- **它怎么起来的**：不是单跑这一份 compose，而是跟别的容器一起躺在同一个 compose 项目里
+  （同一份 `docker-compose.yaml`，模型用 `./models/llama.cpp:/models` 这种相对挂载）。
+  那台机器上别再把这份文件单独 `up` 一次，容器名会撞。
+- **防火墙怎么触发**：生产用 `/etc/systemd/system/docker.service.d/override.conf` 里的
+  `ExecStartPost=/usr/local/bin/docker-user-rules.sh`，docker 一起来就把 `DOCKER-USER` 重写一遍。
+  那份手写脚本比本包管得多：顺手封了 ollama 和几个内部端口、放行 docker 网桥网段、还补了 IPv6 NAT。
+  本包只管视觉模型这一个端口，复刻时用 `firewall.sh install` 装独立 unit（`PartOf=docker.service`，
+  效果一样），或者照它写个 drop-in。
+
+`DOCKER-USER` 在 DNAT 之后才走，所以 `--dport` 匹配的是**容器端口**（8080），不是宿主发布端口；
+`firewall.sh` 按这个写，改 `VLM_PORT` 不用动规则。
+
+**还剩的环境差异**：生产那台的 IPv6 侧把这些端口全 DROP、不单独放行来源；本包默认对 IPv6 也放行
+`ALLOWED_SOURCES`（tailnet IPv6 也能用）。不需要就 `VLM_IPV6=0`。
