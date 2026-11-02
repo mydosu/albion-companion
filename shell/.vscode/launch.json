@@ -16,24 +16,7 @@
         "REMOTE_DEBUGGING_PORT": "9222"
       }
     },
-    {
-      "name": "Debug Minecraft Service",
-      "type": "node",
-      "request": "launch",
-      // Where to run the command
-      // Where to run the command
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["-F", "@proj-airi/minecraft-bot", "exec", "tsx"],
-      "args": ["--env-file=.env", "--env-file-if-exists=.env.local", "src/main.ts"],
-      "envFile": "${workspaceFolder}/integrations/minecraft/.env",
-      // Open terminal when debugging starts (Optional)
-      // Useful to see console.logs
-      // "console": "integratedTerminal",
-      // "internalConsoleOptions": "neverOpen",
-      "skipFiles": [
-        "<node_internals>/**"
-      ]
-    },
+
     {
       "name": "Debug Renderer Process",
       "port": 9222,

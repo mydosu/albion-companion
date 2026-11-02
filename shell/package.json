@@ -13,7 +13,7 @@
   "license": "MIT",
   "scripts": {
     "postinstall": "pnpm exec simple-git-hooks && pnpm run build:packages",
-    "dev:docs": "pnpm -rF @proj-airi/docs run dev",
+
     "dev:ui": "pnpm -rF @proj-airi/stage-ui run story:dev",
     "dev:server-auth": "pnpm -rF @proj-airi/ui-server-auth run dev",
     "dev:backend": "docker compose -f server/docker-compose.yaml up --build",
@@ -36,9 +36,9 @@
     "lint": "moeru-lint .",
     "lint:fix": "moeru-lint --fix .",
     "lint:swift": "pnpm -rF @proj-airi/stage-pocket run lint:swift",
-    "to-avif": "tsx docs/scripts/avif.ts",
-    "sponsors:generate": "sponsorkit --output-dir docs/content/public/assets/sponsors",
-    "typecheck": "pnpm -rF=\"./packages/*\" -F=\"./apps/*\" -F=\"./server/**\" -F=\"./docs\" --parallel typecheck",
+
+
+    "typecheck": "pnpm -rF=\"./packages/*\" -F=\"./apps/*\" -F=\"./server/**\" --parallel typecheck",
     "typecheck:engines": "pnpm -rF=\"./engines/*\" --parallel typecheck",
     "up": "taze -w -r -I && pnpm prune && pnpm dedupe",
     "nolyfill": "pnpm dlx nolyfill",
@@ -98,11 +98,6 @@
   },
   "workspaces": [
     "packages/**",
-    "plugins/**",
-    "integrations/**",
-    "services/**",
-    "examples/**",
-    "docs/**",
     "engines/**",
     "apps/**",
     "server/**"

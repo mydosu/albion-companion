@@ -3306,5 +3306,15 @@
     "new": "tests/spine/_verify_calib.mjs",
     "category": "step-6-directory-split-A",
     "note": "step-6"
-  }
+  },
+  {"old":"shell/docs/albion/上游侵入点清单.md","new":"docs/albion/上游侵入点清单.md","category":"reorg-C-shell-upstream-trim-20261101","note":"我们自己的文档，先从上游文档站目录里搬出来再删 shell/docs"},
+  {"old":"shell/docs/albion/文件与目录说明.md","new":"docs/albion/文件与目录说明.md","category":"reorg-C-shell-upstream-trim-20261101","note":"同上；文内相对链接已改"},
+  {"old":"shell/docs","new":"","category":"reorg-C-shell-upstream-trim-20261101","note":"上游 AIRI 文档站（968 文件 / 462.1 MB，Vitepress + 8 语言内容）；移出 pnpm workspace 后 git rm -r，历史保留"},
+  {"old":"shell/integrations","new":"","category":"reorg-C-shell-upstream-trim-20261101","note":"上游聊天机器人（discord/satori/telegram/minecraft/twitter/vscode），332 文件 / 1.8 MB；桌宠构建不依赖"},
+  {"old":"shell/services","new":"","category":"reorg-C-shell-upstream-trim-20261101","note":"computer-use-mcp 服务，206 文件 / 1.6 MB；无 workspace 依赖（仅一个 dev-only smoke 脚本调用它的 CLI）"},
+  {"old":"shell/plugins","new":"","category":"reorg-C-shell-upstream-trim-20261101","note":"5 个上游插件样例，52 文件 / 0.1 MB；无 workspace 依赖"},
+  {"old":"shell/.agents","new":"","category":"reorg-C-shell-upstream-trim-20261101","note":"上游 AI 代理技能库，461 文件 / 1.3 MB；不在 pnpm workspace 内"},
+  {"old":"shell/packages/font-departure-mono","new":"","category":"reorg-C-shell-upstream-trim-20261101","note":"字体包，无任何引用"},
+  {"old":"shell/patches/mineflayer-pathfinder.patch","new":"","category":"reorg-C-shell-upstream-trim-20261101","note":"随 integrations/minecraft 一起删除（pnpm 报 UNUSED_PATCH）"},
+  {"old":"shell/patches/sponsorkit@17.1.0.patch","new":"","category":"reorg-C-shell-upstream-trim-20261101","note":"随 docs 的 sponsors 生成一起删除（pnpm 报 UNUSED_PATCH）"}
 ]

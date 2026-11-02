@@ -6,6 +6,7 @@
 | `launch/` | 启动实现：`start_all.bat`、`stop_all.bat`、`silent_run.ps1`、`start_brain.ps1`、`close_consoles.ps1`、`hidden.vbs`、`load_env.bat`、`brain_watch.ps1`、`check_all.py`、`install_autostart.ps1` | 跟踪 |
 | `config/local.env` | Windows 侧唯一环境变量文件（KEY=VALUE）；模板 `local.env.example` | 忽略，只入库模板 |
 | `shell/`、`ear/`、`eyes/`、`widget/`、`tts/` | 当前生产源码、构建配置、运行入口、许可 | 跟踪源码；模型、环境、构建产物忽略 |
+| `shell/` 里的上游件（2026-11-01 移除） | 上游文档站 `shell/docs/`（462 MB，Vitepress + 多语言内容）、聊天机器人 `shell/integrations/`、`services/computer-use-mcp`、插件样例 `shell/plugins/`、AI 技能库 `shell/.agents/`、`packages/font-departure-mono` | 已 `git rm -r` 并移出 pnpm workspace；历史仍在 git 里（`git log -- shell/docs`），需要时看上游仓库 |
 | `tests/ear/`、`tests/tts/`、`tests/pi-brain/` | 独立测试、诊断、复现支持脚本 | 跟踪 |
 | `tests/ear/data/`、TTS golden JSON | 经过审查的固定输入/预期值 | 跟踪；不放真实私密会话 |
 | `tests/tts/eval/`、`tests/tts/probes/` | 需真实服务的 A/B 与语音探针 | 脚本跟踪，产物忽略 |
