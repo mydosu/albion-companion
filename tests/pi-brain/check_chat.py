@@ -16,6 +16,8 @@
 """
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import shutil
 import sys
@@ -379,11 +381,11 @@ def check_group_gate():
         def recent_events(self, *a, **k):
             return list(self.events)
 
-        async def send_group(self, text):
+        async def send_group(self, text, sticker_path=None):
             self.sent.append(text)
             return 1
 
-        async def send_dm(self, text):
+        async def send_dm(self, text, sticker_path=None):
             self.sent.append(text)
             return 2
 
@@ -529,6 +531,143 @@ def check_owner_identity():
        "群里有人叫「指挥官」也照样 @ 到真 owner")
 
 
+def check_stickers():
+    """表情包：只发图 / 图+文字 / 编号不存在 / 动图 / TG 退 png / 群 R=0 拒发（2026-11-02）。"""
+    import shutil
+    import tempfile
+
+    root = tempfile.mkdtemp(prefix="albion-stickers-")
+    try:
+        for rel in ("webp/a.webp", "png/a.png", "png/b.png", "gif/c.gif"):
+            os.makedirs(os.path.dirname(os.path.join(root, rel)), exist_ok=True)
+            with open(os.path.join(root, rel), "wb") as f:
+                f.write(b"\x00fake")
+        with open(os.path.join(root, "index.json"), "w", encoding="utf-8") as f:
+            json.dump([
+                {"id": "albion_001", "file": {"webp": "webp/a.webp", "png": "png/a.png"},
+                 "character": "albion", "meaning": "害羞", "emotions": ["shy"]},
+                {"id": "generic_002", "file": {"png": "png/b.png"},
+                 "character": "generic", "meaning": "晚安", "emotions": ["night"]},
+                {"id": "anim_003", "file": {"gif": "gif/c.gif"},
+                 "character": "albion", "meaning": "开心", "emotions": ["happy"]},
+                {"id": "form_004", "file": {"png": "png/b.png"},
+                 "character": "formidable", "meaning": "害羞", "emotions": ["shy"]},
+            ], f, ensure_ascii=False)
+
+        cfg = chat_bridge.load_config(environ={"ALBION_STICKERS_DIR": root},
+                                      home=os.path.join(_STATE, "nohome"))
+
+        class FakeTG:
+            def __init__(self):
+                self.calls = []
+
+            async def send_text(self, text):
+                self.calls.append(("text", text))
+                return 1
+
+            async def send_voice(self, ogg, caption=None):
+                self.calls.append(("voice", caption))
+                return 2
+
+            async def send_sticker(self, paths, caption=None):
+                self.calls.append(("sticker", paths.get("gif") or paths.get("webp") or paths.get("png")))
+                return 3
+
+        class FakeDC:
+            ready = True
+            client = object()
+
+            def __init__(self):
+                self.calls = []
+
+            def channel_name(self):
+                return "常规"
+
+            def owner_name_set(self):
+                return set()
+
+            async def send_dm(self, text, sticker_path=None):
+                self.calls.append(("dm", text, sticker_path))
+                return 1
+
+            async def send_group(self, text, sticker_path=None):
+                self.calls.append(("group", text, sticker_path))
+                return 2
+
+            async def recent_events(self, *a, **k):
+                return []
+
+        def service(budget=None):
+            svc = chat_bridge.Service(cfg)
+            svc.tg = FakeTG()
+            svc.dc = FakeDC()
+            svc.schedule_dm = lambda: None
+            svc.schedule_group = lambda: None
+
+            async def fake_budget():
+                return budget
+
+            svc.refresh_budget = fake_budget
+            return svc
+
+        # 1) 只发表情包（TG）：不发文字，只发图
+        svc = service()
+        inbox.add("telegram", "在吗")            # 有他待回的消息：算回复，不走「主动开口」节奏
+        ok1, msg1 = asyncio.run(svc.send("telegram", "", sticker="albion_001"))
+        ok(ok1 and svc.tg.calls == [("sticker", os.path.join(root, "webp/a.webp"))],
+           "只发表情包：不发明文，只发一张图", svc.tg.calls)
+        ok("albion_001" in msg1, "结果里告诉她发的是哪张", msg1)
+
+        # 2) 文字 + 表情包（Discord 私信）：一起发，Discord 传 png
+        svc = service()
+        inbox.add("discord", "在吗")
+        ok2, _ = asyncio.run(svc.send("discord", "看图", sticker="albion_001"))
+        ok(ok2 and svc.dc.calls == [("dm", "看图", os.path.join(root, "png/a.png"))],
+           "文字+表情包：一起发，Discord 传 png", svc.dc.calls)
+
+        # 3) 编号不存在：一句提示，什么都不发
+        svc = service()
+        ok3, msg3 = asyncio.run(svc.send("telegram", "在吗", sticker="nope_999"))
+        ok(not ok3 and "没有这个表情包编号" in msg3 and not svc.tg.calls,
+           "编号不存在：提示先用 find_sticker，不发出去", msg3)
+
+        # 4) 动图：Discord 群传 gif
+        svc = service()
+        inbox.add("discord_group", "在吗")
+        asyncio.run(svc.send("discord_group", "", sticker="anim_003"))
+        ok(bool(svc.dc.calls) and svc.dc.calls[0][2] == os.path.join(root, "gif/c.gif"),
+           "动图走 gif（Discord 附件）", svc.dc.calls)
+
+        # 5) TG 发 webp 失败 → 退回 sendPhoto 发 png；动图走 sendAnimation
+        tg = chat_bridge.Telegram(cfg, lambda u: None)
+        calls = []
+
+        async def fake_file(method, field, path, caption=None):
+            calls.append((method, field, os.path.basename(path)))
+            if method == "sendSticker":
+                raise RuntimeError("sendSticker: STICKER_ invalid")
+            return 9
+
+        tg._send_file = fake_file
+        asyncio.run(tg.send_sticker(
+            chat_bridge.sticker_paths(root, chat_bridge.sticker_entry(root, "albion_001"))))
+        ok([c[0] for c in calls] == ["sendSticker", "sendPhoto"] and calls[1][1] == "photo",
+           "TG：sendSticker 失败退回 sendPhoto(png)", calls)
+        calls.clear()
+        asyncio.run(tg.send_sticker(
+            chat_bridge.sticker_paths(root, chat_bridge.sticker_entry(root, "anim_003"))))
+        ok([c[0] for c in calls] == ["sendAnimation"],
+           "TG：动图走 sendAnimation(gif)", calls)
+
+        # 6) 群里 R=0：连表情包一起拒
+        svc = service(budget={"remaining": 0, "used": 12})
+        ok6, msg6 = asyncio.run(svc.send("discord_group", "晚安", sticker="albion_001"))
+        ok(not ok6 and msg6 == chat_bridge.GROUP_BUDGET_EMPTY and not svc.dc.calls,
+           "群里 R=0：连表情包一起拒发", msg6)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def main():
     check_inbox()
     check_owner_and_group()
@@ -540,6 +679,7 @@ def main():
     check_budget()
     check_group_gate()
     check_owner_identity()
+    check_stickers()
     print("check_chat: %d passed, %d failed" % (PASS, FAIL))
     return 0 if FAIL == 0 else 1
 

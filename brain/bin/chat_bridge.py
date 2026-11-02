@@ -109,6 +109,8 @@ def load_config(environ=None, home=None):
         "tts_url": get("ALBION_CHAT_TTS_URL", TTS_URL).strip(),
         "tts_voice": (get("ALBION_CHAT_TTS_VOICE", "albion").strip() or "albion"),
         "proxy": get("ALBION_CHAT_PROXY", "http://127.0.0.1:7897").strip(),
+        "stickers_dir": (get("ALBION_STICKERS_DIR", "/mnt/d/AI/stickers").strip()
+                         or "/mnt/d/AI/stickers"),
         "log": get("ALBION_CHAT_LOG", os.path.join(home, "logs", "chat.log")),
         "timeout": float(get("ALBION_CHAT_NOTIFY_TIMEOUT", "600") or 600),
     }
@@ -271,6 +273,67 @@ def rewrite_owner_mentions(text, owner_id, owner_names=()):
         out = re.sub(r"@(" + re.escape(name) + r")(?=$|[^0-9A-Za-z_])", "@" + OWNER_LABEL, out,
                      flags=re.IGNORECASE)
     return out
+
+
+# ── 表情包（2026-11-02）：素材在 D:\AI\stickers（不进 Git），index.json 每项有 id/file/… ──
+_STICKER_CACHE = {}                      # 目录 → (mtime, {id: entry})，按 mtime 缓存，别每条都读盘
+
+
+def load_sticker_index(dirpath):
+    """读 ``<dir>/index.json``（按 mtime 缓存）→ ``{id: entry}``；读不到就返回空表。"""
+    path = os.path.join(dirpath or "", "index.json")
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return {}
+    cached = _STICKER_CACHE.get(dirpath)
+    if cached and cached[0] == mtime:
+        return cached[1]
+    try:
+        with open(path, encoding="utf-8") as f:
+            items = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    index = {}
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        sid = str(item.get("id") or "").strip()
+        if sid:
+            index[sid] = item
+    _STICKER_CACHE[dirpath] = (mtime, index)
+    return index
+
+
+def sticker_entry(dirpath, sticker_id):
+    return load_sticker_index(dirpath).get(str(sticker_id or "").strip())
+
+
+def sticker_paths(dirpath, entry):
+    """``{kind: 绝对路径}``：只保留 entry.file 里写了的那种（webp/png/gif）。"""
+    files = (entry or {}).get("file") or {}
+    if isinstance(files, str):
+        files = {"png": files}
+    out = {}
+    if isinstance(files, dict):
+        for kind, rel in files.items():
+            if rel:
+                out[str(kind).lower()] = os.path.join(dirpath, str(rel))
+    return out
+
+
+def is_animated(paths):
+    """有 gif 就是动图（TG 走 sendAnimation、Discord 传 gif）。"""
+    return bool((paths or {}).get("gif"))
+
+
+def _sticker_upload(paths):
+    """Discord 上传用哪个文件：动图 gif，静态 png（没有 png 就退回 webp）。"""
+    if not paths:
+        return None
+    if paths.get("gif"):
+        return paths["gif"]
+    return paths.get("png") or paths.get("webp")
 
 
 def _stamp(ts):
@@ -569,12 +632,56 @@ class Telegram:
             raise RuntimeError("sendVoice: %s" % str(data.get("description"))[:160])
         return (data.get("result") or {}).get("message_id")
 
+    async def _send_file(self, method, field, path, caption=None):
+        """上传一个本地文件给 Telegram（multipart）。"""
+        if self.http is None:
+            raise RuntimeError("telegram not connected")
+        import aiohttp
+        form = aiohttp.FormData()
+        form.add_field("chat_id", str(int(self.cfg["tg_owner"])))
+        if caption:
+            form.add_field("caption", caption)
+        with open(path, "rb") as fh:
+            form.add_field(field, fh.read(), filename=os.path.basename(path))
+        async with self.http.post(self._url(method), data=form,
+                                  timeout=aiohttp.ClientTimeout(total=120)) as resp:
+            data = await resp.json(content_type=None)
+        if not data.get("ok"):
+            raise RuntimeError("%s: %s" % (method, str(data.get("description"))[:160]))
+        return (data.get("result") or {}).get("message_id")
+
+    async def send_sticker(self, paths, caption=None):
+        """表情包：动图走 sendAnimation；静态优先 sendSticker(webp)，失败退回 sendPhoto(png)。"""
+        if is_animated(paths):
+            return await self._send_file("sendAnimation", "animation", paths["gif"], caption)
+        if paths.get("webp"):
+            try:
+                return await self._send_file("sendSticker", "sticker", paths["webp"])
+            except Exception as exc:              # noqa: BLE001 - 老客户端/尺寸不合会拒，退 png
+                log("tg_sticker_failed", error=repr(exc)[:120])
+                if not paths.get("png"):
+                    raise
+        if paths.get("png"):
+            return await self._send_file("sendPhoto", "photo", paths["png"], caption)
+        raise RuntimeError("这张表情包没有可发的文件（webp/png/gif 都没有）")
+
     async def close(self):
         self.polling = False
         if self.task:
             self.task.cancel()
         if self.http:
             await self.http.close()
+
+
+async def _discord_send(channel, text, sticker_path=None):
+    """发一条消息；有表情包就以附件上传（静态 png、动图 gif），文字当 content。"""
+    text = (text or "").strip()
+    if not sticker_path:
+        return await channel.send(text)
+    import discord
+    with open(sticker_path, "rb") as fh:
+        return await channel.send(content=text or None,
+                                  file=discord.File(fh, filename=os.path.basename(sticker_path)))
 
 
 # ── Discord ────────────────────────────────────────────────────────────────
@@ -704,17 +811,17 @@ class DiscordBot:
                 self.remember(member)
         log("discord_members", known=len(self._members))
 
-    async def send_dm(self, text):
+    async def send_dm(self, text, sticker_path=None):
         if not self.client or not self.ready:
             raise RuntimeError("discord not ready")
         user = self.client.get_user(int(self.cfg["dc_owner"]))
         if user is None:
             user = await self.client.fetch_user(int(self.cfg["dc_owner"]))
         channel = user.dm_channel or await user.create_dm()
-        msg = await channel.send(text)
+        msg = await _discord_send(channel, text, sticker_path)
         return msg.id
 
-    async def send_group(self, text):
+    async def send_group(self, text, sticker_path=None):
         if not self.client or not self.ready:
             raise RuntimeError("discord not ready")
         if not self.cfg["dc_channel"]:
@@ -723,7 +830,7 @@ class DiscordBot:
         if channel is None:
             raise RuntimeError("群频道 %s 找不到" % self.cfg["dc_channel"])
         # 「@可畏」→「<@id>」，否则 Discord 只当普通文字，不会真的 @ 到她（2026-11-02）
-        msg = await channel.send(replace_mentions(text, self.name_index()))
+        msg = await _discord_send(channel, replace_mentions(text, self.name_index()), sticker_path)
         return msg.id
 
     async def recent_events(self, limit=300, since_s=None):
@@ -923,8 +1030,18 @@ class Service:
                 return
 
     # ── 她发消息 ──
-    async def send(self, channel, text, voice=False):
-        """返回 (ok, 文字/原因)。"""
+    async def send(self, channel, text, voice=False, sticker=""):
+        """返回 (ok, 文字/原因)。sticker 是 find_sticker 查到的编号（可只发表情包）。"""
+        text = (text or "").strip()
+        sticker = str(sticker or "").strip()
+        entry = sticker_entry(self.cfg.get("stickers_dir") or "", sticker) if sticker else None
+        if sticker and entry is None:
+            return False, "没有这个表情包编号，先用 find_sticker 找一张"
+        paths = sticker_paths(self.cfg.get("stickers_dir") or "", entry) if entry else {}
+        if sticker and not paths:
+            return False, "这张表情包没有可发的文件（webp/png/gif 都没有）"
+        if not text and not sticker:
+            return False, "text 是空的"
         if channel == "discord_group":
             budget = await self.refresh_budget()
             if budget is not None and int(budget.get("remaining") or 0) <= 0:
@@ -938,35 +1055,44 @@ class Service:
                 return False, "现在不该主动找他：%s。" % why
         notes = []
         voiced = False
+        sent_sticker = False
         try:
             if channel == "telegram":
-                ogg = await synth_ogg(self.cfg, text) if voice else None
-                if voice and ogg is None:
+                ogg = await synth_ogg(self.cfg, text) if (voice and text) else None
+                if voice and text and ogg is None:
                     notes.append("语音没合成出来，只发了文字。")
                 if ogg:
                     await self.tg.send_voice(ogg, voice_caption(self.cfg, text))
                     voiced = True
-                else:
+                elif text:
                     await self.tg.send_text(text)
+                if sticker:
+                    await self.tg.send_sticker(paths, text or None)
+                    sent_sticker = True
             elif channel == "discord":
                 if voice:
                     notes.append("Discord 那边的语音条这次没做，发的是文字。")
-                await self.dc.send_dm(text)
+                await self.dc.send_dm(text, _sticker_upload(paths))
+                sent_sticker = bool(sticker)
             elif channel == "discord_group":
                 if voice:
                     notes.append("群里发的是文字。")
-                await self.dc.send_group(text)
+                await self.dc.send_group(text, _sticker_upload(paths))
+                sent_sticker = bool(sticker)
             else:
                 return False, "channel 只能是 telegram / discord / discord_group。"
         except Exception as exc:                  # noqa: BLE001 - 平台没连上/被拒：把原因交回给她
-            log("send_failed", channel=channel, error=repr(exc)[:200])
+            log("send_failed", channel=channel, error=repr(exc)[:200], sticker=sticker or None)
             return False, "没发出去：%s" % str(exc)[:200]
+        if sent_sticker:
+            notes.append("表情包 %s 发出去了" % sticker)
         answered = 0
         if pending:
             answered = inbox.mark_answered([i["id"] for i in pending])
         if proactive and channel != "discord_group":
             wake.note_spoken()
-        log("sent", channel=channel, voice=voiced, answered=answered, proactive=proactive, chars=len(text))
+        log("sent", channel=channel, voice=voiced, answered=answered, proactive=proactive,
+            chars=len(text), sticker=sticker or None)
         return True, send_result_text(channel, voiced=voiced, notes=notes,
                                       answered=answered, proactive=proactive)
 
@@ -987,11 +1113,12 @@ async def handle_send(service, request):
         return web.json_response({"ok": False, "error": "body 不是对象"}, status=400)
     channel = str(body.get("channel") or "").strip()
     text = str(body.get("text") or "").strip()
+    sticker = str(body.get("sticker") or "").strip()
     if channel not in CHANNELS:
         return web.json_response({"ok": False, "error": "channel 只能是 telegram / discord / discord_group"}, status=400)
-    if not text:
+    if not text and not sticker:
         return web.json_response({"ok": False, "error": "text 是空的"}, status=400)
-    ok, detail = await service.send(channel, text, voice=bool(body.get("voice")))
+    ok, detail = await service.send(channel, text, voice=bool(body.get("voice")), sticker=sticker)
     return web.json_response({"ok": ok, "text": detail} if ok else {"ok": False, "error": detail})
 
 
