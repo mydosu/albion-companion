@@ -199,7 +199,7 @@ def add(channel, text, *, from_="owner", kind="text", at=None, platform_msg_id="
 
     needs = 他发的（from=owner）或群里 @她（why=mention）→ unread，进待回；
     其余（群里别人/别的 bot）→ context，只当上下文，不驱动叫醒。
-    悄悄话里可畏的话（why=whisper）也进待回：那是两个人说话，她得看得到、回得了。
+    悄悄话里可畏的话（why=whisper）也进待回：那是两个人说话，她得能看见、能回。
     """
     if channel not in CHANNELS:
         raise ValueError("unknown channel: %r" % (channel,))

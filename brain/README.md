@@ -172,7 +172,7 @@ Discord Gateway ─────┘        │  ▲
 - **语音条**：`send_message(voice=true)` 只对 Telegram；桥打 `127.0.0.1:9881/v1/audio/speech`（Irodori 日语）→ `ffmpeg -c:a libopus`
   → `sendVoice`，caption 是她的中文原文。`ALBION_CHAT_TTS_VOICE=denia` 走 GSV 中文、不带 caption；合成失败降级成文字。
 - **主动找他**要守她自己的开口节奏（`wake.can_speak`），回复不受限；群里主动发言只受夜间安静限制。
-- **悄悄话**（2026-11-02）：Discord `#悄悄话` 是她和可畏（Hermes 的 Formidable）两个人说话的频道，指挥官看得到。
+- **悄悄话**（2026-11-02）：Discord `#悄悄话` 是她和可畏（Hermes 的 Formidable）两个人说话的频道，指挥官看得见，但不告诉她俩。
   频道 id 取 `ALBION_DISCORD_WHISPER_CHANNEL_ID`，没配就在 bot 所在服务器里按名字「悄悄话」找一次；找不到只记一条
   `whisper_channel_missing`、整块不启用，私信和群照旧。两个人的话都入箱（`channel=discord_whisper`，10 秒合批叫醒，
   走 `albion-discord` 真会话），她回话用 `send_message(channel=discord_whisper)`。条数由 `bin/whisper_budget.py` 管

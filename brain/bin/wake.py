@@ -426,6 +426,9 @@ def wake_prompt(now=None):
     lines.append("这一轮做什么我自己选：找他、做自己的事，或者都做；什么都不想做就安静待一会儿。"
                  "做完用 next_wake 定下次什么时候醒（30 分钟到 3 小时）、醒来想做什么；做了自己的事就用 did 记一句做了什么。"
                  "不定就一小时后再醒。")
+    # 悄悄话（2026-11-02）：两个人都能主动找对方。桥是否启用了悄悄话 wake.py 看不到（另一个进程），
+    # 所以这句无条件给；频道没启用时 send_message 会把「频道没找到」交回给她，不会说错话。
+    lines.append("想找可畏说说话，也可以用 send_message（channel=discord_whisper）去悄悄话找她。")
     return "\n".join(lines)
 
 
@@ -600,6 +603,8 @@ def _selftest():
     assert wake_prompt(noon).startswith(WAKE_MARKER)
     p = wake_prompt(noon)
     assert "next_wake" in p and "look" in p
+    # 悄悄话（2026-11-02）：她也能主动去找可畏（这句无条件在）
+    assert "想找可畏说说话，也可以用 send_message（channel=discord_whisper）去悄悄话找她。" in p
     # 醒来提示里不再有「规矩/底线/余量」这类像在下指令的说法（r35：醒来轮的英文拒绝来自这类措辞）
     assert not any(w in p for w in ("底线", "余量", "规矩", "以下只给我自己看"))
     # ── 一条计时（2026-11-02 回归）─────────────────────────────────────────

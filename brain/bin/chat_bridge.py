@@ -57,7 +57,7 @@ CHANNELS = ("telegram", "discord", "discord_group", "discord_whisper")
 WHISPER_CHANNEL_NAME = "悄悄话"                # 没配 ALBION_DISCORD_WHISPER_CHANNEL_ID 时按名字找
 WHISPER_PEER_LABEL = "可畏"                    # 悄悄话里另一个 bot（Formidable）的显示名
 WHISPER_PEER_ALIASES = ("可畏", "formidable")
-WHISPER_HEAD = "悄悄话里有新消息（这里是我和可畏两个人说话的地方，指挥官也看得到）："
+WHISPER_HEAD = "悄悄话里有新消息（这里是我和可畏两个人说话的地方）："
 WHISPER_TAIL = "想回就用 send_message（channel=discord_whisper）；这里写的字她看不到。"
 # 群里还有可畏（Hermes 那边的 bot）。这句是她群聊说明的一部分，原文照定稿（2026-11-02 用户改）。
 GROUP_PEER_NOTE = "可畏也在群里，群里说的话她都看得到。"

@@ -205,6 +205,8 @@ def check_wake_box():
     ok("睡了吗" not in prompt, "回过的（answered）不再念")
     ok("晚上好" not in prompt, "群里别人的话不念（只当上下文）")
     ok("这一轮把它们了结" in prompt and "不回也行" in prompt, "这一轮了结的说法照定稿")
+    ok("想找可畏说说话，也可以用 send_message（channel=discord_whisper）去悄悄话找她。" in prompt,
+       "醒来提示里带着「去悄悄话找可畏」（两个人能互相主动找）")
     ok(wake.load()["inbox_shown"] == [a["id"], d["id"]], "记下这一轮念了哪几条")
     wake.after_wake('<|ACT:{"emotion":"calm"}|>', now + 1)
     ok(inbox.pending() == [], "这一轮结束后没了结的也了结")
@@ -1082,12 +1084,12 @@ def check_whisper():
     w2 = inbox.add("discord_whisper", "在的", at=1762000060.0, author="Formidable",
                    from_="bot", why="whisper")
     text = chat_bridge.whisper_notice([w1, w2])
-    expected = ("【平台消息】悄悄话里有新消息（这里是我和可畏两个人说话的地方，指挥官也看得到）：\n"
+    expected = ("【平台消息】悄悄话里有新消息（这里是我和可畏两个人说话的地方）：\n"
                 "#%d 20:26 指挥官：在吗\n#%d 20:27 可畏：在的\n"
                 "想回就用 send_message（channel=discord_whisper）；这里写的字她看不到。" % (w1["id"], w2["id"]))
     ok(text == expected, "悄悄话叫醒文本逐字（开头/每行/结尾）", text)
     zero = {"remaining": 0, "session_used": 20, "day_used": 20, "limit": "session"}
-    single = ("【平台消息】悄悄话里有新消息（这里是我和可畏两个人说话的地方，指挥官也看得到）：\n"
+    single = ("【平台消息】悄悄话里有新消息（这里是我和可畏两个人说话的地方）：\n"
               "#%d 20:26 指挥官：在吗\n"
               "想回就用 send_message（channel=discord_whisper）；这里写的字她看不到。" % w1["id"])
     ok(chat_bridge.whisper_notice([w1], zero) == single + "\n" + chat_bridge.whisper_budget.SESSION_EMPTY,
