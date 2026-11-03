@@ -1,6 +1,6 @@
 name: whisper-budget
 version: 0.1.0
-description: Discord「悄悄话」的额度提醒与 remaining=0 硬拦（阿尔比恩 bridge GET /whisper_budget），覆盖 Discord 轮和 cron 轮
+description: Discord「悄悄话」和「常规」群的额度提醒与 remaining=0 硬拦（阿尔比恩 bridge /whisper_budget、/group_budget），覆盖 Discord 轮和 cron 轮
 author: albion
 provides_hooks:
   - pre_llm_call

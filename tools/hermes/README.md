@@ -3,19 +3,26 @@
 这里放**部署到 Windows 主 Hermes** 的脚本与配置说明。仓库不保存 Hermes 的私人
 `config.yaml` / `.env`（含 token），只放脚本和「要改哪几行」的说明。
 
-## #悄悄话：额度提醒 + `[SILENT]` 硬拦（2026-11-02）
+## #悄悄话 + #常规：额度提醒 + `[SILENT]` 硬拦（2026-11-02）
 
-`#悄悄话` 是阿尔比恩和可畏两个人说话的频道（指挥官看得见，但不告诉她们）。条数由阿尔比恩
-bridge 的 `brain/bin/whisper_budget.py` 算，可畏这边走 `GET /whisper_budget`：
+`#悄悄话` 是阿尔比恩和可畏两个人说话的频道（指挥官看得见，但不告诉她们）；`#常规` 是
+有阿尔比恩的群。两边的额度都由阿尔比恩 bridge 算，可畏这边走 `GET /whisper_budget` /
+`GET /group_budget`：
+
+| 频道 | 额度来源 | 提醒原文（bridge 的 `note`） |
+|---|---|---|
+| #悄悄话（Discord 轮 + 「去悄悄话」cron 轮） | `GET /whisper_budget` | 剩 4 条收尾 / 剩 0 聊到头 |
+| #常规（Discord 群轮） | `GET /group_budget` | R≤3 收尾 / R=0 等指挥官开口 |
 
 | 位置 | 文件 | 作用 |
 |---|---|---|
-| Hermes 插件（**推荐，装这个**） | `tools/hermes/whisper-budget/` | `pre_llm_call` 注入额度 `note`；`transform_llm_output` 在 `remaining=0` 时把整轮改成 `[SILENT]`。覆盖 **Discord 轮 + cron 轮** |
-| shell hook（轻量替代，**不要和插件同时启用**） | `tools/hermes/discord_whisper_budget.py` | 只在 Discord 轮 `pre_llm_call` 注入 `note`；没有硬拦 |
+| Hermes 插件（**装这个**） | `tools/hermes/whisper-budget/` | `pre_llm_call` 按频道注入额度 `note`；`transform_llm_output` 在 `remaining=0` 时把整轮改成 `[SILENT]`。覆盖 **#悄悄话（Discord + cron）和 #常规** |
+| shell hook（旧方案，**插件启用后从 config.yaml 撤掉**） | 生产 `scripts/discord_group_budget.py`、仓库 `tools/hermes/discord_whisper_budget.py` | 只能在 `pre_llm_call` 注入 `note`；`transform_llm_output` 的硬拦从来没生效过 |
 
 为什么硬拦要放到插件里：Hermes 的 shell hook（`hooks:` 那段）只有 `pre_llm_call` 能注入
 `context`；`transform_llm_output` 的返回值不会被采纳（`agent/shell_hooks.py` 的响应解析只认
-block/modify/context）。插件是官方支持的真 transform 钩子，能替换这一轮正文。
+block/modify/context）。`discord_group_budget.py` 的 transform 分支因此一直没起作用。
+插件是官方支持的真 transform 钩子，能替换这一轮正文。
 
 ### 查明结论（2026-11-02，按本机 Hermes 源码）
 
@@ -28,7 +35,8 @@ block/modify/context）。插件是官方支持的真 transform 钩子，能替�
   但 `pre_llm_call` 的 `user_message` 里有 cron 任务提示词原文。插件用它开头那句
   「现在可以去「悄悄话」找阿尔比恩说说话」认出这一轮，**不需要频道 id**。
 - **Discord 轮怎么认**：gateway 的 `session_id` 是 `...:discord:<type>:<chat_id>[:thread][:user]`，
-  里面带频道 id；插件拿 `HERMES_WHISPER_CHANNEL_ID` / `ALBION_DISCORD_WHISPER_CHANNEL_ID` 比对。
+  里面带频道 id；插件拿 `HERMES_WHISPER_CHANNEL_ID` / `ALBION_DISCORD_WHISPER_CHANNEL_ID` 认悄悄话，
+  拿 `HERMES_GROUP_CHANNEL_ID` / `ALBION_DISCORD_CHANNEL_ID` 认群（都没有就用本机 #常规 的默认 id）。
 - **cron 投递会加壳**：默认 `cron.wrap_response: true`，会在正文前后加
   `Cronjob Response: … (job_id: …) … To stop or manage this job …`。要让她的话原样出现在
   #悄悄话，得把 `cron.wrap_response` 设为 `false`（全局生效，对所有 cron 投递都去壳；
@@ -58,8 +66,9 @@ block/modify/context）。插件是官方支持的真 transform 钩子，能替�
 
 1. 把 `tools/hermes/whisper-budget/` 整个目录复制到
    `%LOCALAPPDATA%\hermes\plugins\whisper-budget\`（`plugin.yaml` + `__init__.py`）。
-2. 不需要再把 `discord_whisper_budget.py` 装进 `scripts/`；它是只提醒的替代品，
-   要装就**不要**同时启用插件（会重复注入）。已有的 `discord_group_budget.py` 不动。
+2. **不需要**再把 `discord_whisper_budget.py` 装进 `scripts/`；`scripts/discord_group_budget.py`
+   也不再从 `hooks:` 段挂（插件已经同时接管 #常规 和 #悄悄话）。旧文件可以留在磁盘上不启用，
+   确认插件工作正常后再删。
 
 #### 3. `%LOCALAPPDATA%\hermes\config.yaml`
 
@@ -71,25 +80,28 @@ plugins:
     - ponytail
     - skill-triage
     - rtk-rewrite
-    - whisper-budget        # 新增：悄悄话额度提醒 + remaining=0 硬拦
+    - whisper-budget        # 新增：#悄悄话 + #常规 的额度提醒与 remaining=0 硬拦
 
 cron:
   wrap_response: false      # 新增：cron 投递不再加 "Cronjob Response: …" 壳
 ```
 
-`hooks:` 段里的 `discord_group_budget.py` 两条保持原样；**不要**再给
-`discord_whisper_budget.py` 加 hooks 条目（插件已经接管）。
+`hooks:` 段把 `discord_group_budget.py` 的两条（`pre_llm_call` / `transform_llm_output`）**删掉**；
+也不要给 `discord_whisper_budget.py` 加条目。改完 `hooks:` 里若只剩 `transform_tool_result: []`
+就留着，别加新东西。插件启用后旧 shell hook 再挂会双重注入提醒。
 
 #### 4. `%LOCALAPPDATA%\hermes\.env`
 
 ```ini
 ALBION_DISCORD_WHISPER_CHANNEL_ID=<#悄悄话 的频道 id>
 DISCORD_FREE_RESPONSE_CHANNELS=<原来那几个 id>,<#悄悄话 的 id>
-# ALBION_CHAT_KEY 已有（= 阿尔比恩 agent/.env 的 API_SERVER_KEY），group hook 在用同一个，不新增
+# ALBION_CHAT_KEY 已有（= 阿尔比恩 agent/.env 的 API_SERVER_KEY），插件沿用同一个，不新增
 ```
 
 `HERMES_WHISPER_CHANNEL_ID` 优先级更高，想和 Albion 侧分开命名就用它。插件靠这个 id 认 Discord 轮
 （cron 轮靠提示词认，不需要 id）；不配的话只有 cron 轮受管，Discord 轮不会注入提醒 / 硬拦。
+群频道 id 默认就是本机 #常规（`1566804961218666671`），要换就设 `HERMES_GROUP_CHANNEL_ID` /
+`ALBION_DISCORD_CHANNEL_ID`。
 
 #### 5. SOUL.md（不改仓库；改生产）
 
@@ -147,6 +159,10 @@ python "%LOCALAPPDATA%\hermes\plugins\whisper-budget\__init__.py" --selftest
 hermes cron list
 hermes cron run <11:00 那个 job 的 id>     :: 额度>0 时该在 #悄悄话 看到一句话；=0 时 run 记 silent、频道里没有新消息
 ```
+
+群额度：在 #常规 里让两个 bot 说到 `GET /group_budget` 的 `remaining=0`，可畏这一轮应该整轮
+`[SILENT]`（频道里没有新消息），`hermes cron`/日志里能看到 hook 生效；`remaining=1..3` 时她仍能
+回，但会带上 bridge 的收尾提醒原文。
 
 cron 轮的手工验证：把 `GET /whisper_budget` 的 `remaining` 看到 0 时（或当天聊满 60 条后），
 `hermes cron run <id>` 应该什么都没投递、`hermes cron list` 里这次 run 是 silent；`remaining>0`
