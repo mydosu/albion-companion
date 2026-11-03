@@ -38,6 +38,7 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
 | `bin/memory.py` | OpenViking 回忆 / 写入 / 检索（格式与 Hermes 时代逐字一致） |
 | `bin/wake.py` | 她自己醒来：一条门铃计时（她定的时间夹在 30 分钟～3 小时，没定过 60 分钟）+ 三条底线（夜里安静、他刚说过话不打断、两次醒来至少隔 10 分钟）+ `can_speak` 决定这一轮能不能开口；门铃问的就是它 |
 | `bin/test_guard_ext.ts` | 整理器与每轮约定自检（钩子接线、r35 多轮姿态序列、英文拒绝、表态小句删除与误删面、0 次网络请求、约定拼装；Windows/WSL 都能跑） |
+| `bin/test_cross_channel.ts` | 跨渠道近况自检（桌面只收 Discord 群、悄悄话不进桌面、Discord 收桌面近况、水位不重复、内部提示/播种块过滤、send_message 正文落库、6 小时窗口与 12 行/1500 字上限；Windows/WSL 都能跑） |
 | `bin/test_self_look.ts` | `next_wake` 一条计时与 `look` 随时可用的自检（分钟数夹在 30～180、self.json 新旧结构、did 与 life.json 20 条、旧生活轮字段不挡取图；Windows/WSL 都能跑） |
 | `bin/test_loopguard.ts` | 复读断路/坏工具/快照账本自检（39 项，临时目录里造文件，不写生产日志） |
 | `bin/check_extensions.ts` | 用 Pi 自己的加载器整批加载 `agent/extensions/*.ts`，查加载错误和工具 `parameters` 形状；不叫模型 |
@@ -287,6 +288,11 @@ Magpie 只是作者的"模型管理器"：它往 `/root/.pi/agent/settings.json`
   拼起每一段定稿正文（`pi_client.reply_text`），第二个请求等这轮结束回空。steer 不成（Pi 已 idle/正在收尾、
   RPC 报错）就照旧排队开新一轮，消息不丢。只做桌面 `albion-desktop`；门铃、平台通知、`role=tool` 续轮都不插。
   活动库照常把插进来的那句记成他的话（`albion-turn.ts` 去掉那层说明）。
+- **跨渠道近况**（2026-11-03）：桌面会话每轮从活动库取 `albion-discord` 里 Discord 群的通知行（谁说了什么）
+  和她自己用 `send_message(channel=discord_group)` 发的内容；`albion-discord` 会话取桌面最近的原话、
+  TG/Discord 私信通知行、她的回复正文和私信发送。只给上次注入之后、6 小时内的新增，最多 12 行/1500 字，
+  每行带北京时间与渠道名；水位在 `state/cross-channel.json`。**悄悄话一律不进桌面**（他看得见，但她们以为他看不到）；
+  `send_message` 的正文现在会记进活动库的 tool 行（JSON `{channel,text}`），跨渠道才拿得到她说过什么。
 
 ## 她自己长手脚
 

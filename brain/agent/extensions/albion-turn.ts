@@ -9,12 +9,13 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { spawnSync } from "node:child_process";
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { posix } from "node:path";
 import { personalStatePath } from "../lib/session-scope.ts";
 
 const MEM = "/root/albion-pi/bin/memory.py";
-const STATE_DB = `${process.env.ALBION_STATE_DIR || "/root/albion-pi/state"}/state.db`;
+const STATE_DIR = process.env.ALBION_STATE_DIR || "/root/albion-pi/state";
+const STATE_DB = process.env.ALBION_STATE_DB || `${STATE_DIR}/state.db`;
 // 每轮注入块的留档：原来写死生产路径，探针/验收会话会把它覆盖掉（2026-10-29 修）
 const LAST_CONTEXT = () => personalStatePath("last-context.json");
 const LOG = "/root/albion-pi/logs/albion-turn.log";
@@ -35,8 +36,9 @@ const CONTEXT = MARKER + "\n只回应当前输入，当前输入决定本轮话�
  * 把这一轮真正递给模型的那条 user 消息拼出来：当前原文 → 回忆（只作事实参考）→ 逐轮说话约定。
  * 约定放**末尾**，离模型最近；回忆原来接在约定后面，会让检索到的旧话压过当前话题（2026-10-08 codex 发现）。
  */
-export function composeTurnContent(source: string, memory: string | null, hasToolResult = false, recent: string[] = [], facts = "", nowMs = Date.now(), prevMs: number | null = null) {
+export function composeTurnContent(source: string, memory: string | null, hasToolResult = false, recent: string[] = [], facts = "", nowMs = Date.now(), prevMs: number | null = null, other = "") {
   const parts = [source];
+  if (other) parts.push(other);          // 另一边最近的事：事实参考，和回忆一样放约定前面
   if (memory) parts.push(memory);
   parts.push(turn_guidance(source, hasToolResult, recent, facts, nowMs, prevMs));
   return { role: "user", content: parts.join("\n\n") };
@@ -161,6 +163,191 @@ export function recentAsides(messages: any[], before: number): string[] {
     }
   return out.slice(0, 4);
 }
+
+// ── 另一边最近的事（2026-11-03）────────────────────────────────────────────
+// 桌面（albion-desktop）和 Discord 群/悄悄话（albion-discord）是两个 Pi 会话，中间只靠 OV
+// 长期记忆，有延迟。这里把「另一边」上次给过之后新增的消息按行塞进每轮约定。
+// 悄悄话一律不进桌面：他看得见，但她们以为他看不到，带进桌面她会当着他的面提起。
+const CROSS_DESKTOP = "albion-desktop";
+const CROSS_DISCORD = "albion-discord";
+export const CROSS_TITLE = "（另一边最近的事，供你知道，不用逐条回应）";
+const CROSS_LOOKBACK_S = 6 * 3600;
+const CROSS_MAX_LINES = 12;
+const CROSS_MAX_CHARS = 1500;
+const CROSS_STATE = () => `${STATE_DIR}/cross-channel.json`;
+// 和 albion-history.ts 同一口径：宿主塞给她的内部提示不是聊天。
+const CROSS_INTERNAL = /【自主醒来】|【定下次醒来】|【想起来去做】|【接着说完】|【真去做】|（阿尔比恩自己醒来）|（阿尔比恩想起来|（阿尔比恩接着|（宿主提醒|^（这是我自己|^（你要的【|这是一次自主开口/;
+const CROSS_SEED = /^【以下是这次对话此前的记录/;
+const CROSS_STAMP = /^\[(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})\]\s*/;
+
+type CrossState = { desktop?: number; discord?: number };
+
+function crossClock(ms: number): string {
+  const p = bjParts(ms);
+  return `${String(p.h).padStart(2, "0")}:${String(p.mi).padStart(2, "0")}`;
+}
+
+function crossClean(text: string, limit = 180): string {
+  return String(text ?? "").replace(/<\|[^|]*\|>/g, "").replace(/\s+/g, " ").trim().slice(0, limit);
+}
+
+function crossLine(time: string, label: string, who: string, text: string): string {
+  return `${time} [${label}] ${who}：${crossClean(text)}`;
+}
+
+function crossChannelLabel(channel: string): string {
+  return ({ telegram: "Telegram", discord: "Discord 私信", discord_group: "Discord 群", discord_whisper: "悄悄话" } as Record<string, string>)[channel] || channel;
+}
+
+function crossSendArgs(raw: string): { channel: string; text: string } | null {
+  try {
+    const d = JSON.parse(raw || "{}");
+    if (d && typeof d.channel === "string" && typeof d.text === "string") return { channel: d.channel, text: d.text };
+  } catch { /* 旧行没有内容，当没有 */ }
+  return null;
+}
+
+/** 群通知里的「（Discord 群）#编号 HH:MM 作者：正文」行；悄悄话没有这个前缀，天然被排除。 */
+function groupNoticeLines(raw: string): string[] {
+  const out: string[] = [];
+  for (const line of raw.split(/\r?\n/)) {
+    const m = line.match(/^（Discord 群）#\d+\s+(\d{2}:\d{2})\s+(.+?)：(.+)$/);
+    if (m) out.push(crossLine(m[1], "Discord 群", m[2].trim(), m[3]));
+  }
+  return out;
+}
+
+/** 私信通知里的「（Telegram|Discord 私信）#编号 MM-DD HH:MM 指挥官：正文」行。 */
+function dmNoticeLines(raw: string): string[] {
+  const out: string[] = [];
+  for (const line of raw.split(/\r?\n/)) {
+    const m = line.match(/^（(Telegram|Discord 私信)）#\d+\s+\d{2}-\d{2}\s+(\d{2}:\d{2})\s+指挥官：(.+)$/);
+    if (m) out.push(crossLine(m[2], m[1], "指挥官", m[3]));
+  }
+  return out;
+}
+
+function rowLines(row: any, toDesktop: boolean): string[] {
+  const raw = String(row?.content ?? "");
+  const ts = Number(row?.timestamp) || 0;
+  if (CROSS_SEED.test(raw)) return []; // 播种块是历史副本，不是刚发生的事
+  if (toDesktop) {
+    // 桌面只收群里谁说了什么 + 她在群里用 send_message 发的内容；她的 assistant 正文是桌面内部话，不带。
+    if (row.role === "user") return groupNoticeLines(raw);
+    if (row.role === "tool") {
+      const sent = crossSendArgs(raw);
+      if (row.tool_name === "send_message" && sent?.channel === "discord_group")
+        return [crossLine(crossClock(ts * 1000), "Discord 群", "你", sent.text)];
+    }
+    return [];
+  }
+  if (row.role === "user") {
+    const noSteer = raw.replace(STEER_PREFIX_RE, "").trim();
+    const m = noSteer.match(CROSS_STAMP);
+    const body = noSteer.replace(CROSS_STAMP, "").trim();
+    if (!body || CROSS_INTERNAL.test(body)) return [];
+    if (body.startsWith("【平台消息】")) return dmNoticeLines(raw);
+    const time = m ? `${m[4]}:${m[5]}` : crossClock(ts * 1000);
+    return [crossLine(time, "桌面", "指挥官", body)];
+  }
+  if (row.role === "assistant") {
+    const body = crossClean(raw, 400);
+    if (!body || CROSS_INTERNAL.test(body)) return [];
+    return [crossLine(crossClock(ts * 1000), "桌面", "你", body)];
+  }
+  if (row.role === "tool") {
+    const sent = crossSendArgs(raw);
+    if (row.tool_name === "send_message" && sent && (sent.channel === "telegram" || sent.channel === "discord"))
+      return [crossLine(crossClock(ts * 1000), crossChannelLabel(sent.channel), "你", sent.text)];
+  }
+  return [];
+}
+
+function readCrossState(): CrossState {
+  try {
+    const v = JSON.parse(readFileSync(CROSS_STATE(), "utf8"));
+    return v && typeof v === "object" ? v : {};
+  } catch { return {}; }
+}
+
+/** 只把「已经真的塞进这一轮」的最后一条记下来；没新增时不写。 */
+function markCrossInjected(key: "desktop" | "discord", ts: number): void {
+  if (!Number.isFinite(ts) || ts <= 0) return;
+  try {
+    const st = readCrossState();
+    st[key] = Math.max(Number(st[key] || 0), ts);
+    mkdirSync(STATE_DIR, { recursive: true });
+    const tmp = `${CROSS_STATE()}.tmp`;
+    writeFileSync(tmp, JSON.stringify(st));
+    renameSync(tmp, CROSS_STATE());
+  } catch (e) {
+    log("warn: cross-channel state write failed", String((e as Error)?.message ?? e));
+  }
+}
+
+async function readCrossRows(source: string, since: number): Promise<any[]> {
+  const mod = await getSqlite();
+  if (!mod) return [];
+  try {
+    const db = new mod.DatabaseSync(STATE_DB, { readOnly: true });
+    try {
+      return db
+        .prepare(
+          "SELECT id, role, content, tool_name, timestamp FROM messages " +
+            "WHERE session_id=? AND timestamp > ? AND role IN ('user','assistant','tool') ORDER BY id ASC LIMIT 400",
+        )
+        .all(source, since) as any[];
+    } finally {
+      db.close();
+    }
+  } catch (e) {
+    log("warn: cross-channel read failed", String((e as Error)?.message ?? e));
+    return [];
+  }
+}
+
+/**
+ * 当前会话要不要带「另一边」的块：只认桌面和 Discord 会话；只给上次注入之后、6 小时内的新增。
+ * 返回块文本（不含前后空行），没新增/别的会话/读不到库时返回 null。
+ */
+export async function crossChannelBlock(currentSession: string, nowMs = Date.now()): Promise<string | null> {
+  const toDesktop = currentSession === CROSS_DESKTOP;
+  const toDiscord = currentSession === CROSS_DISCORD;
+  if (!toDesktop && !toDiscord) return null;
+  const source = toDesktop ? CROSS_DISCORD : CROSS_DESKTOP;
+  const key: "desktop" | "discord" = toDesktop ? "desktop" : "discord";
+  const state = readCrossState();
+  const since = Math.max(nowMs / 1000 - CROSS_LOOKBACK_S, Number(state[key] || 0));
+  const rows = await readCrossRows(source, since);
+  if (!rows.length) return null;
+
+  const flat: { ts: number; line: string }[] = [];
+  for (const row of rows) {
+    const ts = Number(row.timestamp) || 0;
+    for (const line of rowLines(row, toDesktop)) flat.push({ ts, line });
+  }
+  if (!flat.length) return null;
+  flat.sort((a, b) => a.ts - b.ts);
+
+  // 超量时留最近的 12 行（「近况」先看新近的）；同一句旧通知里的 context 行只留最新一次。
+  const picked: { ts: number; line: string }[] = [];
+  const seen = new Set<string>();
+  let chars = CROSS_TITLE.length;
+  for (let i = flat.length - 1; i >= 0; i--) {
+    const e = flat[i];
+    if (seen.has(e.line)) continue;
+    if (picked.length >= CROSS_MAX_LINES) break;
+    if (chars + e.line.length + 3 > CROSS_MAX_CHARS) break;
+    picked.push(e);
+    seen.add(e.line);
+    chars += e.line.length + 3;
+  }
+  if (!picked.length) return null;
+  picked.reverse();
+  markCrossInjected(key, picked[picked.length - 1].ts);
+  return CROSS_TITLE + "\n" + picked.map((e) => `- ${e.line}`).join("\n");
+}
+
 const BASH_DEFAULT_TIMEOUT_S = 120;
 const TOOL_NAME_MAP: Record<string, string> ={"write": "write_file", "edit": "patch", "read": "read_file", "bash": "terminal"};
 // 读也算"动过文件"：摆件的「最近动作」要的是路径，不是工具名。
@@ -290,6 +477,11 @@ function tool_row(tool: any, ledger?: Ledger | null, failed = false): [string, s
   const name = typeof tool?.name === "string" ? tool.name : tool;
   const args = (tool && typeof tool.args === "object" && tool.args) || {};
   const mapped = TOOL_NAME_MAP[name] ?? name;
+  // send_message 的正文以前没落库（content 空、tool_calls 也空），跨渠道近况拿不到她群里/私信说了什么。
+  // 记成一行 JSON 给 albion-turn 自己读；摆件只看 tool_name，不受影响（2026-11-03）。
+  if (name === "send_message" && typeof args.channel === "string" && typeof args.text === "string" && args.text.trim()) {
+    return ["tool", JSON.stringify({ channel: args.channel, text: args.text }), "send_message"];
+  }
   let path: string | null = null;
   for (const key of ["path", "file_path", "filePath", "filename"]) {
     if (typeof args[key] === "string") {
@@ -465,7 +657,9 @@ export default function albionTurn(pi: ExtensionAPI): void {
     const nowMs = Date.now();
     let prevMs = previousUserMs(messages, idx);
     if (prevMs === null) prevMs = await previousUserMsFromDb();
-    const composed = composeTurnContent(source, block, hasToolResult, recent, facts, nowMs, prevMs);
+    // 另一边（桌面 ↔ Discord 群）上次给过之后新增的几行；悄悄话不进桌面。
+    const other = await crossChannelBlock(SESSION_ID, nowMs);
+    const composed = composeTurnContent(source, block, hasToolResult, recent, facts, nowMs, prevMs, other || "");
     writeLastContext(source, turn_guidance(clean, hasToolResult, recent, facts, nowMs, prevMs), block,
                      composed.content.slice(source.length).replace(/^\n\n/, ""));
 
@@ -482,7 +676,7 @@ export default function albionTurn(pi: ExtensionAPI): void {
     copy[idx] = { ...orig, content: keep.length
       ? [{ type: "text", text: composed.content }, ...keep]
       : composed.content };
-    log("context", `chars=${composed.content.length} recall=${block ? block.length : 0} has_tool_result=${hasToolResult}`);
+    log("context", `chars=${composed.content.length} recall=${block ? block.length : 0} other=${other ? other.length : 0} has_tool_result=${hasToolResult}`);
     return { messages: copy };
   });
 
@@ -567,4 +761,4 @@ export default function albionTurn(pi: ExtensionAPI): void {
 }
 
 // 自检钩子：bin/test_guard_ext.ts 直接驱动这些函数。
-export const _albionTest = { MARKER, CONTEXT, turn_guidance, composeTurnContent, tool_row, msg_text, recentAsides, timeLine, slotName, bjParts, agoText, stampsOf, previousUserMs };
+export const _albionTest = { MARKER, CONTEXT, turn_guidance, composeTurnContent, tool_row, msg_text, recentAsides, timeLine, slotName, bjParts, agoText, stampsOf, previousUserMs, crossChannelBlock, CROSS_TITLE };
