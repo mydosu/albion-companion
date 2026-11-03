@@ -680,6 +680,58 @@ def chat(session_id, msgs):
     return reply
 
 
+# ── 桌面会话：她还在跑这一轮，他又补了一句（2026-11-03）─────────────────────
+# 以前第二个请求在 bridge.start 里排队，她要整轮做完才看到这句。现在用 Pi 的 RPC `steer`
+# 把话插进正在跑的那一轮（docs/rpc-commands.md §steer），她在这轮里一并回；
+# 聊天软件那边同类机制是 chat_bridge.live_note（她发完一条时把新消息附在工具回话里）。
+# 前缀简短中性，让她知道这不是新开的一轮；只有桌面会话这么走，门铃/平台通知/工具结果续轮都不算。
+STEER_PREFIX = "（你还在说的时候他又说：）"
+
+
+def desktop_speech(msgs):
+    """这批请求里他真说的话（桌面会话专用）→ (文字, 图片)；门铃醒来轮/平台通知轮/系统消息返回 (None, None)。"""
+    _, tail = split_tail(msgs)
+    users = [m for m in tail if m.get("role") == "user"] or [msgs[-1]]
+    texts = [msg_text(m) for m in users]
+    if any(wake.is_wake(t) or wake.is_platform(t) for t in texts):
+        return None, None
+    said = [t for t in texts if wake.is_real_user(t)]
+    if not said:
+        return None, None
+    wake.note_user()                   # 和 compose 一样：他在说话，门铃别来打断
+    images = [u for m in users for u in msg_images(m)]
+    return "\n\n".join(said), images
+
+
+def live_session(session_id):
+    """这个会话现在这具 Pi 身子（只有它可能正在跑；steer 自己会再确认那一轮还在不在）。"""
+    with _sessions_lock:
+        return _sessions.get(session_id)
+
+
+def steer_into_running(session_id, msgs, bridge):
+    """把他的新话插进桌面会话正在跑的那一轮，成功返回 (那一轮, 插进去的文字)；否则 (None, None)。
+
+    调用方拿到那一轮后等它结束、回空回复（壳那边显示空即可）；这个请求不再开新一轮。
+    steer 没成（Pi 已经收尾、RPC 报错、没在跑）就返回 None，照旧排队，消息不丢。
+    """
+    if session_id != SESSION_DEFAULT:
+        return None, None
+    turn = bridge.current_turn()
+    if turn is None or turn.finished.is_set():
+        return None, None
+    text, images = desktop_speech(msgs)
+    if text is None:
+        return None, None
+    session = live_session(session_id)
+    if session is None:
+        return None, None
+    line = STEER_PREFIX + "\n" + text
+    if not session.steer(line, images=images):
+        return None, None
+    return turn, line
+
+
 # ── HTTP：对两个壳的 OpenAI 兼容端点 ────────────────────────────────────────
 class Brain(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -779,6 +831,18 @@ class Brain(BaseHTTPRequestHandler):
         else:
             if toolset["skipped"]:
                 log("shell tools skipped", session=session_id, skipped=toolset["skipped"][:8])
+            # 桌面会话她还在跑时他又说一句：插进那一轮，等它一起说完，这个请求回空。
+            steered, line = steer_into_running(session_id, msgs, bridge)
+            if steered is not None:
+                log("steered into running turn", session=session_id, chars=len(line))
+                # 和排队时一样：壳发来新消息说明它那边的工具循环已经结束，还在等的调用按失败交还，
+                # 别让她卡在 120 秒的工具超时上（2026-10-20 的 supersede 规则）。
+                if self.headers.get(shell_tools.HEADER) and steered.outstanding():
+                    steered.abandon("这次调用作废了：指挥官那边已经开始了新的一轮，壳没有回这件工具的结果。")
+                if not steered.finished.wait(RUN_TIMEOUT + 60):
+                    log("steered turn did not finish in time", session=session_id)
+                self._reply(stream, "")
+                return
             turn = bridge.start(lambda: chat(session_id, msgs), toolset=toolset,
                                 supersede=bool(self.headers.get(shell_tools.HEADER)),
                                 wait_previous=RUN_TIMEOUT)
@@ -962,6 +1026,100 @@ def _selftest():
         assert chat("albion-probe-timeout", msgs[-1:]) == "刚才没做完。"
         assert [call.kwargs["timeout"] for call in fake.prompt.call_args_list] == [RUN_TIMEOUT, RUN_TIMEOUT]
         assert fake.prompt.call_args_list[1].args == (FINISH_FOLLOWUP,)
+    # 桌面会话她还在跑时他又说一句：steer 插进正在跑的那一轮；门铃/平台通知/别的会话不插；插不进去退回排队
+    desk_bridge = shell_tools.Bridge("albion-desktop")
+    release, started = threading.Event(), threading.Event()
+
+    def _slow_turn():
+        started.set()
+        release.wait(10)
+        return "第一段"
+
+    running = desk_bridge.start(_slow_turn, toolset={"tools": [], "prompts": []})
+    assert started.wait(5), "假轮没跑起来"
+    fake_pi = Mock()
+    fake_pi.steer.return_value = True
+    module._sessions["albion-desktop"] = fake_pi
+    try:
+        got, line = steer_into_running("albion-desktop", [{"role": "user", "content": "[2026-11-03 10:30] 在忙吗"}], desk_bridge)
+        assert got is running, "要插进正在跑的那一轮"
+        assert line == STEER_PREFIX + "\n[2026-11-03 10:30] 在忙吗", line
+        assert fake_pi.steer.call_args.args[0] == line
+        assert desktop_speech([{"role": "user", "content": "在吗"}])[0] == "在吗"
+        assert desktop_speech([{"role": "user", "content": "[2026-11-03 10:30] " + wake.WAKE_MARKER}]) == (None, None)
+        assert desktop_speech([{"role": "user", "content": wake.PLATFORM_MARKER + "Telegram 上他发了消息"}]) == (None, None)
+        assert steer_into_running("albion-accept", [{"role": "user", "content": "在吗"}], desk_bridge) == (None, None), "只做桌面会话"
+        fake_pi.steer.return_value = False
+        assert steer_into_running("albion-desktop", [{"role": "user", "content": "在吗"}], desk_bridge) == (None, None), "插不进去要退回排队"
+    finally:
+        release.set()
+        assert running.finished.wait(5)
+        module._sessions.pop("albion-desktop", None)
+    queued = desk_bridge.start(lambda: "第二段")
+    assert queued.finished.wait(5) and queued.final == "第二段", "退回排队后这一轮照常跑"
+    # 端到端（假 chat + 假 Pi）：第二个请求 steer 成功就等这一轮说完、回空回复；steer 失败仍排队不丢话
+    shell_tools._bridges.pop("albion-desktop", None)
+    brain_srv = ThreadingHTTPServer(("127.0.0.1", 0), Brain)
+    brain_srv.daemon_threads = True
+    brain_port = brain_srv.server_address[1]
+    threading.Thread(target=brain_srv.serve_forever, daemon=True).start()
+
+    def _post(text, out):
+        body = json.dumps({"model": "albion", "messages": [{"role": "user", "content": text}]}).encode("utf-8")
+        req = urllib.request.Request("http://127.0.0.1:%d/v1/chat/completions" % brain_port, data=body,
+                                     headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=30) as r:
+            out.append(json.loads(r.read().decode("utf-8"))["choices"][0]["message"]["content"])
+
+    release, started = threading.Event(), threading.Event()
+
+    def _fake_chat(sid, msgs):
+        started.set()
+        release.wait(10)
+        return "第一段"
+
+    fake_hit = Mock()
+    fake_hit.steer.return_value = True
+    module._sessions["albion-desktop"] = fake_hit
+    key_before = os.environ.pop("API_SERVER_KEY", None)
+    try:
+        with patch.object(module, "chat", side_effect=_fake_chat), patch.object(module, "log"):
+            first = []
+            first_post = threading.Thread(target=_post, args=("[2026-11-03 10:31] 在吗", first), daemon=True)
+            first_post.start()
+            assert started.wait(5), "第一轮没跑起来"
+            threading.Timer(1.0, release.set).start()
+            second = []
+            _post("[2026-11-03 10:32] 你还在忙吗", second)   # 等那一轮说完再回
+            first_post.join(10)
+            assert first == ["第一段"], first
+            assert second == [""], ("steer 成功要回空回复", second)
+            assert fake_hit.steer.call_count == 1
+            assert fake_hit.steer.call_args.args[0] == STEER_PREFIX + "\n[2026-11-03 10:32] 你还在忙吗"
+            # steer 失败：第二个请求照旧排队，等上一轮结束自己开一轮（话不丢）
+            fake_hit.steer.reset_mock()
+            fake_hit.steer.return_value = False
+            release.clear()
+            started.clear()
+            third = []
+            third_post = threading.Thread(target=_post, args=("[2026-11-03 10:33] 还有一句", third), daemon=True)
+            third_post.start()
+            assert started.wait(5), "第二轮没跑起来"
+            threading.Timer(1.0, release.set).start()
+            fourth = []
+            _post("[2026-11-03 10:34] 这句要排队", fourth)
+            third_post.join(10)
+            assert third == ["第一段"], third
+            assert fourth == ["第一段"], ("插不进去要排队开新一轮", fourth)
+            assert fake_hit.steer.call_count == 1
+    finally:
+        if key_before is not None:
+            os.environ["API_SERVER_KEY"] = key_before
+        brain_srv.shutdown()
+        brain_srv.server_close()
+        shell_tools._bridges.pop("albion-desktop", None)
+        module._sessions.pop("albion-desktop", None)
+        release.set()
     # 换身子后从活动库接上对话：只取本会话两天内的 user/assistant；第一轮那条里套着的旧记录只取【现在】之后；补问轮跳过；醒来行按门铃
     import sqlite3
     db = sqlite3.connect(os.path.join(wake._state_dir(), "state.db"))
