@@ -9,7 +9,7 @@
  * voice=true 只对 Telegram 有效：桥去 9881 合成、ffmpeg 转 ogg/opus 发语音条；她的声音是日语，
  * 所以语音条会附上她写的中文原文当 caption（GSV 的中文声不带）。
  *
- * 表情包（2026-11-02）：素材源头在 `D:\AI\stickers`（不进 Git），她读的是拷进 WSL 本地盘的 `/root/albion-pi/stickers`（/mnt/d 太慢），`index.json` 每项有
+ * 表情包（2026-11-02）：素材在 WSL 本地盘 `/root/albion-pi/stickers`（不进 Git；11-03 起直接在这里做和维护，不再从 D:\AI\stickers 同步，/mnt/d 太慢），`index.json` 每项有
  * id / file / character / meaning / emotions / text_on_image。`find_sticker` 按心情挑几张候选，
  * 她再把编号交给 `send_message` 的 `sticker`，由桥按平台上传（TG 走 sendSticker/sendAnimation，
  * Discord 走附件上传）。

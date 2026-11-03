@@ -121,7 +121,7 @@ def load_config(environ=None, home=None):
         "tts_url": get("ALBION_CHAT_TTS_URL", TTS_URL).strip(),
         "tts_voice": (get("ALBION_CHAT_TTS_VOICE", "albion").strip() or "albion"),
         "proxy": get("ALBION_CHAT_PROXY", "http://127.0.0.1:7897").strip(),
-        # 放 WSL 本地盘：/mnt/d 走 9p，在上面找文件能慢到卡死一整轮（11-02）；源头仍是 D:\AI\stickers
+        # 放 WSL 本地盘：/mnt/d 走 9p，在上面找文件能慢到卡死一整轮（11-02）；11-03 起她的表情包就在这里做和维护，不再从 Windows 同步
         "stickers_dir": (get("ALBION_STICKERS_DIR", "/root/albion-pi/stickers").strip()
                          or "/root/albion-pi/stickers"),
         "log": get("ALBION_CHAT_LOG", os.path.join(home, "logs", "chat.log")),
