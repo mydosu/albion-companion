@@ -225,6 +225,11 @@ class Bridge:
             return any(t["name"] == name for t in self.toolset["tools"])
 
     # ── 一轮 ────────────────────────────────────────────────────────────────
+    def current_turn(self):
+        """正在跑（或刚跑完）的那一轮；桌面 steer 要往这上面插话。"""
+        with self._lock:
+            return self.current
+
     def start(self, fn, *, toolset=None, supersede=False, wait_previous=900.0):
         """开新的一轮。上一轮没跑完：supersede=True（同一个会桥接的壳发来了新消息，说明它那边的工具循环已结束）
         就把上一轮还在等的调用按失败交还；否则照旧排队等它跑完（和原来会话锁的行为一样）。

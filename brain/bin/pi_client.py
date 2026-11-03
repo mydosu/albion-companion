@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 
@@ -67,11 +68,23 @@ class PiSession:
         # Pi 定稿时给的消息才是权威版本：守卫扩展可能已经把正文换成纠正后的稿子，
         # 也可能是它拒稿后留下的哨兵。流式 delta 只用于早显示，交付以这里为准。
         self._final: str | None = None
+        # steer 插进来一句话之后，同一轮里会有不止一条正文（她先说了一半，又回他补的那句）。
+        # 每条不带 toolCall 的定稿正文按顺序收在这里，交付时拼起来，别只留最后一段。
+        self._finals: list[str] = []
         self._error: str | None = None
         self._settled = threading.Event()
         self._alive = threading.Event()
+        # 一轮真正收尾看 agent_settled（docs/json.md：agent_end 只是低层这一跑结束，
+        # steering / 重试 / 压缩之后 Pi 还会继续）。steer 能不能插，也看这里。
+        self._run_lock = threading.Lock()
+        self._run_active = False
+        # Pi 队列里还没递出去的 steer（queue_update 事件是权威版本）；收尾后才回应的 steer 要撤时，
+        # 只有确认队列里只剩这一句才敢 clear_queue，别把别人补的话一起撤掉。
+        self._queued_steers: list[str] = []
+        self._steer_lock = threading.Lock()
         self._req = 0
         self.turns = 0
+        self.steered = 0
         self.tools_used: list[str] = []
 
     # ── lifecycle ────────────────────────────────────────────────────────────
@@ -181,10 +194,16 @@ class PiSession:
                                    if isinstance(b, dict) and b.get("type") == "text")
                     if text:
                         self._final = text
+                        # 还带着 toolCall 的那条是半路的话，不是交付；出错那次（自动重试前的残稿）也不算。
+                        if msg.get("stopReason") != "error" and \
+                                not any(isinstance(b, dict) and b.get("type") == "toolCall" for b in blocks):
+                            self._finals.append(text)
             return
-        if t == "agent_end":
-            self._settled.set()
+        if t == "queue_update":
+            # 读者线程单独写、整体替换；不抢 _run_lock，免得 steer 发报文时把读者堵住。
+            self._queued_steers = [s for s in (rec.get("steering") or []) if isinstance(s, str)]
             return
+        # agent_end 不置 _settled：它只是低层这一跑结束，steering / 重试 / 压缩之后还会继续（docs/json.md）。
         if t == "agent_settled":
             self._settled.set()
 
@@ -215,8 +234,11 @@ class PiSession:
                 rid = f"{self.name}-{self._req}"
                 self._text = []
                 self._final = None
+                self._finals = []
                 self._error = None
                 self._settled.clear()
+            with self._run_lock:
+                self._queued_steers = []
             rec = {"id": rid, "type": "prompt", "message": text}
             blocks = image_blocks(images)          # 图片只在第一次尝试里带上，重发不去重
             if blocks:
@@ -236,15 +258,97 @@ class PiSession:
             raise PiError("prompt rejected: pi stayed busy")
         if (resp.get("data") or {}).get("disposition") == "handled":
             raise PiError("prompt was consumed by an extension and produced no run")
-        if not self._settled.wait(max(5, deadline - time.time())):
-            raise PiError(f"pi did not settle within {timeout}s")
+        with self._run_lock:
+            self._run_active = True
+        try:
+            # 等 agent_settled，不是 agent_end：steer 插进来的话会在低层这一跑之后继续跑，
+            # 等早了会把她回补话的那一段丢掉。
+            if not self._settled.wait(max(5, deadline - time.time())):
+                raise PiError(f"pi did not settle within {timeout}s")
+        finally:
+            with self._run_lock:
+                self._run_active = False
         if not self._alive.is_set() and not self._text:
             raise PiError("pi process exited during the run")
         self.turns += 1
-        out = (self._final if self._final else "".join(self._text)).strip()
+        out = self.reply_text()
         if self._error and not out:
             raise PiError(self._error)
         return out
+
+    def reply_text(self):
+        """这一轮她说出口的话：每条定稿正文按顺序拼起来。
+
+        steer 之后一轮里会有不止一条正文（先说了一半，再回他补的那句），只取最后一条会丢前半段；
+        流式 delta（`_text`）含被守卫换掉的草稿，只在一条定稿都没有时兜底。
+        """
+        finals = [t.strip() for t in self._finals if t and t.strip()]
+        if finals:
+            return "\n\n".join(finals)
+        return "".join(self._text).strip()
+
+    def steer(self, text, images=None, timeout=10):
+        """RPC `steer`：把一句话插进正在跑的那一轮（docs/rpc-commands.md §steer）。
+
+        `{"type": "steer", "message": "...", "images": [...]}`；回应
+        `{"type": "response", "command": "steer", "success": true, "data": {"disposition": "queued"}}`。
+        返回 True = 已排进这一轮（她会在这轮里回）；False = 没在跑 / 已经收尾 / RPC 报错，调用方退回排队。
+
+        Pi 的 steer 在 idle 时也不报错，只会静静排进队列等下一次 prompt——那种「话要等到下一轮才递」
+        正是要避免的，所以先看 `_run_active`，回应回来再确认这一轮还没 settle；已经 settle 就 clear_queue 撤回。
+        同一时刻只发一条（`_steer_lock`）：撤的时候要确认队列里只剩这一句，别把别的话一起撤掉。
+        """
+        with self._steer_lock:
+            if not self.running:
+                return False
+            with self._run_lock:
+                if not self._run_active:
+                    return False
+                with self._lock:
+                    self._req += 1
+                    rid = "%s-steer-%d" % (self.name, self._req)
+                rec = {"id": rid, "type": "steer", "message": text}
+                blocks = image_blocks(images)
+                if blocks:
+                    rec["images"] = blocks
+                try:
+                    self._send(rec)
+                except Exception:               # noqa: BLE001 - 管道断了按插不进去处理，调用方排队
+                    return False
+            resp = self._wait_response(rid, timeout)
+            if resp is None:
+                # 旧版 Pi 的回应不带 id（文档示例如此），按命令名收一次。
+                resp = self._wait_response(("cmd", "steer"), 0.2)
+            if not (resp and resp.get("success")):
+                return False
+            with self._run_lock:
+                if self._run_active:
+                    self.steered += 1
+                    return True
+                only_ours = list(self._queued_steers) == [text]
+            if not only_ours:
+                # 队列里还有别的补话：不撤；这一句会留到下一次递给她（不丢），这个请求照常回空。
+                return True
+            # 回应回来时那一轮已经收尾、队列里只剩这一句：撤回，调用方退回排队。
+            return not self.retract(text)
+
+    def retract(self, text, timeout=5):
+        """RPC `clear_queue`：把还在排队的 steer 撤回。True = 那句话确实撤回来了（没被这一轮吃掉）。"""
+        if not self.running:
+            return False
+        with self._lock:
+            self._req += 1
+            rid = "%s-clear-%d" % (self.name, self._req)
+        try:
+            self._send({"id": rid, "type": "clear_queue"})
+        except Exception:                       # noqa: BLE001
+            return False
+        resp = self._wait_response(rid, timeout)
+        if resp is None:
+            resp = self._wait_response(("cmd", "clear_queue"), 0.2)
+        if not (resp and resp.get("success")):
+            return False
+        return text in ((resp.get("data") or {}).get("steering") or [])
 
     def abort(self, timeout=30):
         """RPC `abort`：中止当前这一轮；Pi 回 abort 时它已经回到 idle（docs/rpc-commands.md）。
@@ -294,9 +398,102 @@ class PiSession:
         return True
 
 
+def _selftest_steer():
+    """假 Pi：steer 的报文/时机、多段正文拼交付、收尾后才回应的 steer 撤回。不连模型、不起进程。"""
+    import json as _json
+    sent = []
+    state = {"settle_on_reply": False, "omit_id": False, "queued": []}
+
+    class _Stdin:
+        def __init__(self, owner):
+            self.owner = owner
+
+        def write(self, data):
+            rec = _json.loads(data.decode("utf-8"))
+            sent.append(rec)
+            owner = self.owner
+            if rec.get("type") == "steer":
+                # 假的读者线程：真实里这些是 _dispatch 在别的线程处理的，不抢 _run_lock
+                state["queued"] = [rec.get("message")]
+                owner._queued_steers = list(state["queued"])
+                if state["settle_on_reply"]:
+                    owner._run_active = False
+                resp = {"type": "response", "command": "steer", "success": True,
+                        "data": {"disposition": "queued"}}
+                if not state["omit_id"]:
+                    resp["id"] = rec.get("id")
+                owner._dispatch(resp)
+            elif rec.get("type") == "clear_queue":
+                removed, state["queued"] = list(state["queued"]), []
+                owner._queued_steers = []
+                owner._dispatch({"type": "response", "id": rec.get("id"), "command": "clear_queue",
+                                 "success": True, "data": {"steering": removed, "followUp": []}})
+
+        def flush(self):
+            pass
+
+        def close(self):
+            pass
+
+    class _Proc:
+        def __init__(self, owner):
+            self.stdin = _Stdin(owner)
+
+        def poll(self):
+            return None
+
+    s = PiSession("probe", model="p/m", tools=[])
+    s.proc = _Proc(s)
+
+    # 没在跑（收尾/没这一轮）：不发，退回排队
+    assert s.steer("不该发") is False and not sent
+
+    # 在跑：发 steer，带上图片
+    s._run_active = True
+    assert s.steer("插一句", images=["data:image/png;base64,QUJD"]) is True
+    rec = sent[-1]
+    assert rec["type"] == "steer" and rec["message"] == "插一句" and "id" in rec
+    assert rec["images"] == [{"type": "image", "data": "QUJD", "mimeType": "image/png"}], rec
+    assert s.steered == 1
+
+    # 旧版 Pi 回应不带 id：按命令名也能收到
+    state["omit_id"] = True
+    assert s.steer("旧版也行", timeout=0.2) is True
+    state["omit_id"] = False
+
+    # 回应回来时这一轮已经收尾：撤回，返回 False 让调用方去排队
+    state["settle_on_reply"] = True
+    assert s.steer("太晚了", timeout=0.5) is False
+    assert sent[-1]["type"] == "clear_queue", sent[-1]
+    state["settle_on_reply"] = False
+
+    # agent_end 不是收尾（steer 之后还会继续）；每条不带 toolCall 的定稿正文都要留着
+    s._finals, s._text, s._final = [], [], None
+    s._settled.clear()
+    s._dispatch({"type": "message_update", "assistantMessageEvent": {"type": "text_delta", "delta": "前半句"}})
+    s._dispatch({"type": "message_end",
+                 "message": {"role": "assistant", "content": [{"type": "text", "text": "前半句"}]}})
+    s._dispatch({"type": "agent_end", "messages": [], "willRetry": False})
+    assert not s._settled.is_set(), "agent_end 只是低层这一跑结束，steer 之后还会继续"
+    s._dispatch({"type": "message_update", "assistantMessageEvent": {"type": "text_delta", "delta": "好"}})
+    s._dispatch({"type": "message_end",
+                 "message": {"role": "assistant", "content": [{"type": "text", "text": "好，我听见了。"}]}})
+    s._dispatch({"type": "agent_settled"})
+    assert s._settled.is_set()
+    assert s.reply_text() == "前半句\n\n好，我听见了。", s.reply_text()
+
+    # 半路带 toolCall 的话不算交付（和原来只给最后一段的行为一致）
+    s._finals, s._final = [], None
+    s._dispatch({"type": "message_end", "message": {"role": "assistant", "content": [
+        {"type": "text", "text": "我查一下"},
+        {"type": "toolCall", "id": "t1", "name": "bash", "arguments": {}}]}})
+    assert s._finals == [] and s._final == "我查一下"
+    print("PI STEER SELFTEST OK")
+
+
 def _selftest():
     """Smallest thing that fails if the RPC plumbing breaks: two turns, memory kept."""
-    import sys
+    _selftest_steer()
     s = PiSession("selftest", model="proxytest/deepseek/deepseek-v4-flash",
                   cwd="/root", tools=[], log_path="/root/_tmp/pi_selftest.err")
     s.start()
@@ -314,4 +511,7 @@ def _selftest():
 
 
 if __name__ == "__main__":
-    _selftest()
+    if "--steer-only" in sys.argv:
+        _selftest_steer()
+    else:
+        _selftest()

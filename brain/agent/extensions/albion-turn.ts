@@ -23,6 +23,9 @@ const RECALL_TIMEOUT_MS = 30_000;
 
 // ── 每轮约定 ───────────────────────────────────────────────────────────────
 const MARKER = "\n\n【阿尔比恩本轮说话约定】";
+// 桌面会话她还在说的时候他又补的一句：宿主用 Pi 的 steer 插进正在跑的那一轮，前面带这层说明
+// （bin/server.py STEER_PREFIX）。她要看得到这层说明；回忆检索、活动库只留他的话（2026-11-03）。
+const STEER_PREFIX_RE = /^（你还在说的时候他又说：）\s*/;
 // 每轮附在他原话后面的说话约定：只放需要离开口最近、会被这一轮话题带偏的几条。
 // 不变的说明（我能做的事、工具清单、给自己加本事的规矩）在 agent/APPEND_SYSTEM.md，会话开始时附一次，不再每轮重复。
 const WORK = "\n【活儿】这条消息若是要我做东西（写改文件、查一件事、修坏的东西）：先动手再开口，做完自己真跑一次，交付时附上真看到的输出；改了文件就说清改了哪个，贴出读回来的改后那几行；同一条命令第二次还是同样结果就换做法；没跑过就说没跑过，不说「应该可以」";
@@ -446,9 +449,11 @@ export default function albionTurn(pi: ExtensionAPI): void {
     if (raw.includes(MARKER)) return; // 已经加过约定块，不再重复
 
     const source = raw; // 给守卫用：纯用户文本
+    // steer 插进来的那句：前缀留给她看，检索/约定只用他真说的话
+    const clean = raw.replace(STEER_PREFIX_RE, "").trim() || source;
     hasToolResult = messages.some((m) => m?.role === "toolResult");
 
-    const block = recallBlock(source);
+    const block = recallBlock(clean);
     const recent = recentAsides(messages, idx);
     // 上一轮的改动事实只给一次（读完就清，同一轮后面几次 context 不再重复）
     const facts = String((globalThis as any).__albionTurnFacts ?? "");
@@ -458,7 +463,7 @@ export default function albionTurn(pi: ExtensionAPI): void {
     let prevMs = previousUserMs(messages, idx);
     if (prevMs === null) prevMs = await previousUserMsFromDb();
     const composed = composeTurnContent(source, block, hasToolResult, recent, facts, nowMs, prevMs);
-    writeLastContext(source, turn_guidance(source, hasToolResult, recent, facts, nowMs, prevMs), block,
+    writeLastContext(source, turn_guidance(clean, hasToolResult, recent, facts, nowMs, prevMs), block,
                      composed.content.slice(source.length).replace(/^\n\n/, ""));
 
     lastSource = source;
@@ -529,9 +534,11 @@ export default function albionTurn(pi: ExtensionAPI): void {
         if (!listed.has(p)) rows.push(["tool", JSON.stringify({ success: true, verified: true, files_modified: [p], resolved_path: p }), TOOL_NAME_MAP.bash]);
     }
     // 【自主醒来】那段是宿主写给她自己看的，不是他说的话：活动库里只记一句（haiku 复核 r35-4）
-    const src0 = lastSource.replace(/^\[[^\]\n]*\]\s*/, "");
+    // steer 插进来的那句去掉「她还在说的时候」这层说明，记成他的话（2026-11-03）
+    const saidText = lastSource.replace(STEER_PREFIX_RE, "");
+    const src0 = saidText.replace(/^\[[^\]\n]*\]\s*/, "");
     const userRow = /(?:^|【现在】\s*)【自主醒来】/.test(src0) ? "（阿尔比恩自己醒来）"
-      : /^【接着说完】/.test(src0) ? "（阿尔比恩接着把刚才的话说完）" : lastSource;
+      : /^【接着说完】/.test(src0) ? "（阿尔比恩接着把刚才的话说完）" : saidText;
     const entries: [string, string, string | null][] = [
       ["user", userRow, null],
       ["assistant", said, null],

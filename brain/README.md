@@ -31,7 +31,7 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
 | 路径 | 作用 |
 |---|---|
 | `bin/server.py` | 宿主：:8650 的 OpenAI 兼容端点、会话与进程生命周期（会话 id 认 body 的 `session_id` 或壳的 `X-Hermes-Session-Id` 头）、换身子从活动库接上对话、扩展热重载、SSE 切句、0 字补一句；门铃 `GET /albion/wake`（规则在 `bin/wake.py`） |
-| `bin/pi_client.py` | 常驻 `pi --mode rpc` 子进程的 JSONL 客户端（交付以 Pi 的定稿消息为准） |
+| `bin/pi_client.py` | 常驻 `pi --mode rpc` 子进程的 JSONL 客户端（交付以 Pi 的定稿消息为准）；`steer` 把桌面补的话插进正在跑的那一轮，一轮多段正文按顺序拼接交付 |
 | `bin/shell_tools.py` | 壳插件工具桥（2026-10-20）：读壳的 `X-Albion-Toolset` 头，只桥接头里点名的插件工具；她调用时把 OpenAI `tool_calls` 回给壳，壳带 `role=tool` 结果再来时接上那一轮。壳 `ALBION_SHELL_TOOL_TIMEOUT`（默认 120 秒）不回就按失败交还；扩展取清单走 `GET /albion/shell-tools`、调用走 `POST /albion/shell-tools/call`，都要 `API_SERVER_KEY` |
 | `agent/shell-tools-bridge.ts` + `agent/extensions/albion-shell-tools.ts` | 每轮开跑前取清单：新插件注册成代理工具、卸载的改成 hidden（Pi 工具不能注销），不用换身子。和她自己的工具重名时插件那件改叫 `shell_<名>`，她的永远优先；插件规则按壳提供的 owner/id 各放一个系统提示区块，不再混入工具描述；取不到清单就全部撤下。自定义 SYSTEM.md 下额外补入当前可见工具的 promptGuidelines 与全局规则，不改人格正文 |
 | `bin/voice_tidy.ts` | 整理器的命令行壳（给 Python 探针 `tests/pi-brain/check_speech.py` 用；规则直接 import 扩展，不另写一份） |
@@ -282,6 +282,11 @@ Magpie 只是作者的"模型管理器"：它往 `/root/.pi/agent/settings.json`
 - 兜底只剩一条：他说了话她却 0 字 → 在同一会话补一句只用文字的【接着说完】（英文拒绝被换成表情后也走这条）。
   原来的【想起来去做】（去玩没玩、说做好了没做）已撤：做不做由她；改没改文件，下一轮约定里会告诉她账本上的事实。
 - 她写坏的扩展换身子前自检时先跳过、记进 `state/broken-extensions.json`，下一轮约定里告诉她去修。
+- **桌面会话她还在说的时候他又补一句**（2026-11-03）：第二个请求不再排队等整轮，宿主用 Pi RPC `steer`
+  把这句插进正在跑的那一轮（前缀「（你还在说的时候他又说：）」），她在这轮里一并回；这一轮的交付按顺序
+  拼起每一段定稿正文（`pi_client.reply_text`），第二个请求等这轮结束回空。steer 不成（Pi 已 idle/正在收尾、
+  RPC 报错）就照旧排队开新一轮，消息不丢。只做桌面 `albion-desktop`；门铃、平台通知、`role=tool` 续轮都不插。
+  活动库照常把插进来的那句记成他的话（`albion-turn.ts` 去掉那层说明）。
 
 ## 她自己长手脚
 
