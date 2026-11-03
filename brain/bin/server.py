@@ -623,7 +623,11 @@ def is_stuck_error(exc):
 
 def recover_stuck_session(session_id, session, exc):
     """中止卡住的那一轮；中止失败就换身子。返回 True = abort 后 Pi 已 idle、可继续用这具身子。"""
-    log("turn stuck, aborting", session=session_id, error=str(exc)[:200])
+    # 记下这一轮调过的工具和参数：2026-11-02 一轮卡 6 分钟，事后查不到是哪条命令。
+    used = getattr(session, "tools_used", None)
+    tools = [f"{t.get('name')} {json.dumps(t.get('args') or {}, ensure_ascii=False)[:200]}"
+             for t in (used if isinstance(used, list) else [])[-8:] if isinstance(t, dict)]
+    log("turn stuck, aborting", session=session_id, error=str(exc)[:200], tools=tools)
     aborted = False
     if getattr(session, "running", False):
         try:

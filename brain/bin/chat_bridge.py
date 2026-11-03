@@ -21,7 +21,7 @@
 
 定稿（主脑 11-02）：
   · 「决定不回」不加动作：通知轮没回就留箱，下一次醒来轮念给她，那轮结束后统统了结（wake.after_wake）；
-  · 群唤醒：他发言或 @她 → 10 秒合批；别的 bot 只入箱当上下文；同一频道 120 秒最多一次；
+  · 群唤醒：他发言或 @她 → 10 秒合批；别的 bot 只入箱当上下文；不按频道冷却，条数由 group_budget 兜底；
   · 主动找他要守节奏（wake.can_speak），回复不受限；群里主动发言只受夜间安静限制；
   · 桌面忙时同一个会话串行等锁，超时把这批退回 unread。
 """
@@ -121,8 +121,9 @@ def load_config(environ=None, home=None):
         "tts_url": get("ALBION_CHAT_TTS_URL", TTS_URL).strip(),
         "tts_voice": (get("ALBION_CHAT_TTS_VOICE", "albion").strip() or "albion"),
         "proxy": get("ALBION_CHAT_PROXY", "http://127.0.0.1:7897").strip(),
-        "stickers_dir": (get("ALBION_STICKERS_DIR", "/mnt/d/AI/stickers").strip()
-                         or "/mnt/d/AI/stickers"),
+        # 放 WSL 本地盘：/mnt/d 走 9p，在上面找文件能慢到卡死一整轮（11-02）；源头仍是 D:\AI\stickers
+        "stickers_dir": (get("ALBION_STICKERS_DIR", "/root/albion-pi/stickers").strip()
+                         or "/root/albion-pi/stickers"),
         "log": get("ALBION_CHAT_LOG", os.path.join(home, "logs", "chat.log")),
         "timeout": float(get("ALBION_CHAT_NOTIFY_TIMEOUT", "600") or 600),
     }

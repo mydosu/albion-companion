@@ -158,7 +158,8 @@ export function recentAsides(messages: any[], before: number): string[] {
     }
   return out.slice(0, 4);
 }
-const TOOL_NAME_MAP: Record<string, string> = {"write": "write_file", "edit": "patch", "read": "read_file", "bash": "terminal"};
+const BASH_DEFAULT_TIMEOUT_S = 120;
+const TOOL_NAME_MAP: Record<string, string> ={"write": "write_file", "edit": "patch", "read": "read_file", "bash": "terminal"};
 // 读也算"动过文件"：摆件的「最近动作」要的是路径，不是工具名。
 const READISH = new Set(["read_file", "read"]);
 
@@ -477,6 +478,9 @@ export default function albionTurn(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_call", async (event: any) => {
+    // bash 默认不限时：2026-11-02 一条命令卡 6 分钟，整轮撞上 420s 被掐、消息没回。她没自己写 timeout 就给 120 秒。
+    if (event?.toolName === "bash" && event.input && typeof event.input === "object" && !event.input.timeout)
+      event.input.timeout = BASH_DEFAULT_TIMEOUT_S;
     toolCalls.push({ name: event?.toolName, args: event?.input ?? {} });
   });
 

@@ -9,7 +9,7 @@
  * voice=true 只对 Telegram 有效：桥去 9881 合成、ffmpeg 转 ogg/opus 发语音条；她的声音是日语，
  * 所以语音条会附上她写的中文原文当 caption（GSV 的中文声不带）。
  *
- * 表情包（2026-11-02）：素材在 `D:\AI\stickers`（不进 Git），`index.json` 每项有
+ * 表情包（2026-11-02）：素材源头在 `D:\AI\stickers`（不进 Git），她读的是拷进 WSL 本地盘的 `/root/albion-pi/stickers`（/mnt/d 太慢），`index.json` 每项有
  * id / file / character / meaning / emotions / text_on_image。`find_sticker` 按心情挑几张候选，
  * 她再把编号交给 `send_message` 的 `sticker`，由桥按平台上传（TG 走 sendSticker/sendAnimation，
  * Discord 走附件上传）。
@@ -29,7 +29,7 @@ const PORT = process.env.ALBION_CHAT_PORT || "8660";
 const KEY = process.env.API_SERVER_KEY || "";
 const SESSION = process.env.ALBION_SESSION_ID || "albion-desktop";
 const TIMEOUT_S = Number(process.env.ALBION_CHAT_SEND_TIMEOUT || "180");
-const STICKERS_DIR = process.env.ALBION_STICKERS_DIR || "/mnt/d/AI/stickers";
+const STICKERS_DIR = process.env.ALBION_STICKERS_DIR || "/root/albion-pi/stickers";
 
 type SendResult = { ok: boolean; text?: string; error?: string };
 
@@ -172,7 +172,9 @@ export default function albionChat(pi: ExtensionAPI) {
 				: random
 				? `没有正好对得上「${mood}」的，随机挑了几张：`
 				: `按「${mood}」挑了几张：`;
-			const text = [head, ...items.map(stickerLine)].join("\n");
+			// 她要看清某张图时不知道文件在哪，曾用 grep -r 翻整个 /root 找，一轮卡 6 分钟（11-02）。
+			const where = `想看清哪张，用 look_image 看 ${STICKERS_DIR}/png/<编号>.png（动图是 gif/<编号>.gif）。`;
+			const text = [head, ...items.map(stickerLine), where].join("\n");
 			return { content: [{ type: "text" as const, text }], details: { count: items.length, random } };
 		},
 	});
