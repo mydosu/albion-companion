@@ -153,9 +153,7 @@ describe('createChatOrchestratorRuntime', () => {
     h.runtime.hooks.onBeforeMessageComposed(before)
     const first = h.runtime.ingest('human holding queue', { model: 'gpt-test', chatProvider: provider })
     await vi.waitFor(() => expect(h.stream).toHaveBeenCalledTimes(1))
-    let valid = true
-    const next = h.runtime.ingest('expired background', { model: 'gpt-test', chatProvider: provider, canStart: () => valid })
-    valid = false
+    const next = h.runtime.ingest('expired background', { model: 'gpt-test', chatProvider: provider, canStart: () => false })
     release()
     await first
     await next
@@ -797,35 +795,40 @@ describe('createChatOrchestratorRuntime', () => {
     ])
   })
 
-  it('rejects cancelled queued sends before they start', async () => {
+  it('dispatches intercurrent sends immediately without queueing or cancelling in-flight send', async () => {
     const harness = createHarness()
     let releaseFirstSend: (() => void) | undefined
-    harness.stream.mockImplementationOnce(async () => {
-      await new Promise<void>((resolve) => {
-        releaseFirstSend = resolve
+    let releaseSecondSend: (() => void) | undefined
+    harness.stream
+      .mockImplementationOnce(async () => {
+        await new Promise<void>((resolve) => {
+          releaseFirstSend = resolve
+        })
       })
-    })
+      .mockImplementationOnce(async () => {
+        await new Promise<void>((resolve) => {
+          releaseSecondSend = resolve
+        })
+      })
 
-    const firstSend = harness.runtime.ingest('hold queue', {
+    const firstSend = harness.runtime.ingest('first message', {
       model: 'gpt-test',
       chatProvider: provider,
     })
-    const secondSend = harness.runtime.ingest('cancel me', {
+    const secondSend = harness.runtime.ingest('second message', {
       model: 'gpt-test',
       chatProvider: provider,
     })
 
     await vi.waitFor(() => {
-      expect(harness.stream).toHaveBeenCalledTimes(1)
+      expect(harness.stream).toHaveBeenCalledTimes(2)
     })
-    await vi.waitFor(() => {
-      expect(harness.runtime.getPendingQueuedSendCount()).toBe(1)
-    })
-    harness.runtime.cancelPendingSends('session-1')
+    expect(harness.runtime.getPendingQueuedSendCount()).toBe(0)
     releaseFirstSend?.()
+    releaseSecondSend?.()
 
-    await expect(secondSend).rejects.toThrow('Chat session was reset before send could start')
     await firstSend
+    await secondSend
   })
 
   // https://github.com/moeru-ai/airi/pull/2086#discussion_r3714754876
@@ -892,23 +895,16 @@ describe('createChatOrchestratorRuntime', () => {
       model: 'gpt-test',
       chatProvider: provider,
     })
+    harness.generation.set(2)
     const secondSend = harness.runtime.ingest('stale request', {
       model: 'gpt-test',
       chatProvider: provider,
+      generation: 1,
     })
 
-    await vi.waitFor(() => {
-      expect(harness.stream).toHaveBeenCalledTimes(1)
-    })
-    await vi.waitFor(() => {
-      expect(harness.runtime.getPendingQueuedSendCount()).toBe(1)
-    })
-    harness.generation.set(2)
-    releaseFirstSend?.()
-
-    await firstSend
     await expect(secondSend).rejects.toThrow('Chat session was reset before send could start')
-    expect(harness.stream).toHaveBeenCalledTimes(1)
+    releaseFirstSend?.()
+    await firstSend
   })
 
   it('keeps sending externally writable for UI facades', () => {
@@ -1019,28 +1015,14 @@ describe('createChatOrchestratorRuntime', () => {
     })
 
     await vi.waitFor(() => {
-      expect(harness.stream).toHaveBeenCalledTimes(1)
+      expect(harness.stream).toHaveBeenCalledTimes(2)
     })
-    await vi.waitFor(() => {
-      expect(harness.runtime.getPendingQueuedSendCount()).toBe(1)
-    })
+    expect(harness.runtime.getPendingQueuedSendCount()).toBe(0)
+    expect(harness.runtime.getPendingQueuedSendSnapshot()).toEqual([])
 
-    expect(harness.runtime.getPendingQueuedSendSnapshot()).toEqual([
-      {
-        sessionId: 'session-1',
-        generation: 1,
-        cancelled: false,
-        messagePreview: queuedMessage.slice(0, 120),
-        hasAttachments: true,
-        inputType: 'input:text',
-      },
-    ])
-
-    harness.runtime.cancelPendingSends('session-1')
     releaseFirstSend?.()
-
-    await expect(secondSend).rejects.toThrow('Chat session was reset before send could start')
     await firstSend
+    await secondSend
   })
 
   it('handles attachments, reasoning deltas, tool events, and assistant finalization', async () => {

@@ -519,4 +519,48 @@ describe('createStreamingTtsSession (adapter)', () => {
       vi.useRealTimers()
     }
   })
+
+  it('new-message 不掐断正在播的语音，新旧轮按 turnId 排队且各自独立', () => {
+    const playback = makePlaybackManagerStub()
+    const pipe1 = makePipelineStub()
+    const pipe2 = makePipelineStub()
+    const snap = makeStreamingSnapshot()
+    const ctx = makeStreamAudioContext()
+
+    // 模拟第一轮会话 (turn-1) 收到音频并进入播放管理器
+    const session1 = createStreamingTtsSession({
+      intentId: 'stream-turn-1',
+      turnId: 'turn-1',
+      snapshot: snap,
+      audioContext: ctx,
+      playbackManager: playback,
+      pipelineFactory: pipe1.factory as any,
+    })
+    pipe1.options.onSentence({ index: 0, text: 'turn-1 sentence', audio: { duration: 1 } as any })
+    expect(session1.intentId).toBe('stream-turn-1')
+    expect(playback.scheduled).toHaveLength(1)
+    expect(playback.scheduled[0].turnId).toBe('turn-1')
+
+    // 用户发新消息触发第二轮 (turn-2)：不停第一轮，开启新 session
+    const session2 = createStreamingTtsSession({
+      intentId: 'stream-turn-2',
+      turnId: 'turn-2',
+      snapshot: snap,
+      audioContext: ctx,
+      playbackManager: playback,
+      pipelineFactory: pipe2.factory as any,
+    })
+    pipe2.options.onSentence({ index: 0, text: 'turn-2 sentence', audio: { duration: 2 } as any })
+
+    // 第一轮没有被 stopAll / stopByIntent 掐掉，两轮在 playbackManager 队列中排队
+    expect(playback.cancellations).toHaveLength(0)
+    expect(playback.scheduled).toHaveLength(2)
+    expect(playback.scheduled[0].turnId).toBe('turn-1')
+    expect(playback.scheduled[1].turnId).toBe('turn-2')
+
+    // 显式取消 session2 时仅停止 session2，不影响 session1
+    session2.cancel('stop-button')
+    expect(playback.cancellations).toEqual([{ intentId: 'stream-turn-2', reason: 'stop-button' }])
+    expect(pipe1.calls.cancel).toBe(0)
+  })
 })

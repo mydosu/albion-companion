@@ -305,6 +305,8 @@ const streamingControl = useLlmStreamingControlStore()
  * 一旦有 span 进来，`driven` 置位，onStart 那条老路就停手（否则同一句会记两遍）。
  */
 const displayLedger = createDisplayLedger()
+const ledgersByTurnId = new Map<string, ReturnType<typeof createDisplayLedger>>()
+let currentPlayingTurnId: string | null = null
 // 没有可用语音会话（9885 挂了 / 静音 / 按键说话）时，靠它把整轮原文直接顶到字幕和展示通道。
 const captionFallback = createCaptionFallback()
 
@@ -830,15 +832,51 @@ bindSpeakingStateToPlaybackManager(playbackManager, {
     }
   },
   onStart: ({ item }) => {
+    const turnId = item.turnId
+    if (turnId && turnId !== currentPlayingTurnId) {
+      currentPlayingTurnId = turnId
+      const ledger = ledgersByTurnId.get(turnId)
+      if (ledger && ledger.driven) {
+        const text = ledger.text()
+        if (text) {
+          assistantCaption.value = text
+          try {
+            postCaption({ type: 'caption-assistant', text, operation: 'replace' })
+          }
+          catch {}
+          const fresh = ledger.takeNew()
+          if (fresh) {
+            try {
+              postPresent({ type: 'assistant-append', text: fresh })
+            }
+            catch {}
+          }
+        }
+      }
+      else if (!displayLedger.driven) {
+        assistantCaption.value = item.text.trim()
+        try {
+          postCaption({ type: 'caption-assistant', text: assistantCaption.value, operation: 'replace' })
+        }
+        catch {}
+        try {
+          postPresent({ type: 'assistant-append', text: item.text.trim() })
+        }
+        catch {}
+        return
+      }
+    }
+
     if (streamTurn.onItemStart(item))
       return
     // NOTICE: postCaption and postPresent may throw errors if the BroadcastChannel is closed
     // (e.g., when navigating away from the page). We wrap these in try-catch to prevent
     // breaking playback when the channel is unavailable.
     const itemText = item.text.trim()
+    const activeLedger = (turnId ? ledgersByTurnId.get(turnId) : null) ?? displayLedger
     // 本机 v2（P5）下字幕由 `display.span` 账本驱动（原文守恒、含无音频段），
     // 这条"播到才追加"的老路会让同一句被记两遍，所以 v2 生效时让它靠边站。
-    if (!displayLedger.driven) {
+    if (!activeLedger.driven) {
       assistantCaption.value += ` ${itemText}`
       try {
         // 字幕显示"整段话"，只让 TTS 切句器决定刷新时机（原来每切一段就只显示那一段，
@@ -849,7 +887,7 @@ bindSpeakingStateToPlaybackManager(playbackManager, {
         // BroadcastChannel may be closed - don't break playback
       }
     }
-    if (!displayLedger.driven) {
+    if (!activeLedger.driven) {
       try {
         postPresent({ type: 'assistant-append', text: itemText })
       }
@@ -1005,9 +1043,16 @@ function setupAnalyser() {
 // branch on provider id anywhere below — the factory is the single
 // decision point. See `packages/stage-ui/src/libs/speech/tts-session.ts`.
 let currentSession: StageTtsSession | null = null
+const activeSessions = new Map<string, StageTtsSession>()
 
 function stopSpeechOutput(reason: string) {
   captionFallback.close()
+  for (const session of activeSessions.values()) {
+    session.cancel(reason)
+  }
+  activeSessions.clear()
+  ledgersByTurnId.clear()
+  currentPlayingTurnId = null
   currentSession?.cancel(reason)
   currentSession = null
   speechPipeline.stopAll(reason)
@@ -1115,14 +1160,21 @@ function failCaptionFallback(turnId: string) {
   emitFallbackCaption(captionFallback.fail(turnId, displayLedger.text()))
 }
 
-function applyDisplaySpan(span: StreamingDisplaySpan) {
+function applyDisplaySpan(span: StreamingDisplaySpan, turnId?: string) {
   // 兜底已经用整轮原文接管字幕，会话残留的 span 不许再 replace 回更短的文本
   if (captionFallback.active)
     return
-  const text = displayLedger.add(span)
-  const fresh = displayLedger.takeNew()
+  const ledger = (turnId ? ledgersByTurnId.get(turnId) : null) ?? displayLedger
+  const text = ledger.add(span)
+  const fresh = ledger.takeNew()
   if (!text)
     return
+
+  // 若正在播旧轮的语音，新轮的字幕暂不冲刷到屏幕，等新轮起播时再刷出（不串轮）
+  const isPlayingOtherTurn = currentPlayingTurnId && turnId && currentPlayingTurnId !== turnId && (nowSpeaking.value || streamTurn.pending)
+  if (isPlayingOtherTurn)
+    return
+
   assistantCaption.value = text
   try {
     postCaption({ type: 'caption-assistant', text, operation: 'replace' })
@@ -1143,15 +1195,12 @@ function applyDisplaySpan(span: StreamingDisplaySpan) {
 }
 
 function openTtsSession(turnId: string): StageTtsSession {
-  // A session must only clear the module-level `currentSession` if it IS that session. The previous
-  // code cleared it whenever any `stream-` session completed, which is unsafe once sessions exist that
-  // are not assigned to `currentSession` (e.g. one-off read-aloud sessions): one of those finishing
-  // would null a still-active chat session and drop the rest of the reply. Capture the session and
-  // compare identity; the `stream-` guard is preserved so segmenter sessions still don't self-clear.
   let session: StageTtsSession | null = null
-  // 新一轮会话：字幕账本清零（本机 v2 的 span 只属于这一轮）
-  displayLedger.clear()
+  // 新一轮会话：为该 turn 建立独立的字幕账本（各自成段，不串轮）
+  const turnLedger = createDisplayLedger()
+  ledgersByTurnId.set(turnId, turnLedger)
   const clearIfActive = () => {
+    activeSessions.delete(turnId)
     if (session && currentSession === session && session.intentId.startsWith('stream-'))
       currentSession = null
   }
@@ -1231,7 +1280,7 @@ function openTtsSession(turnId: string): StageTtsSession {
         clearIfActive()
         markTtsFinished(turnId)
       },
-      onDisplay: applyDisplaySpan,
+      onDisplay: span => applyDisplaySpan(span, turnId),
     },
   })
   // P6：开局就把可接收提前量告诉协调器（方案 §3.4 的上限：15 秒 / 8 段，先到为准）。
@@ -1257,11 +1306,11 @@ chatHookCleanups.push(onBeforeMessageComposed(async (_message, context) => {
   const stopRequest = latestStopRequest.value
   beginOutputTurn(context.turnId)
   captionFallback.begin(context.turnId)
-  playbackManager.stopAll('new-message')
-  resetAssistantSpeechSurface('new-message', { clearCaption: false })
 
-  currentSession?.cancel('new-message')
-  currentSession = null
+  // 新消息不再掐断正在说的语音：
+  // 1. 不执行 playbackManager.stopAll('new-message')，上一轮待播/在播音频自然排队播完
+  // 2. 不执行 resetAssistantSpeechSurface('new-message')，嘴型继续跟着在播音频走
+  // 3. 不 cancel 上一轮的 currentSession，让其在 activeSessions 里自然接收完/合成完
 
   if (speechMuted.value || pushToTalkActive.value) {
     failCaptionFallback(context.turnId)
@@ -1277,7 +1326,9 @@ chatHookCleanups.push(onBeforeMessageComposed(async (_message, context) => {
       markTtsFinished(context.turnId)
       return
     }
-    currentSession = openTtsSession(context.turnId)
+    const session = openTtsSession(context.turnId)
+    activeSessions.set(context.turnId, session)
+    currentSession = session
   }
   catch (error) {
     failCaptionFallback(context.turnId)
@@ -1290,11 +1341,12 @@ chatHookCleanups.push(onBeforeSend(async () => {
   currentMotion.value = { group: EmotionThinkMotionName }
 }))
 
-chatHookCleanups.push(onTokenLiteral(async (literal) => {
+chatHookCleanups.push(onTokenLiteral(async (literal, context) => {
   // 注意：空串也要喂给会话 —— 编排器削掉标记后可能发来空串，之前"空就不喂"会把
   // 切句器的节奏打乱：该念的整句没被送出去，于是没语音、连字幕也不出。
   emitFallbackCaption(captionFallback.push(literal))
-  currentSession?.appendText(literal)
+  const session = (context?.turnId ? activeSessions.get(context.turnId) : null) ?? currentSession
+  session?.appendText(literal)
 }))
 
 chatHookCleanups.push(onTokenSpecial(async (special, context) => {
@@ -1305,15 +1357,18 @@ chatHookCleanups.push(onTokenSpecial(async (special, context) => {
     return
   }
 
-  currentSession?.appendSpecial(special)
+  const session = (context?.turnId ? activeSessions.get(context.turnId) : null) ?? currentSession
+  session?.appendSpecial(special)
 }))
 
-chatHookCleanups.push(onStreamEnd(async () => {
-  currentSession?.finishInput()
+chatHookCleanups.push(onStreamEnd(async (context) => {
+  const session = (context?.turnId ? activeSessions.get(context.turnId) : null) ?? currentSession
+  session?.finishInput()
 }))
 
-chatHookCleanups.push(onAssistantResponseEnd(async () => {
-  currentSession?.end()
+chatHookCleanups.push(onAssistantResponseEnd(async (_message, context) => {
+  const session = (context?.turnId ? activeSessions.get(context.turnId) : null) ?? currentSession
+  session?.end()
   // Streaming sessions null-out via the onDone hook; segmenter sessions
   // stay around until the next `onBeforeMessageComposed` cancels them
   // (the segmenter pipeline's IntentHandle.end is idempotent and
@@ -1338,7 +1393,7 @@ chatHookCleanups.push(onAssistantResponseEnd(async () => {
 watch(
   [activeSpeechProvider, () => activeSpeechVoice.value?.id, activeSpeechModel],
   ([provider, voiceId, model], [prevProvider, prevVoiceId, prevModel]) => {
-    if (!currentSession)
+    if (activeSessions.size === 0 && !currentSession)
       return
     if (provider === prevProvider && voiceId === prevVoiceId && model === prevModel)
       return
@@ -1350,7 +1405,11 @@ watch(
       model,
       prevModel,
     })
-    currentSession.cancel('provider-or-voice-changed')
+    for (const session of activeSessions.values()) {
+      session.cancel('provider-or-voice-changed')
+    }
+    activeSessions.clear()
+    currentSession?.cancel('provider-or-voice-changed')
     currentSession = null
   },
 )
@@ -1494,6 +1553,10 @@ onUnmounted(() => {
   // feeding sentences into a playbackManager whose listeners still
   // mutate component refs (caption / nowSpeaking). Codex review: HIGH
   // #1 + MEDIUM #5.
+  for (const session of activeSessions.values()) {
+    session.cancel('unmount')
+  }
+  activeSessions.clear()
   currentSession?.cancel('unmount')
   currentSession = null
   playbackManager.stopAll('unmount')

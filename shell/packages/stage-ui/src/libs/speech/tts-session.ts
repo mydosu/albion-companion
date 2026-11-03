@@ -170,6 +170,7 @@ export interface StreamingSessionHooks {
 
 export interface CreateStreamingSessionOptions<TAudio = AudioBuffer> {
   intentId: string
+  turnId?: string
   snapshot: StreamingSessionSnapshot
   audioContext: BaseAudioContext
   playbackManager: PlaybackManagerSubset<TAudio>
@@ -258,6 +259,7 @@ export function createStreamingTtsSession<TAudio = AudioBuffer>(
     playbackManager.schedule({
       id: `${intentId}-stream`,
       streamId: intentId,
+      turnId: options.turnId,
       intentId,
       segmentId: `${intentId}-stream`,
       sequence: sequence++,
@@ -462,9 +464,11 @@ export function createStageTtsSession<TAudio = AudioBuffer>(
     return fromIntent(ctx.openIntent(ctx.intentOptions()))
   }
 
+  const intentOpts = ctx.intentOptions()
   const intentId = createStreamingIntentId()
   return createStreamingTtsSession<TAudio>({
     intentId,
+    turnId: intentOpts.turnId,
     snapshot: snapshot!,
     audioContext: ctx.audioContext!,
     playbackManager: ctx.playbackManager,

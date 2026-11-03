@@ -65,6 +65,8 @@ export interface ChatOrchestratorSendOptions {
   toolReferences?: ChatToolReference[]
   /** Original transport input metadata used by bridge/devtools observers. */
   input?: ChatStreamEventContext['input']
+  /** Optional generation expectation; rejects if session generation changed. */
+  generation?: number
 }
 
 interface QueuedSend {
@@ -360,6 +362,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
   let activeSendSessionId: string | undefined
   let activeStreamingMessage: StreamingAssistantMessage | undefined
   let pendingQueuedSends: QueuedSend[] = []
+  let activeSendCount = 0
 
   function emitStateChange() {
     deps.onStateChange?.({
@@ -466,6 +469,9 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
   ) {
     if (!sendingMessage && !options.attachments?.length)
       return
+
+    activeSendCount++
+    setSending(true)
 
     deps.session.ensureSession(sessionId)
 
@@ -1004,7 +1010,13 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       throw error
     }
     finally {
-      setSending(false)
+      activeSendCount--
+      if (activeSendCount <= 0) {
+        activeSendCount = 0
+        setSending(false)
+        activeSendSessionId = undefined
+        activeStreamingMessage = undefined
+      }
       deps.onSendSettled?.({ sessionId })
     }
   }
@@ -1047,23 +1059,24 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     emitStateChange()
   })
 
-  function ingest(
+  async function ingest(
     sendingMessage: string,
     options: ChatOrchestratorSendOptions,
     targetSessionId?: string,
-  ) {
+  ): Promise<void> {
     const sessionId = targetSessionId || deps.getActiveSessionId()
-    const generation = deps.session.getSessionGeneration(sessionId)
+    const currentGen = deps.session.getSessionGeneration(sessionId)
+    const generation = options.generation ?? currentGen
 
-    return new Promise<void>((resolve, reject) => {
-      sendQueue.enqueue({
-        sendingMessage,
-        options,
-        generation,
-        sessionId,
-        deferred: { resolve, reject },
-      })
-    })
+    if (currentGen !== generation) {
+      throw new Error('Chat session was reset before send could start')
+    }
+
+    if (options.canStart && !options.canStart()) {
+      return
+    }
+
+    await performSend(sendingMessage, options, generation, sessionId)
   }
 
   function cancelPendingSends(sessionId?: string) {
