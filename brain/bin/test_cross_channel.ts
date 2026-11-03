@@ -69,13 +69,13 @@ add(D, "user", "【接着说完】（这是我自己心里的念头）", BASE + 
 add(D, "user", "【以下是这次对话此前的记录】\n指挥官：桌面旧话\n阿尔比恩：旧回复", BASE + 1680);
 
 const { _albionTest } = await import("../agent/extensions/albion-turn.ts");
-const { crossChannelBlock, CROSS_TITLE } = _albionTest;
+const { crossChannelBlock, CROSS_TITLE_FROM_GROUP, CROSS_TITLE_FROM_PRIVATE } = _albionTest;
 
 // A) 桌面：群近况 + 她发的群消息；悄悄话、播种块、6 小时外、内部提示都不进来
 {
   const block = await crossChannelBlock(D, NOW * 1000);
   assert.ok(block, "桌面应该拿到群近况");
-  assert.ok(block.startsWith(CROSS_TITLE), block);
+  assert.ok(block.startsWith(CROSS_TITLE_FROM_GROUP), block);
   assert.ok(block.includes("16:05 [Discord 群] 指挥官：群里好呀"), block);
   assert.ok(block.includes("16:06 [Discord 群] 可畏：收到。"), block);
   assert.ok(block.includes("16:12 [Discord 群] 你：群里我也在。"), block);
@@ -105,7 +105,7 @@ const { crossChannelBlock, CROSS_TITLE } = _albionTest;
 {
   const block = await crossChannelBlock(G, NOW * 1000);
   assert.ok(block, "Discord 应该拿到桌面近况");
-  assert.ok(block.startsWith(CROSS_TITLE), block);
+  assert.ok(block.startsWith(CROSS_TITLE_FROM_PRIVATE), block);
   assert.ok(block.includes("16:20 [桌面] 指挥官：桌面上的一句话"), block);
   assert.ok(block.includes("16:22 [Telegram] 指挥官：TG 上说的话"), block);
   assert.ok(block.includes("16:22 [桌面] 你：桌面上回他一句"), block);

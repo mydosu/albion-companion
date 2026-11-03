@@ -170,7 +170,9 @@ export function recentAsides(messages: any[], before: number): string[] {
 // 悄悄话一律不进桌面：他看得见，但她们以为他看不到，带进桌面她会当着他的面提起。
 const CROSS_DESKTOP = "albion-desktop";
 const CROSS_DISCORD = "albion-discord";
-export const CROSS_TITLE = "（另一边最近的事，供你知道，不用逐条回应）";
+export const CROSS_TITLE_FROM_GROUP = "（群里最近的事，供你知道，不用逐条回应）";
+export const CROSS_TITLE_FROM_PRIVATE = "（指挥官私下和你聊的事，供你知道，不用逐条回应；私下聊的事不要在群里说出来，除非他自己在群里提起）";
+export const CROSS_TITLE = CROSS_TITLE_FROM_GROUP;
 const CROSS_LOOKBACK_S = 6 * 3600;
 const CROSS_MAX_LINES = 12;
 const CROSS_MAX_CHARS = 1500;
@@ -316,6 +318,7 @@ export async function crossChannelBlock(currentSession: string, nowMs = Date.now
   if (!toDesktop && !toDiscord) return null;
   const source = toDesktop ? CROSS_DISCORD : CROSS_DESKTOP;
   const key: "desktop" | "discord" = toDesktop ? "desktop" : "discord";
+  const title = toDesktop ? CROSS_TITLE_FROM_GROUP : CROSS_TITLE_FROM_PRIVATE;
   const state = readCrossState();
   const since = Math.max(nowMs / 1000 - CROSS_LOOKBACK_S, Number(state[key] || 0));
   const rows = await readCrossRows(source, since);
@@ -332,7 +335,7 @@ export async function crossChannelBlock(currentSession: string, nowMs = Date.now
   // 超量时留最近的 12 行（「近况」先看新近的）；同一句旧通知里的 context 行只留最新一次。
   const picked: { ts: number; line: string }[] = [];
   const seen = new Set<string>();
-  let chars = CROSS_TITLE.length;
+  let chars = title.length;
   for (let i = flat.length - 1; i >= 0; i--) {
     const e = flat[i];
     if (seen.has(e.line)) continue;
@@ -345,7 +348,7 @@ export async function crossChannelBlock(currentSession: string, nowMs = Date.now
   if (!picked.length) return null;
   picked.reverse();
   markCrossInjected(key, picked[picked.length - 1].ts);
-  return CROSS_TITLE + "\n" + picked.map((e) => `- ${e.line}`).join("\n");
+  return title + "\n" + picked.map((e) => `- ${e.line}`).join("\n");
 }
 
 const BASH_DEFAULT_TIMEOUT_S = 120;
@@ -761,4 +764,4 @@ export default function albionTurn(pi: ExtensionAPI): void {
 }
 
 // 自检钩子：bin/test_guard_ext.ts 直接驱动这些函数。
-export const _albionTest = { MARKER, CONTEXT, turn_guidance, composeTurnContent, tool_row, msg_text, recentAsides, timeLine, slotName, bjParts, agoText, stampsOf, previousUserMs, crossChannelBlock, CROSS_TITLE };
+export const _albionTest = { MARKER, CONTEXT, turn_guidance, composeTurnContent, tool_row, msg_text, recentAsides, timeLine, slotName, bjParts, agoText, stampsOf, previousUserMs, crossChannelBlock, CROSS_TITLE, CROSS_TITLE_FROM_GROUP, CROSS_TITLE_FROM_PRIVATE };
