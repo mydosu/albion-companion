@@ -430,6 +430,9 @@ function queueActivity(entries: [string, string, string | null][]): Promise<void
 export default function albionTurn(pi: ExtensionAPI): void {
   // 本轮状态
   let lastSource = "";
+  // 同一轮里 steer 可能又插进来一句（低层循环内部消化，agent_end 只来一次）：
+  // 这边的原话和插进来的话都要记，不能只看最后那条 user。
+  let turnSources: string[] = [];
   let hasToolResult = false;
   let pendingWrite = false;
   let toolCalls: { name: string; args: Record<string, unknown> }[] = [];
@@ -467,6 +470,7 @@ export default function albionTurn(pi: ExtensionAPI): void {
                      composed.content.slice(source.length).replace(/^\n\n/, ""));
 
     lastSource = source;
+    if (turnSources[turnSources.length - 1] !== source) turnSources.push(source);
 
     const copy = messages.slice();
     // 附件（图片段）必须原样留着：这一行早先把 content 整个换成纯文本，
@@ -512,6 +516,7 @@ export default function albionTurn(pi: ExtensionAPI): void {
   pi.on("agent_end", async (event: any) => {
     if (!pendingWrite) {
       toolCalls = [];
+      turnSources = [];
       return;
     }
     pendingWrite = false;
@@ -519,6 +524,7 @@ export default function albionTurn(pi: ExtensionAPI): void {
     const last = [...msgs].reverse().find((x) => x?.role === "assistant");
     if (!last) {
       toolCalls = [];
+      turnSources = [];
       return;
     }
     const said = msg_text(last);
@@ -533,18 +539,29 @@ export default function albionTurn(pi: ExtensionAPI): void {
       for (const p of ledger.changed)
         if (!listed.has(p)) rows.push(["tool", JSON.stringify({ success: true, verified: true, files_modified: [p], resolved_path: p }), TOOL_NAME_MAP.bash]);
     }
+    // 每条 user 对一条她说出口的 assistant（steer 插进来的话各成一对）。
     // 【自主醒来】那段是宿主写给她自己看的，不是他说的话：活动库里只记一句（haiku 复核 r35-4）
     // steer 插进来的那句去掉「她还在说的时候」这层说明，记成他的话（2026-11-03）
-    const saidText = lastSource.replace(STEER_PREFIX_RE, "");
-    const src0 = saidText.replace(/^\[[^\]\n]*\]\s*/, "");
-    const userRow = /(?:^|【现在】\s*)【自主醒来】/.test(src0) ? "（阿尔比恩自己醒来）"
-      : /^【接着说完】/.test(src0) ? "（阿尔比恩接着把刚才的话说完）" : saidText;
-    const entries: [string, string, string | null][] = [
-      ["user", userRow, null],
-      ["assistant", said, null],
-      ...rows,
-    ];
+    const assistantTexts = msgs
+      .filter((m) => m?.role === "assistant"
+        && !(Array.isArray(m.content) && m.content.some((p: any) => p?.type === "toolCall"))
+        && m.stopReason !== "error")
+      .map((m) => msg_text(m))
+      .filter((t) => t.trim());
+    const sources = turnSources.length ? turnSources : [lastSource];
+    const entries: [string, string, string | null][] = [];
+    for (let i = 0; i < sources.length; i++) {
+      const saidText = sources[i].replace(STEER_PREFIX_RE, "");
+      const src0 = saidText.replace(/^\[[^\]\n]*\]\s*/, "");
+      const userRow = /(?:^|【现在】\s*)【自主醒来】/.test(src0) ? "（阿尔比恩自己醒来）"
+        : /^【接着说完】/.test(src0) ? "（阿尔比恩接着把刚才的话说完）" : saidText;
+      entries.push(["user", userRow, null]);
+      const reply = assistantTexts[i] ?? (i === sources.length - 1 ? said : "");
+      if (reply) entries.push(["assistant", reply, null]);
+    }
+    entries.push(...rows);
     toolCalls = [];
+    turnSources = [];
     await queueActivity(entries);
   });
 }
