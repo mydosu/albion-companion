@@ -878,9 +878,15 @@ class DiscordBot:
         try:
             if self.client and self.ready:
                 # 私信那一轮显示在他的私聊里，群那一轮显示在 #常规，不能串
-                channel = (self.client.get_channel(int(self.cfg["dc_channel"] or 0)) if group
-                           else self.client.get_user(int(self.cfg["dc_owner"] or 0)))
-        except Exception:                       # noqa: BLE001 - 只是状态提示，拿不到就算了
+                if group:
+                    channel = self.client.get_channel(int(self.cfg["dc_channel"] or 0))
+                else:
+                    # 没开 members intent 时 get_user 拿不到他，和 send_dm 一样 fetch 一次
+                    user = (self.client.get_user(int(self.cfg["dc_owner"] or 0))
+                            or await self.client.fetch_user(int(self.cfg["dc_owner"])))
+                    channel = user.dm_channel or await user.create_dm()
+        except Exception as exc:                # noqa: BLE001 - 只是状态提示，拿不到就算了
+            log("typing_channel_failed", group=group, error=repr(exc)[:120])
             channel = None
         return channel.typing() if channel is not None else _NullContext()
 
