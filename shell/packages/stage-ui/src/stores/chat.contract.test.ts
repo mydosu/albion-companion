@@ -911,35 +911,40 @@ describe('chat store contract', () => {
     })
   })
 
-  it('rejects cancelled queued sends before they start', async () => {
+  it('dispatches intercurrent sends immediately without queueing or cancelling in-flight send', async () => {
     let releaseFirstSend: (() => void) | undefined
-    llmStreamMock.mockImplementationOnce(async () => {
-      await new Promise<void>((resolve) => {
-        releaseFirstSend = resolve
+    let releaseSecondSend: (() => void) | undefined
+    llmStreamMock
+      .mockImplementationOnce(async () => {
+        await new Promise<void>((resolve) => {
+          releaseFirstSend = resolve
+        })
       })
-    })
+      .mockImplementationOnce(async () => {
+        await new Promise<void>((resolve) => {
+          releaseSecondSend = resolve
+        })
+      })
 
     const store = useChatStore()
-    const firstSend = store.ingest('hold queue', {
+    const firstSend = store.ingest('first message', {
       model: 'gpt-test',
       chatProvider: provider,
     })
-    const secondSend = store.ingest('cancel me', {
+    const secondSend = store.ingest('second message', {
       model: 'gpt-test',
       chatProvider: provider,
     })
 
     await vi.waitFor(() => {
-      expect(llmStreamMock).toHaveBeenCalledTimes(1)
+      expect(llmStreamMock).toHaveBeenCalledTimes(2)
     })
-    await vi.waitFor(() => {
-      expect(store.pendingQueuedSendCount).toBe(1)
-    })
-    store.cancelPendingSends('session-1')
+    expect(store.pendingQueuedSendCount).toBe(0)
     releaseFirstSend?.()
+    releaseSecondSend?.()
 
-    await expect(secondSend).rejects.toThrow('Chat session was reset before send could start')
     await firstSend
+    await secondSend
   })
 
   // https://github.com/moeru-ai/airi/pull/2086#discussion_r3742939573
@@ -979,20 +984,16 @@ describe('chat store contract', () => {
     )
 
     await vi.waitFor(() => {
-      expect(llmStreamMock).toHaveBeenCalledTimes(1)
-    })
-    await vi.waitFor(() => {
-      expect(store.pendingQueuedSendCount).toBe(1)
+      expect(llmStreamMock).toHaveBeenCalledTimes(2)
     })
     await store.deleteSession('session-1')
 
     expect(deleteSessionMock).toHaveBeenCalledWith('session-1')
-    expect(await queuedOutcome).toBe('Chat session was reset before send could start')
     expect(sessionMessages['session-1']).toBeUndefined()
 
     releaseFirstSend?.()
     expect(await activeOutcome).toBe('Chat session was removed before send completed')
-    expect(llmStreamMock).toHaveBeenCalledTimes(1)
+    expect(await queuedOutcome).toBe('resolved')
     expect(sessionMessages['session-1']).toBeUndefined()
   })
 
@@ -1029,28 +1030,14 @@ describe('chat store contract', () => {
     })
 
     await vi.waitFor(() => {
-      expect(llmStreamMock).toHaveBeenCalledTimes(1)
+      expect(llmStreamMock).toHaveBeenCalledTimes(2)
     })
-    await vi.waitFor(() => {
-      expect(store.pendingQueuedSendCount).toBe(1)
-    })
+    expect(store.pendingQueuedSendCount).toBe(0)
+    expect(store.getPendingQueuedSendSnapshot()).toEqual([])
 
-    expect(store.getPendingQueuedSendSnapshot()).toEqual([
-      {
-        sessionId: 'session-1',
-        generation: 1,
-        cancelled: false,
-        messagePreview: queuedMessage.slice(0, 120),
-        hasAttachments: true,
-        inputType: 'input:text',
-      },
-    ])
-
-    store.cancelPendingSends('session-1')
     releaseFirstSend?.()
-
-    await expect(secondSend).rejects.toThrow('Chat session was reset before send could start')
     await firstSend
+    await secondSend
   })
 
   it('rejects stale generation sends before performSend starts', async () => {
@@ -1066,23 +1053,17 @@ describe('chat store contract', () => {
       model: 'gpt-test',
       chatProvider: provider,
     })
+    const prevGen = currentGeneration
+    currentGeneration = 2
     const secondSend = store.ingest('stale request', {
       model: 'gpt-test',
       chatProvider: provider,
+      generation: prevGen,
     })
 
-    await vi.waitFor(() => {
-      expect(llmStreamMock).toHaveBeenCalledTimes(1)
-    })
-    await vi.waitFor(() => {
-      expect(store.pendingQueuedSendCount).toBe(1)
-    })
-    currentGeneration = 2
-    releaseFirstSend?.()
-
-    await firstSend
     await expect(secondSend).rejects.toThrow('Chat session was reset before send could start')
-    expect(llmStreamMock).toHaveBeenCalledTimes(1)
+    releaseFirstSend?.()
+    await firstSend
   })
 
   it('uses the forked session id and keeps the chat store contract keys', async () => {
