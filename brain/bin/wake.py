@@ -429,6 +429,9 @@ def wake_prompt(now=None):
     # 悄悄话（2026-11-02）：两个人都能主动找对方。桥是否启用了悄悄话 wake.py 看不到（另一个进程），
     # 所以这句无条件给；频道没启用时 send_message 会把「频道没找到」交回给她，不会说错话。
     lines.append("想找可畏说说话，也可以用 send_message（channel=discord_whisper）去悄悄话找她。")
+    # 11-03 指挥官定：醒来轮里用 send_message 回过他，最后又在桌面把同一番话说一遍，他看了两遍。
+    lines.append("这一轮最后写的话会显示在桌面上、念给他听；用 send_message 跟他说过的，桌面上就不再说一遍，"
+                 "只说消息里没说过的，没有就只留一个表情。")
     return "\n".join(lines)
 
 

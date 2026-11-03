@@ -207,6 +207,7 @@ def check_wake_box():
     ok("这一轮把它们了结" in prompt and "不回也行" in prompt, "这一轮了结的说法照定稿")
     ok("想找可畏说说话，也可以用 send_message（channel=discord_whisper）去悄悄话找她。" in prompt,
        "醒来提示里带着「去悄悄话找可畏」（两个人能互相主动找）")
+    ok("用 send_message 跟他说过的，桌面上就不再说一遍" in prompt, "醒来提示里提醒：消息里说过的桌面上不重复")
     ok(wake.load()["inbox_shown"] == [a["id"], d["id"]], "记下这一轮念了哪几条")
     wake.after_wake('<|ACT:{"emotion":"calm"}|>', now + 1)
     ok(inbox.pending() == [], "这一轮结束后没了结的也了结")
