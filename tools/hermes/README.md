@@ -184,3 +184,35 @@ hermes cron run <11:00 那个 job 的 id>     :: 额度>0 时该在 #悄悄话 �
 cron 轮的手工验证：把 `GET /whisper_budget` 的 `remaining` 看到 0 时（或当天聊满 60 条后），
 `hermes cron run <id>` 应该什么都没投递、`hermes cron list` 里这次 run 是 silent；`remaining>0`
 时投递的正文就是可畏自己写的话，不带 `Cronjob Response:` 壳。
+
+## Hermes 升级后重打补丁（`hermes-local-patches.py`）
+
+`%LOCALAPPDATA%\hermes\hermes-agent` 是 Hermes 自己的代码目录，**升级会整份覆盖**。
+下面这些本地改动不在上游里，升级后必须用 `tools/hermes/hermes-local-patches.py` 重打一遍；
+脚本幂等：打过的点跳过、锚点找不到就退出（绝不硬改）。
+
+| 段 | 文件 | 改什么 |
+|---|---|---|
+| A `[SILENT]` | `plugins/platforms/{telegram,discord}/adapter.py` | 入站 `MessageEvent` 补 `reply_expected=False`，让「决定不回」在私信/群里真的不投递 |
+| B `[分条]` | `gateway/platforms/base.py` + 两个 adapter | `split_on_break_marker()`：她单独写一行 `[分条]` 就断成几条发；adapter 里 `splits_on_break_marker = True` 打开 |
+| C 接行 | `gateway/platforms/base.py` | `flatten_message_lines()`：没有代码块/多行列表的消息接成一行（代码块、列表、`MEDIA:` 原样） |
+| D cron 拆条 | `cron/scheduler_delivery.py` | cron 投 Telegram/Discord 也走同一套 `[分条]` + 接行，条间 `human_delay`；`[SILENT]` 仍在拆之前判定 |
+| E 跨平台近况 | `gateway/run_inbound.py` | 入站拼一段 neutral note：他本人在**别的**平台最近 6 小时的新增消息（≤12 行/1500 字）；不改 session key、不合并会话 |
+
+```bat
+:: 在仓库根目录；默认目标 %LOCALAPPDATA%\hermes\hermes-agent
+python tools\hermes\hermes-local-patches.py --check      :: 0=全部已打 1=有没打的 2=锚点变了（源码改了，先人工看）
+python tools\hermes\hermes-local-patches.py              :: 打补丁（幂等）；改前备份到 backup\code\<日期>\hermes-agent\
+python tools\hermes\hermes-local-patches.py --selftest   :: 拆条/接行/跨平台近况断言（27 项，不改文件）
+
+:: 想先拿一份副本演练，不碰生产：
+python tools\hermes\hermes-local-patches.py --hermes-agent <副本目录> --hermes-home <配置目录> --backup-root <备份目录>
+```
+
+打完重启网关才生效：`hermes gateway stop`，再等计划任务「Hermes Gateway Watchdog」拉起（或 `hermes gateway restart`）。
+
+段 E 的身份映射在 `%LOCALAPPDATA%\hermes\identity_links.json`（**个人 id 不进仓库**）：
+`platforms.telegram` / `platforms.discord` 写他本人在各平台的 id，`exclude_chat_ids` 写永不读取的会话
+（脚本会自动把 `.env` 里的悄悄话频道 id 填进去），`limits` 是回看窗口/行数/字数。
+文件不存在时脚本按 `.env` 的 `TELEGRAM_ALLOWED_USERS` / `DISCORD_ALLOWED_USERS` 生成骨架，读不到就留空
+（段 E 暂不生效，补上 id 后重启）；已有文件不会被覆盖。
