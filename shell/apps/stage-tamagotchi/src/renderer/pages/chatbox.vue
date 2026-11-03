@@ -23,15 +23,19 @@ async function send() {
   sending.value = true
   try {
     await session.initialize()
-    await chat.send({ sessionId: session.activeSessionId, text })
   }
   catch (err) {
     console.warn('[chatbox] 发送失败', err)
-  }
-  finally {
+    draft.value = text
     sending.value = false
-    input.value?.focus()
+    return
   }
+  // 发出去就放开输入框：她还在想/还在说的时候也能再补一句。
+  // 编排层（chat-orchestrator）现在允许同一会话并发发送，脑那边会把这句 steer 进正在跑的那一轮。
+  sending.value = false
+  input.value?.focus()
+  void chat.send({ sessionId: session.activeSessionId, text })
+    .catch(err => console.warn('[chatbox] 发送失败', err))
 }
 
 onMounted(() => {
