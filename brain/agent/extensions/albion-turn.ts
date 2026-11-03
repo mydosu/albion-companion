@@ -176,13 +176,17 @@ export const CROSS_TITLE = CROSS_TITLE_FROM_GROUP;
 const CROSS_LOOKBACK_S = 6 * 3600;
 const CROSS_MAX_LINES = 12;
 const CROSS_MAX_CHARS = 1500;
-const CROSS_STATE = () => `${STATE_DIR}/cross-channel.json`;
+// 两个会话各写各的水位文件，避免 desktop/discord 同时注入时互相覆盖（2026-11-03）。
+const CROSS_STATE_FILES: Record<"desktop" | "discord", string> = {
+  desktop: "cross-channel-desktop.json",
+  discord: "cross-channel-discord.json",
+};
+const CROSS_STATE = (key: "desktop" | "discord") => `${STATE_DIR}/${CROSS_STATE_FILES[key]}`;
+const CROSS_LEGACY_STATE = () => `${STATE_DIR}/cross-channel.json`;
 // 和 albion-history.ts 同一口径：宿主塞给她的内部提示不是聊天。
 const CROSS_INTERNAL = /【自主醒来】|【定下次醒来】|【想起来去做】|【接着说完】|【真去做】|（阿尔比恩自己醒来）|（阿尔比恩想起来|（阿尔比恩接着|（宿主提醒|^（这是我自己|^（你要的【|这是一次自主开口/;
 const CROSS_SEED = /^【以下是这次对话此前的记录/;
 const CROSS_STAMP = /^\[(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})\]\s*/;
-
-type CrossState = { desktop?: number; discord?: number };
 
 function crossClock(ms: number): string {
   const p = bjParts(ms);
@@ -265,23 +269,37 @@ function rowLines(row: any, toDesktop: boolean): string[] {
   return [];
 }
 
-function readCrossState(): CrossState {
+function writeCrossState(key: "desktop" | "discord", ts: number): void {
+  mkdirSync(STATE_DIR, { recursive: true });
+  const target = CROSS_STATE(key);
+  const tmp = `${target}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ ts }));
+  renameSync(tmp, target);
+}
+
+/** 读本会话的水位；新文件没有时兼容旧版共用的 cross-channel.json，并把它迁移到新文件。 */
+function readCrossState(key: "desktop" | "discord"): number {
   try {
-    const v = JSON.parse(readFileSync(CROSS_STATE(), "utf8"));
-    return v && typeof v === "object" ? v : {};
-  } catch { return {}; }
+    const v = JSON.parse(readFileSync(CROSS_STATE(key), "utf8"));
+    const n = Number(v?.ts);
+    if (Number.isFinite(n) && n > 0) return n;
+  } catch { /* 新文件还没写 */ }
+  try {
+    const old = JSON.parse(readFileSync(CROSS_LEGACY_STATE(), "utf8"));
+    const n = Number(old?.[key]);
+    if (Number.isFinite(n) && n > 0) {
+      try { writeCrossState(key, n); } catch { /* 迁移写失败也先用旧值，下次再搬 */ }
+      return n;
+    }
+  } catch { /* 没有旧文件 */ }
+  return 0;
 }
 
 /** 只把「已经真的塞进这一轮」的最后一条记下来；没新增时不写。 */
 function markCrossInjected(key: "desktop" | "discord", ts: number): void {
   if (!Number.isFinite(ts) || ts <= 0) return;
   try {
-    const st = readCrossState();
-    st[key] = Math.max(Number(st[key] || 0), ts);
-    mkdirSync(STATE_DIR, { recursive: true });
-    const tmp = `${CROSS_STATE()}.tmp`;
-    writeFileSync(tmp, JSON.stringify(st));
-    renameSync(tmp, CROSS_STATE());
+    writeCrossState(key, Math.max(readCrossState(key), ts));
   } catch (e) {
     log("warn: cross-channel state write failed", String((e as Error)?.message ?? e));
   }
@@ -319,8 +337,7 @@ export async function crossChannelBlock(currentSession: string, nowMs = Date.now
   const source = toDesktop ? CROSS_DISCORD : CROSS_DESKTOP;
   const key: "desktop" | "discord" = toDesktop ? "desktop" : "discord";
   const title = toDesktop ? CROSS_TITLE_FROM_GROUP : CROSS_TITLE_FROM_PRIVATE;
-  const state = readCrossState();
-  const since = Math.max(nowMs / 1000 - CROSS_LOOKBACK_S, Number(state[key] || 0));
+  const since = Math.max(nowMs / 1000 - CROSS_LOOKBACK_S, readCrossState(key));
   const rows = await readCrossRows(source, since);
   if (!rows.length) return null;
 

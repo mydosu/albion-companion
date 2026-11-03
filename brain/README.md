@@ -165,7 +165,7 @@ Discord Gateway ─────┘        │  ▲
   `ALBION_DISCORD_CHANNEL_ID`，可选 `ALBION_DISCORD_WHISPER_CHANNEL_ID`），`agent/.env` 只提供 `API_SERVER_KEY`。缺 Discord 配置就只跑 TG，日志里直说。
   外网只走代理 `127.0.0.1:7897`（aiohttp / discord.py 都显式给 proxy），回环（8650 / 9881）不走代理。
 - **只认他**：TG 只收 `ALBION_TG_OWNER_ID` 的私聊；Discord 私信只收 `ALBION_DISCORD_OWNER_ID`；群只看 `ALBION_DISCORD_CHANNEL_ID`，
-  他发言或 @ 她才叫醒（10 秒合批、同频道 120 秒最多一次），别的 bot 的话只入箱当上下文。
+  他发言或 @ 她才叫醒（10 秒合批；不按频道冷却，条数由 `group_budget` 兜底），别的 bot 的话只入箱当上下文。
 - **会话**：TG 私聊 / Discord 私信与桌面共用 `albion-desktop`；群用 `albion-discord`（在 `agent/real-sessions.json` 里，
   写生产 state、进 OpenViking，长期记忆共享）。
 - **未回箱**：`state/inbox.json`（`bin/inbox.py`；桥写、宿主读）。他发来的消息进箱 → 桥叫醒一轮（正文以 `【平台消息】` 开头，
@@ -291,7 +291,8 @@ Magpie 只是作者的"模型管理器"：它往 `/root/.pi/agent/settings.json`
 - **跨渠道近况**（2026-11-03）：桌面会话每轮从活动库取 `albion-discord` 里 Discord 群的通知行（谁说了什么）
   和她自己用 `send_message(channel=discord_group)` 发的内容；`albion-discord` 会话取桌面最近的原话、
   TG/Discord 私信通知行、她的回复正文和私信发送。只给上次注入之后、6 小时内的新增，最多 12 行/1500 字，
-  每行带北京时间与渠道名；水位在 `state/cross-channel.json`。**悄悄话一律不进桌面**（他看得见，但她们以为他看不到）；
+  每行带北京时间与渠道名；水位分文件 `state/cross-channel-desktop.json` / `state/cross-channel-discord.json`
+  （首次读到旧的 `state/cross-channel.json` 会按本会话的键迁移）。**悄悄话一律不进桌面**（他看得见，但她们以为他看不到）；
   `send_message` 的正文现在会记进活动库的 tool 行（JSON `{channel,text}`），跨渠道才拿得到她说过什么。
 
 ## 她自己长手脚

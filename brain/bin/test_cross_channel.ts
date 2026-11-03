@@ -7,7 +7,7 @@
  * 跑：node bin/test_cross_channel.ts      （Node 26 直接跑 TS；Windows 上也能跑，不依赖 /root）
  */
 import assert from "node:assert";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -118,10 +118,11 @@ const { crossChannelBlock, CROSS_TITLE_FROM_GROUP, CROSS_TITLE_FROM_PRIVATE } = 
 
 // E) 别的会话不加，也不写状态
 {
-  const before = existsSync(join(TMP, "cross-channel.json")) ? readFileSync(join(TMP, "cross-channel.json"), "utf8") : "";
+  const names = ["cross-channel.json", "cross-channel-desktop.json", "cross-channel-discord.json"];
+  const snap = () => names.map((n) => (existsSync(join(TMP, n)) ? readFileSync(join(TMP, n), "utf8") : "")).join("\n--\n");
+  const before = snap();
   assert.equal(await crossChannelBlock("albion-probe-x", NOW * 1000), null);
-  const after = existsSync(join(TMP, "cross-channel.json")) ? readFileSync(join(TMP, "cross-channel.json"), "utf8") : "";
-  assert.equal(after, before);
+  assert.equal(snap(), before);
   console.log("E 探针/别的会话不加 OK");
 }
 
@@ -151,7 +152,7 @@ const { crossChannelBlock, CROSS_TITLE_FROM_GROUP, CROSS_TITLE_FROM_PRIVATE } = 
 
 // H) 12 行上限：清掉水位，塞 20 行也最多 12 行
 {
-  rmSync(join(TMP, "cross-channel.json"), { force: true });
+  for (const n of ["cross-channel.json", "cross-channel-desktop.json", "cross-channel-discord.json"]) rmSync(join(TMP, n), { force: true });
   for (let i = 0; i < 20; i++)
     add(G, "user", `（Discord 群）#${200 + i} 17:${String(i).padStart(2, "0")} 指挥官：第${i}条`, BASE + 3000 + i);
   const block = await crossChannelBlock(D, (NOW + 300) * 1000);
@@ -160,6 +161,26 @@ const { crossChannelBlock, CROSS_TITLE_FROM_GROUP, CROSS_TITLE_FROM_PRIVATE } = 
   assert.ok(lines.length <= 12, `最多 12 行，实际 ${lines.length}`);
   assert.ok(block.length <= 1500, `最多 1500 字，实际 ${block.length}`);
   console.log("H 12 行/1500 字上限 OK");
+}
+
+// I) 水位分文件：旧 cross-channel.json 首次读时迁移；两个会话同时写不互相覆盖
+{
+  for (const n of ["cross-channel.json", "cross-channel-desktop.json", "cross-channel-discord.json"]) rmSync(join(TMP, n), { force: true });
+  const legacy = join(TMP, "cross-channel.json");
+  writeFileSync(legacy, JSON.stringify({ desktop: 1000, discord: 2000 }));
+  const old = readFileSync(legacy, "utf8");
+  add(D, "user", "[2026-11-03 17:30] 分文件测试的桌面话", BASE + 3300);
+  const [desk, disc] = await Promise.all([
+    crossChannelBlock(D, (NOW + 360) * 1000),
+    crossChannelBlock(G, (NOW + 360) * 1000),
+  ]);
+  assert.ok(desk && disc, "两个会话都该拿到块");
+  const df = JSON.parse(readFileSync(join(TMP, "cross-channel-desktop.json"), "utf8"));
+  const gf = JSON.parse(readFileSync(join(TMP, "cross-channel-discord.json"), "utf8"));
+  assert.ok(df.ts > 1000 && gf.ts > 2000, `迁移/写入 ${df.ts} ${gf.ts}`);
+  assert.notEqual(df.ts, gf.ts, "两个键各写各的文件，不互相覆盖");
+  assert.equal(readFileSync(legacy, "utf8"), old, "旧文件只读兼容，不删不改");
+  console.log("I 水位分文件/旧文件兼容/并发互不覆盖 OK");
 }
 
 db.close();
