@@ -78,7 +78,7 @@ WSL2 的配置：`networkingMode=mirrored`，无 CPU/内存上限，WSL 内可�
 | `tts/gsv/` | GPT-SoVITS 适配层（Denia 启动器与推理配置） |
 | `tts/stream/` | 流式切句服务 |
 | `memory/` | OpenViking 记忆链守护/观测/恢复脚本与配置模板 |
-| `教程/` | 面向他人的搭建教程：踩坑笔记 01–10，加给 agent 读的复现向导 `00-复现向导.md` |
+| `教程/` | 面向他人的搭建教程：踩坑笔记 01–11，加给 agent 读的复现向导 `00-复现向导.md` |
 | `docs/` | 设计记录：TTS 全流程、ASR 路径清单、打包与语音服务；已失效的旧设计与纪要在 `docs/history/` |
 | `tests/` | 独立测试、探针、固定材料；产物在忽略的 `tests/output/` |
 | `tools/` | 仓库检查、权重恢复、WSL 脑同步核对等维护工具 |
