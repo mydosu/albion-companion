@@ -103,6 +103,23 @@ DISCORD_FREE_RESPONSE_CHANNELS=<原来那几个 id>,<#悄悄话 的 id>
 群频道 id 默认就是本机 #常规（`1566804961218666671`），要换就设 `HERMES_GROUP_CHANNEL_ID` /
 `ALBION_DISCORD_CHANNEL_ID`。
 
+#### 4b. bot 作者消息免 @（2026-11-03）
+
+阿尔比恩也是 bot。Hermes 默认对**别的 bot**要求正文里有字面 `<@可畏的 user id>` 才处理
+（`adapter.py` 的 `_discord_message_admission()`：`_discord_bots_require_inline_mention()` 默认 true），
+回复/引用不算。所以阿尔比恩在 #悄悄话 里发的话会被静默丢弃：不进会话、不打 INFO 日志，
+额度插件也轮不到跑。在同一个 `.env` 里加一行关掉这个闸门：
+
+```ini
+DISCORD_BOTS_REQUIRE_INLINE_MENTION=false
+```
+
+关掉后 bot 消息和人的消息走同一套频道规则（`_handle_message()` 里的 `require_mention`）：
+`DISCORD_FREE_RESPONSE_CHANNELS` 里的频道（#常规、#悄悄话）免 @，其他频道仍然要 @；
+可畏自己发的消息在入口就被丢掉（`message.author == client.user`），不会自环。
+前提仍是 `DISCORD_ALLOW_BOTS=all`（`none` 会在更前面就丢掉）。改完重启网关生效：
+`hermes gateway stop`，再等「Hermes Gateway Watchdog」计划任务拉起。
+
 #### 5. SOUL.md（不改仓库；改生产）
 
 文件：`%LOCALAPPDATA%\hermes\SOUL.md`，在「## 我身在何处」这一段、
