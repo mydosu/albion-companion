@@ -54,7 +54,10 @@ console.log(JSON.stringify({ results: out }));
 # 说明性的字样：剥完一个都不许留
 FORBIDDEN = ("【平台消息】", "写给自己看的", "可畏也在群里", "刚才群里还在聊的", "这些你可以回",
              "群里你们俩这一轮", "这一轮群里说得够多", "send_message", "已经说了", "还能再说",
-             "Discord 群「", "上给我发了消息")
+             "Discord 群「", "上给我发了消息",
+             # 悄悄话（2026-11-02）：抬头、额度提醒、结尾说明都不进记忆，只留两个人的原话
+             "悄悄话里有新消息", "这里是我和可畏两个人说话的地方", "悄悄话这次你们已经说了",
+             "这次悄悄话聊得够久了", "今天的悄悄话已经聊到头了")
 
 
 def _run_wsl(cmd):
@@ -86,7 +89,7 @@ def apply_with_real_engine(texts, rules):
 
 
 def notices():
-    """真实通知：两个私信渠道、群（带上下文 + R=3）、群（R=0）、群（不提醒）。"""
+    """真实通知：两个私信渠道、群（带上下文 + R=3）、群（R=0）、群（不提醒）、悄悄话（R=4 / R=0）。"""
     now = 1762000000.0                      # 固定时间，样例稳定
     items = [
         {"id": 12, "channel": "telegram", "at": now, "text": "在忙吗？"},
@@ -96,6 +99,8 @@ def notices():
            {"id": 10, "at": now - 60, "author": "Formidable", "text": "晚安"}]
     group_items = [{"id": 14, "at": now, "author": "OwnerNick", "text": "你们俩聊什么呢"},
                    {"id": 15, "at": now + 30, "author": "Formidable", "text": "随便聊聊"}]
+    whisper_items = [{"id": 16, "at": now, "author": "指挥官", "text": "在吗"},
+                     {"id": 17, "at": now + 30, "author": "可畏", "text": "在的"}]
     return [
         ("TG 私信", chat_bridge.dm_notice("telegram", items[:1])),
         ("Discord 私信", chat_bridge.dm_notice("discord", items[1:])),
@@ -103,6 +108,12 @@ def notices():
          chat_bridge.group_notice("常规", group_items, ctx, {"remaining": 3, "used": 9})),
         ("群 R=0", chat_bridge.group_notice("常规", group_items, None, {"remaining": 0, "used": 12})),
         ("群 额度充足", chat_bridge.group_notice("常规", group_items, None, {"remaining": 8, "used": 4})),
+        ("悄悄话 + 剩 4",
+         chat_bridge.whisper_notice(whisper_items, {"remaining": 4, "session_used": 16,
+                                                   "day_used": 16, "limit": "session"})),
+        ("悄悄话 R=0",
+         chat_bridge.whisper_notice(whisper_items, {"remaining": 0, "session_used": 20,
+                                                   "day_used": 20, "limit": "session"})),
     ]
 
 
@@ -122,8 +133,12 @@ def main():
         for line in out.splitlines():
             if not line.strip():
                 continue
-            if not line.startswith("（"):
-                problems.append("%s：留下的行不是消息行：%r" % (name, line[:60]))
+            if line.startswith("（"):
+                continue
+            # 悄悄话的行剥完是「指挥官：原话」「可畏：原话」（定稿格式里每行没有渠道前缀）
+            if name.startswith("悄悄话") and not line.startswith("#") and "：" in line:
+                continue
+            problems.append("%s：留下的行不是消息行：%r" % (name, line[:60]))
 
     # 具体形状（谁说了什么）
     tg = outs[0]
@@ -140,6 +155,15 @@ def main():
     zero = outs[3]
     if "（Discord 群）OwnerNick：你们俩聊什么呢" not in zero:
         problems.append("R=0 那条的消息行没了：%r" % zero)
+
+    # 悄悄话（2026-11-02）：两个人的原话留下，抬头/额度提醒/结尾说明都剥掉
+    for idx, name in ((5, "悄悄话 + 剩 4"), (6, "悄悄话 R=0")):
+        whisper = outs[idx]
+        for want in ("指挥官：在吗", "可畏：在的"):
+            if want not in whisper:
+                problems.append("%s：原话没留下（%r）：%r" % (name, want, whisper))
+        if len([ln for ln in whisper.splitlines() if ln.strip()]) != 2:
+            problems.append("%s：剥完应当只剩两行原话：%r" % (name, whisper))
 
     # 与 tools/reextract_albion_memory.py 的 Python 引擎逐条对拍（同一份规则、同义实现）
     sys.path.insert(0, os.path.join(ROOT, "tools"))

@@ -14,6 +14,7 @@
   · 只留最近 `KEEP` 条；
   · 状态：`unread`（新来的）→ `notified`（叫醒过）→ `answered`（她回了）/ `closed`（这轮醒来了结）。
     群里别的 bot 的话只当上下文：进来就是 `closed`，永远不进「待回」。
+    悄悄话（discord_whisper）例外：可畏说的话也进待回（why=whisper），她得能回。
   · 跨进程读改写用 `fcntl` 文件锁（Windows 上没有 fcntl，退化成进程内线程锁，够自检用）。
 """
 from __future__ import annotations
@@ -30,8 +31,9 @@ MAX_TEXT = 4000                # 单条正文上限（TG 一条消息上限 4096
 MAX_AUTHOR = 80
 # context = 群里别人的话：只给她当上下文看，永远不进待回、也不驱动叫醒（2026-11-02 复审）
 STATES = ("unread", "notified", "answered", "closed", "context")
-CHANNELS = ("telegram", "discord", "discord_group")
-CHANNEL_LABELS = {"telegram": "Telegram", "discord": "Discord 私信", "discord_group": "Discord 群"}
+CHANNELS = ("telegram", "discord", "discord_group", "discord_whisper")
+CHANNEL_LABELS = {"telegram": "Telegram", "discord": "Discord 私信", "discord_group": "Discord 群",
+                  "discord_whisper": "Discord 悄悄话"}
 
 
 def channel_label(channel):
@@ -81,7 +83,7 @@ def _norm(data):
         state = x.get("state") if x.get("state") in STATES else "closed"
         sender = str(x.get("from") or "owner")
         why = str(x.get("why") or "")
-        needs = bool(x.get("needs")) if "needs" in x else (sender == "owner" or why == "mention")
+        needs = bool(x.get("needs")) if "needs" in x else (sender == "owner" or why in ("mention", "whisper"))
         if not needs and state in ("unread", "notified"):
             state = "context"          # 旧数据/上下文条目：留在箱里当上下文，不进待回
         items.append({
@@ -197,6 +199,7 @@ def add(channel, text, *, from_="owner", kind="text", at=None, platform_msg_id="
 
     needs = 他发的（from=owner）或群里 @她（why=mention）→ unread，进待回；
     其余（群里别人/别的 bot）→ context，只当上下文，不驱动叫醒。
+    悄悄话里可畏的话（why=whisper）也进待回：那是两个人说话，她得看得到、回得了。
     """
     if channel not in CHANNELS:
         raise ValueError("unknown channel: %r" % (channel,))
@@ -206,7 +209,7 @@ def add(channel, text, *, from_="owner", kind="text", at=None, platform_msg_id="
     pid = str(platform_msg_id or "")
     sender = str(from_ or "owner")
     why = str(why or "")
-    needs = sender == "owner" or why == "mention"
+    needs = sender == "owner" or why in ("mention", "whisper")
     with _guard():
         data = _read()
         if pid and any(i["channel"] == channel and i["platform_msg_id"] == pid for i in data["items"]):
@@ -302,13 +305,17 @@ def _selftest():
         m = add("discord_group", "阿尔比恩在吗", from_="member", why="mention", platform_msg_id="3")
         assert m["state"] == "unread" and m["needs"] is True, "群里 @她 的进待回"
         assert [i["id"] for i in pending("discord_group")] == [m["id"]]
+        w = add("discord_whisper", "睡了吗", from_="bot", why="whisper", platform_msg_id="w-1")
+        assert w["state"] == "unread" and w["needs"] is True, "悄悄话里可畏的话进待回"
+        assert [i["id"] for i in pending("discord_whisper")] == [w["id"]]
+        assert channel_label("discord_whisper") == "Discord 悄悄话"
         assert [i["id"] for i in context_items("discord_group")] == [b["id"]], "上下文能单独取出来给她看"
         assert context_items("discord_group", since_s=0) == [], "上下文只取最近的"
-        assert [i["id"] for i in pending()] == [1, m["id"]], "待回＝他发的 + 群里 @她的"
+        assert [i["id"] for i in pending()] == [1, m["id"], w["id"]], "待回＝他发的 + 群里 @她的 + 悄悄话"
         assert [i["id"] for i in pending("telegram")] == [1] and pending("discord") == []
         mark_notified([1])
         assert pending()[0]["state"] == "notified" and load()["items"][0]["notified_n"] == 1
-        mark_answered([1, m["id"]])
+        mark_answered([1, m["id"], w["id"]])
         assert pending() == [] and load()["items"][0]["answered_at"] > 0
         c = add("telegram", "第二条")
         close([c["id"]])

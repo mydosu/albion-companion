@@ -161,7 +161,7 @@ Discord Gateway ─────┘        │  ▲
 - **桥**：`bin/chat_bridge.py`（单文件，跑在 `chat-venv`：discord.py + aiohttp）。`start.sh` / `stop.sh` 按 8660 幂等起停，日志 `logs/chat.log`；
   `GET /health` 给 `start.sh`、看门狗和自检看，`POST /send` 只给她那个扩展（Bearer = `agent/.env` 的 `API_SERVER_KEY`）。
 - **凭据**：`/root/albion-pi/.env`（`ALBION_TG_BOT_TOKEN`、`ALBION_TG_OWNER_ID`、`ALBION_DISCORD_BOT_TOKEN`、`ALBION_DISCORD_OWNER_ID`、
-  `ALBION_DISCORD_CHANNEL_ID`），`agent/.env` 只提供 `API_SERVER_KEY`。缺 Discord 配置就只跑 TG，日志里直说。
+  `ALBION_DISCORD_CHANNEL_ID`，可选 `ALBION_DISCORD_WHISPER_CHANNEL_ID`），`agent/.env` 只提供 `API_SERVER_KEY`。缺 Discord 配置就只跑 TG，日志里直说。
   外网只走代理 `127.0.0.1:7897`（aiohttp / discord.py 都显式给 proxy），回环（8650 / 9881）不走代理。
 - **只认他**：TG 只收 `ALBION_TG_OWNER_ID` 的私聊；Discord 私信只收 `ALBION_DISCORD_OWNER_ID`；群只看 `ALBION_DISCORD_CHANNEL_ID`，
   他发言或 @ 她才叫醒（10 秒合批、同频道 120 秒最多一次），别的 bot 的话只入箱当上下文。
@@ -172,6 +172,12 @@ Discord Gateway ─────┘        │  ▲
 - **语音条**：`send_message(voice=true)` 只对 Telegram；桥打 `127.0.0.1:9881/v1/audio/speech`（Irodori 日语）→ `ffmpeg -c:a libopus`
   → `sendVoice`，caption 是她的中文原文。`ALBION_CHAT_TTS_VOICE=denia` 走 GSV 中文、不带 caption；合成失败降级成文字。
 - **主动找他**要守她自己的开口节奏（`wake.can_speak`），回复不受限；群里主动发言只受夜间安静限制。
+- **悄悄话**（2026-11-02）：Discord `#悄悄话` 是她和可畏（Hermes 的 Formidable）两个人说话的频道，指挥官看得到。
+  频道 id 取 `ALBION_DISCORD_WHISPER_CHANNEL_ID`，没配就在 bot 所在服务器里按名字「悄悄话」找一次；找不到只记一条
+  `whisper_channel_missing`、整块不启用，私信和群照旧。两个人的话都入箱（`channel=discord_whisper`，10 秒合批叫醒，
+  走 `albion-discord` 真会话），她回话用 `send_message(channel=discord_whisper)`。条数由 `bin/whisper_budget.py` 管
+  （一次 20 条、一天 60 条，只数两个 bot），`GET /whisper_budget` 给可畏那边的 hook 查；剩 0 拒发、不占群额度、
+  也不受 `wake.can_speak` 限制。
 - 回退：取改动前提交的 `bin/server.py`、`bin/wake.py`、`start.sh`、`stop.sh` 覆盖回去，`bash stop.sh && bash start.sh`；
   `state/inbox.json` 与 `logs/chat.log` 留着无害。
 

@@ -12,6 +12,7 @@
 | `tests/tts/eval/`、`tests/tts/probes/` | 需真实服务的 A/B 与语音探针 | 脚本跟踪，产物忽略 |
 | `tests/output/<组件>/<运行名>/` | 截图、录音、测量结果 | 全部忽略 |
 | `tools/` | 可重复使用的维护、校验、模型处理工具 | 跟踪，使用前阅读副作用 |
+| `tools/hermes/` | 部署到 Windows 主 Hermes 的 hook 脚本与配置清单（`discord_whisper_budget.py`、README；不含 `config.yaml`/`.env` 真身） | 跟踪 |
 | `教程/` | 面向他人的搭建教程（只讲方法，不含模型、声音、人设和凭据） | 跟踪 |
 | `docs/history/` | 已确认失效、只作考古的设计与上线记录 | 跟踪；不当作现行说明，引用前先看文件头的失效说明 |
 | `archive/legacy/` | 旧补丁、旧发布工具、过期实验脚本 | 仅不含凭据的历史参考；2026-10-24 已清空现有内容（回看用 git 历史），今后新的一次性脚本才放这里 |

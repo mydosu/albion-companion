@@ -876,7 +876,7 @@ def check_typing():
         def owner_name_set(self):
             return set()
 
-        async def typing(self, group=False):
+        async def typing(self, group=False, whisper=False):
             return _NullCtx()
 
     class _NullCtx:
@@ -933,6 +933,279 @@ def check_typing():
     finally:
         chat_bridge.TYPING_REFRESH_S = old_refresh
 
+def check_whisper():
+    """悄悄话（2026-11-02）：入箱、说话人、叫醒文本逐字、剩 0 拒发、不占群额度、找不到频道不启用、/whisper_budget。"""
+    import asyncio as _asyncio
+    import time as _time
+
+    reset()
+    cfg = chat_bridge.load_config(environ={"API_SERVER_KEY": "k"}, home=os.path.join(_STATE, "nohome"))
+    cfg = dict(cfg, dc_owner="1508482140570914990", dc_channel="1566804961218666671",
+               dc_whisper="777000111")
+    SELF_ID, PEER_ID = "1566791156824805446", "1566802611611504680"
+
+    class _Author:
+        def __init__(self, uid, bot=False, name="x", display="x"):
+            self.id = uid
+            self.bot = bot
+            self.name = name
+            self.display_name = display
+            self.nick = None
+
+    class _Channel:
+        def __init__(self, cid, name="", guild=None):
+            self.id = cid
+            self.name = name
+            self.guild = guild
+
+    class _Msg:
+        def __init__(self, mid, author, channel, content, clean=None, mentions=()):
+            self.id = mid
+            self.author = author
+            self.channel = channel
+            self.content = content
+            self.clean_content = clean if clean is not None else content
+            self.mentions = list(mentions)
+
+    class _NullCtx:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+    self_user = _Author(SELF_ID, bot=True, name="Albion", display="Albion")
+    form = _Author(PEER_ID, bot=True, name="Formidable", display="Formidable")
+    owner = _Author(int(cfg["dc_owner"]), bot=False, name="owner_handle", display="OwnerNick")
+    other = _Author("999", bot=False, name="someone", display="Someone")
+    group = _Channel(int(cfg["dc_channel"]), "常规", guild=object())
+    whisper = _Channel(777000111, "悄悄话", guild=object())
+
+    class _FakeDC:
+        ready = True
+
+        def __init__(self, whisper_events=None, group_events=None):
+            self.client = type("C", (), {"user": self_user})()
+            self.whisper_sent, self.group_sent = [], []
+            self.whisper_events = list(whisper_events or [])
+            self.group_events = list(group_events or [])
+            self.typing_calls = []
+
+        def remember(self, member):
+            pass
+
+        def name_index(self):
+            return {}
+
+        def owner_name_set(self):
+            return {"ownernick"}
+
+        def channel_name(self):
+            return "常规"
+
+        def whisper_channel_id(self):
+            return "777000111"
+
+        def whisper_bot_ids(self):
+            return (SELF_ID, PEER_ID)
+
+        def whisper_peer_ids(self):
+            return (PEER_ID,)
+
+        def whisper_peer_id(self):
+            return PEER_ID
+
+        async def send_whisper(self, text, sticker_path=None):
+            self.whisper_sent.append(text)
+            return 1
+
+        async def send_group(self, text, sticker_path=None):
+            self.group_sent.append(text)
+            return 2
+
+        async def send_dm(self, text, sticker_path=None):
+            return 3
+
+        def recent_events(self, *a, **k):
+            return list(self.group_events)
+
+        def recent_whisper_events(self, *a, **k):
+            return list(self.whisper_events)
+
+        async def typing(self, group=False, whisper=False):
+            self.typing_calls.append((group, whisper))
+            return _NullCtx()
+
+    class FakeHost:
+        def __init__(self):
+            self.calls = []
+
+        async def chat(self, session, text):
+            self.calls.append((session, text))
+            return "ok"
+
+    def service(dc=None):
+        svc = chat_bridge.Service(cfg)
+        svc.dc = dc or _FakeDC()
+        svc.schedule_whisper = lambda: None
+        svc.schedule_group = lambda: None
+        svc.schedule_dm = lambda: None
+        return svc
+
+    ok("discord_whisper" in chat_bridge.CHANNELS and "discord_whisper" in inbox.CHANNELS,
+       "新渠道 discord_whisper 在收发两边的枚举里")
+
+    # ---- 入箱 + 说话人 ----
+    svc = service()
+    svc.on_discord_message(_Msg(1, owner, whisper, "在吗", clean="在吗"))
+    a = inbox.load()["items"][-1]
+    ok(a["channel"] == "discord_whisper" and a["state"] == "unread" and a["needs"] is True,
+       "悄悄话：指挥官的话进待回（会叫醒她）", a)
+    ok(a["author"] == "指挥官", "悄悄话：指挥官显示成「指挥官」", a["author"])
+    svc.on_discord_message(_Msg(2, form, whisper, "在的", clean="在的"))
+    b = inbox.load()["items"][-1]
+    ok(b["state"] == "unread" and b["needs"] is True, "悄悄话：可畏的话也进待回", b)
+    ok(b["author"] == "可畏", "悄悄话：Formidable 显示成「可畏」", b["author"])
+    svc.on_discord_message(_Msg(3, self_user, whisper, "我自己的话"))
+    ok(not any(i["text"] == "我自己的话" for i in inbox.load()["items"]), "悄悄话：她自己的话不进箱")
+    svc.on_discord_message(_Msg(4, other, whisper, "路过", clean="路过"))
+    c = inbox.load()["items"][-1]
+    ok(c["author"] == "Someone", "悄悄话：其他人照群规则显示")
+    ok([i["id"] for i in inbox.pending("discord_whisper")] == [a["id"], b["id"], c["id"]],
+       "悄悄话：双方说的话都算待回", inbox.pending("discord_whisper"))
+    ok(chat_bridge.whisper_author(form, cfg["dc_owner"], (), (PEER_ID,)) == chat_bridge.WHISPER_PEER_LABEL,
+       "按 bot id 认可畏（不靠昵称）")
+
+    # ---- 叫醒文本逐字（20:26 / 20:27 是固定时间戳的北京时间）----
+    reset()
+    w1 = inbox.add("discord_whisper", "在吗", at=1762000000.0, author="指挥官")
+    w2 = inbox.add("discord_whisper", "在的", at=1762000060.0, author="Formidable",
+                   from_="bot", why="whisper")
+    text = chat_bridge.whisper_notice([w1, w2])
+    expected = ("【平台消息】悄悄话里有新消息（这里是我和可畏两个人说话的地方，指挥官也看得到）：\n"
+                "#%d 20:26 指挥官：在吗\n#%d 20:27 可畏：在的\n"
+                "想回就用 send_message（channel=discord_whisper）；这里写的字她看不到。" % (w1["id"], w2["id"]))
+    ok(text == expected, "悄悄话叫醒文本逐字（开头/每行/结尾）", text)
+    zero = {"remaining": 0, "session_used": 20, "day_used": 20, "limit": "session"}
+    single = ("【平台消息】悄悄话里有新消息（这里是我和可畏两个人说话的地方，指挥官也看得到）：\n"
+              "#%d 20:26 指挥官：在吗\n"
+              "想回就用 send_message（channel=discord_whisper）；这里写的字她看不到。" % w1["id"])
+    ok(chat_bridge.whisper_notice([w1], zero) == single + "\n" + chat_bridge.whisper_budget.SESSION_EMPTY,
+       "剩 0 时把 note() 原文接在最后一行")
+    low = chat_bridge.whisper_notice([w1], {"remaining": 4, "session_used": 16, "limit": "session"})
+    ok(low.endswith(chat_bridge.whisper_budget.LOW_NOTE % (16, 4)), "剩 4 时接上收尾提醒原文")
+
+    # ---- 叫醒：10 秒合批、只叫一次、这一轮显示在悄悄话频道 ----
+    now = _time.time()
+    reset()
+    svc = service()
+    host = FakeHost()
+    svc.host = host
+    inbox.add("discord_whisper", "在吗", at=now - 30, author="指挥官")
+    _asyncio.run(svc._drain_whisper())
+    ok(len(host.calls) == 1, "悄悄话：新消息叫醒一次", host.calls)
+    ok(host.calls and host.calls[0][0] == chat_bridge.SESSION_GROUP, "悄悄话叫醒用真会话（长期记忆）")
+    ok(host.calls and host.calls[0][1].startswith("【平台消息】悄悄话里有新消息（这里是我和可畏两个人说话的地方"),
+       "悄悄话通知开头照定稿", host.calls and host.calls[0][1][:80])
+    ok(host.calls and "指挥官：在吗" in host.calls[0][1], "叫醒里带着原话")
+    ok(svc.dc.typing_calls and svc.dc.typing_calls[-1] == (False, True),
+       "叫醒这一轮「正在输入」显示在悄悄话频道", svc.dc.typing_calls)
+    _asyncio.run(svc._drain_whisper())
+    ok(len(host.calls) == 1, "悄悄话：她不回也不再叫")
+
+    # ---- 剩 0 拒发；不查群额度 ----
+    reset()
+    dc = _FakeDC()
+    svc = service(dc)
+    calls = {"group": 0, "whisper": 0}
+
+    async def group_budget():
+        calls["group"] += 1
+        return {"remaining": 0, "used": 12}
+
+    async def whisper_budget():
+        calls["whisper"] += 1
+        return dict(zero)
+
+    svc.refresh_budget = group_budget
+    svc.refresh_whisper_budget = whisper_budget
+    inbox.add("discord_whisper", "在吗", at=_time.time(), author="可畏", from_="bot", why="whisper")
+    sent, msg = _asyncio.run(svc.send("discord_whisper", "晚安"))
+    ok(not sent and msg == chat_bridge.whisper_budget.SESSION_EMPTY,
+       "悄悄话剩 0：拒发，把 note() 原文作为错误返回", msg)
+    ok(dc.whisper_sent == [] and dc.group_sent == [], "悄悄话剩 0：一个字都没发出去")
+    ok(calls == {"group": 0, "whisper": 1}, "悄悄话发送不查群额度（不占群额度）", calls)
+
+    # ---- 群额度为 0 也不影响悄悄话 ----
+    reset()
+    drained = [(PEER_ID, True, now - 60 - i) for i in range(12)]
+    dc = _FakeDC(group_events=drained)
+    svc = service(dc)
+    inbox.add("discord_whisper", "在吗", at=now - 5, author="可畏", from_="bot", why="whisper")
+    ok(chat_bridge.group_budget.compute(dc.group_events, now)["remaining"] == 0, "前提：群额度已经 0")
+    sent, msg = _asyncio.run(svc.send("discord_whisper", "嗯"))
+    ok(sent and dc.whisper_sent == ["嗯"] and dc.group_sent == [],
+       "群里没额度时悄悄话照发，且没有发到群里", msg)
+    ok(chat_bridge.group_budget.compute(dc.group_events, now)["remaining"] == 0, "悄悄话没动群额度")
+
+    # ---- 出站 @可畏 → 真 mention ----
+    bot = chat_bridge.DiscordBot(cfg, lambda m: None)
+    bot.ready = True
+    bot._whisper_id = "777000111"
+    bot.client = type("C", (), {"user": self_user, "get_channel": lambda self, cid: whisper})()
+    captured = []
+
+    async def fake_send(channel, text, sticker_path=None):
+        captured.append(text)
+        return type("M", (), {"id": 1})()
+
+    orig_send = chat_bridge._discord_send
+    chat_bridge._discord_send = fake_send
+    try:
+        _asyncio.run(bot.send_whisper("@可畏 你说呢"))
+    finally:
+        chat_bridge._discord_send = orig_send
+    ok(captured == ["<@%s> 你说呢" % PEER_ID], "悄悄话出站「@可畏」换成真 mention", captured)
+
+    # ---- 找不到频道：整块不启用、只记日志、不报错 ----
+    reset()
+    bot = chat_bridge.DiscordBot(dict(cfg, dc_whisper=""), lambda m: None)
+    bot.ready = True
+    bot.client = type("C", (), {"guilds": [], "user": self_user})()
+    _asyncio.run(bot.resolve_whisper())
+    ok(bot.whisper_channel_id() == "" and bot._whisper_off is True, "找不到「悄悄话」：整块不启用")
+    try:
+        with open(os.path.join(_STATE, "chat.log"), encoding="utf-8") as f:
+            logged = f.read()
+    except OSError:
+        logged = ""
+    ok("whisper_channel_missing" in logged, "找不到频道记一条 whisper_channel_missing")
+    svc = service(bot)
+    crashed = False
+    try:
+        svc.on_discord_message(_Msg(9, owner, whisper, "在吗"))
+    except Exception:                                 # noqa: BLE001
+        crashed = True
+    ok(not crashed and inbox.load()["items"] == [], "找不到频道：收到消息不报错、不入箱")
+    sent, msg = _asyncio.run(svc.send("discord_whisper", "在吗"))
+    ok(not sent and "悄悄话频道没找到" in msg, "找不到频道：发送给出原因，不炸", msg)
+
+    # ---- /whisper_budget：compute() 结果 + note ----
+    reset()
+    payload = chat_bridge.whisper_budget_payload({"remaining": 3, "session_used": 17,
+                                                  "day_used": 17, "limit": "session"})
+    ok(payload["ok"] is True and payload["remaining"] == 3 and "收尾" in payload["note"],
+       "/whisper_budget 回话＝compute 结果 + note", payload)
+    events = [(PEER_ID if i % 2 else SELF_ID, True, now - 30 * (16 - i)) for i in range(16)]
+    events.append((cfg["dc_owner"], False, now - 5))          # 指挥官插话不计数
+    svc = service(_FakeDC(whisper_events=events))
+    budget = _asyncio.run(svc.refresh_whisper_budget())
+    ok(budget["remaining"] == 4 and budget["session_used"] == 16,
+       "悄悄话额度从频道历史重放（两个 bot 16 条，剩 4）", budget)
+    ok(chat_bridge.whisper_budget_payload(budget)["note"] ==
+       chat_bridge.whisper_budget.LOW_NOTE % (16, 4), "/whisper_budget 的 note 就是 note() 原文")
+
+
 def main():
     check_inbox()
     check_owner_and_group()
@@ -943,6 +1216,7 @@ def main():
     check_drain()
     check_budget()
     check_group_gate()
+    check_whisper()
     check_repeat_send()
     check_live_unread()
     check_typing()

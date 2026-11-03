@@ -4,7 +4,8 @@
  * 只有走这个工具发出去的话，他才在手机上收得到：她那一轮的回复正文照旧只回给壳（桌面），
  * 不会自动转发到任何平台。平台侧收发全在宿主旁边的常驻桥 `bin/chat_bridge.py`（127.0.0.1:8660）。
  *
- * channel：telegram（他的 Telegram 私聊）、discord（他的 Discord 私信）、discord_group（Discord 群）。
+ * channel：telegram（他的 Telegram 私聊）、discord（他的 Discord 私信）、discord_group（Discord 群）、
+ * discord_whisper（Discord「悄悄话」频道，我和可畏说话的地方，指挥官看得到）。
  * voice=true 只对 Telegram 有效：桥去 9881 合成、ffmpeg 转 ogg/opus 发语音条；她的声音是日语，
  * 所以语音条会附上她写的中文原文当 caption（GSV 的中文声不带）。
  *
@@ -181,15 +182,17 @@ export default function albionChat(pi: ExtensionAPI) {
 		label: "发消息",
 		description:
 			"给指挥官或 Discord 群发消息。只有用这个工具发出去的话，他才在手机上收得到。" +
-			"channel：telegram（他的 Telegram 私聊）、discord（他的 Discord 私信）、discord_group（Discord 群，大家都看得到）。" +
+			"channel：telegram（他的 Telegram 私聊）、discord（他的 Discord 私信）、discord_group（Discord 群，大家都看得到）、" +
+			"discord_whisper（Discord「悄悄话」频道，我和可畏说话的地方，指挥官看得到）。" +
 			"voice=true 发语音条（仅 Telegram）：我的声音是日语，他听不懂日语，所以语音条会自动附上我写的中文原文。" +
 			"在 Telegram 和 Discord 上，偶尔可以用表情包代替或补充一句话；不必每条都发，意思对得上才发。" +
 			"要不要分成几条发、分几条，由我自己看着办：想分开发，就连着调用几次 send_message，每次一条，像平时连着发几条消息那样。",
-		promptSnippet: "send_message：把话发到他手机上（telegram/discord/discord_group；voice 只 Telegram）",
+		promptSnippet: "send_message：把话发到他手机上（telegram/discord/discord_group/discord_whisper；voice 只 Telegram）",
 		parameters: Type.Object({
 			channel: Type.Union(
-				[Type.Literal("telegram"), Type.Literal("discord"), Type.Literal("discord_group")],
-				{ description: "发到哪儿：他的 Telegram 私聊 / 他的 Discord 私信 / Discord 群" },
+				[Type.Literal("telegram"), Type.Literal("discord"), Type.Literal("discord_group"),
+				 Type.Literal("discord_whisper")],
+				{ description: "发到哪儿：他的 Telegram 私聊 / 他的 Discord 私信 / Discord 群 / Discord「悄悄话」频道" },
 			),
 			text: Type.String({ description: "要说的话（就是我要说给他或群里的话）" }),
 			voice: Type.Optional(Type.Boolean({ description: "true = 发语音条（仅 Telegram；会附上这段中文当 caption）" })),
