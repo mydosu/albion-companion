@@ -49,7 +49,16 @@ const { isEphemeralSession, personalStateDir, personalStatePath, realSessions } 
 );
 
 // ── 1. 名单与判断口径 ──────────────────────────────────────────────────────
-assert.deepEqual(realSessions(), ["albion-desktop", "albion-cli"], "默认真实会话 = 桌面 + CLI");
+// 默认名单以仓库里的 agent/real-sessions.json 为准（2026-11-02 加了 albion-discord）；
+// 没有这个文件时的内置默认另测。
+const listed = JSON.parse(readFileSync(join(agentDir, "real-sessions.json"), "utf-8")).sessions;
+assert.deepEqual(realSessions(), listed, `默认名单 = agent/real-sessions.json：${listed}`);
+assert.ok(listed.includes("albion-desktop") && listed.includes("albion-cli"), `名单里要有桌面和 CLI：${listed}`);
+const emptyAgent = mkdtempSync(join(tmpdir(), "albion-agent-nofile-"));
+process.env.PI_CODING_AGENT_DIR = emptyAgent;
+assert.deepEqual(realSessions(), ["albion-desktop", "albion-cli"], "没有 real-sessions.json 时用内置默认");
+process.env.PI_CODING_AGENT_DIR = agentDir;
+rmSync(emptyAgent, { recursive: true, force: true });
 assert.equal(isEphemeralSession("albion-desktop"), false, "桌面会话是真实会话");
 assert.equal(isEphemeralSession("albion-cli"), false, "CLI 会话是真实会话");
 for (const sid of [
@@ -132,6 +141,21 @@ await self.next_wake.execute("t", { minutes: 20, intent: "探针" });
 assert.equal(existsSync(join(prod, "self.json")), false, "ephemeral 会话不能写生产 self.json");
 assert.ok(existsSync(personalStatePath("self.json")), "ephemeral self.json 要落在临时目录");
 
-console.log("SESSION SCOPE OK：名单口径 / 覆盖 / 临时目录落点 / notebook+todo+next_wake 写入被拦");
+// 压缩笔记（2026-11-04）也跟会话走：真实会话进生产 state，ephemeral 进自己的临时目录
+process.env.ALBION_SESSION_ID = "albion-voice-probe-after4c-05";
+const turn = await import("../../brain/agent/extensions/albion-turn.ts");
+assert.equal(
+  turn._albionTest.compactionFile(),
+  join(personalStateDir("albion-voice-probe-after4c-05"), "compaction", "albion-voice-probe-after4c-05.json"),
+  "ephemeral 会话的压缩笔记要落在自己的临时目录",
+);
+assert.match(
+  turn._albionTest.COMPACTION_SYSTEM,
+  /^你在给阿尔比恩整理她和指挥官之前的对话。/,
+  "摘要 system 提示词是那份原文",
+);
+delete process.env.ALBION_SESSION_ID;
+
+console.log("SESSION SCOPE OK：名单口径 / 覆盖 / 临时目录落点 / notebook+todo+next_wake 写入被拦 / 压缩笔记落点");
 rmSync(prod, { recursive: true, force: true });
 rmSync(personalStateDir("albion-voice-probe-after4c-05"), { recursive: true, force: true });

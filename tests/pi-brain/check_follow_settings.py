@@ -9,6 +9,8 @@
   3) 合并时去掉模型级 api/baseUrl 覆盖，统一 provider 级 openai-completions
   4) 回写 settings.json：只改 defaultProvider/defaultModel，其它键（transport/retry/…）原样
   5) 原子写 + LF、内容没变不落盘（幂等），坏 JSON 不抛
+  6) 在用模型的 contextWindow 夹到 ALBION_CONTEXT_WINDOW（默认 80000，0 = 不夹，
+     原值比上限小就留原值，坏值/负数回默认），夹完仍然幂等（2026-11-04 短窗口）
 
 跑：python3 tests/pi-brain/check_follow_settings.py
 """
@@ -130,8 +132,9 @@ def main():
         check(mag["api"] == "openai-completions", mag.get("api"))
         check(mag["baseUrl"] == "http://127.0.0.1:3425/v1", mag.get("baseUrl"))
         check("api" not in mag["models"][0] and "baseUrl" not in mag["models"][0], mag["models"][0])
-        check(mag["models"][0]["contextWindow"] == 1048576 and mag["models"][0]["maxTokens"] == 65536,
-              "模型字段没带过来")
+        # 在用模型的 contextWindow 夹到默认上限 80000（阈值 80000-16384≈6.4 万），别的字段原样带过来
+        check(mag["models"][0]["contextWindow"] == 80000 and mag["models"][0]["maxTokens"] == 65536,
+              "模型字段没带过来 / 窗口没夹到 80000")
         check("compat" in mag, "provider 级 compat 该保留")
 
         # 4) 回写 settings：只改两个键，别的原样
@@ -192,7 +195,31 @@ def main():
         os.remove(env_file)
         r9 = fs.resolve(dict(env))
         check(r9.source == "settings" and r9.provider == "magpie", r9)
-        print("FOLLOW SETTINGS CHECK OK (9 cases)")
+        # 10) contextWindow 夹：默认 80000、0 不夹、上限比原值小就夹、原值更小就留、坏值回默认
+        def window_with(limit):
+            """拿一份干净的目录跑一次 resolve，返回在用模型的 contextWindow；顺带验第二轮不写盘。"""
+            d2, settings2, agent2 = make_dir()
+            try:
+                probe = {"PI_CODING_AGENT_DIR": agent2, "ALBION_FOLLOW_SETTINGS": settings2}
+                if limit is not None:
+                    probe["ALBION_CONTEXT_WINDOW"] = limit
+                fs.resolve(probe)
+                got = read(os.path.join(agent2, "models.json"))["providers"]["magpie"]["models"][0]["contextWindow"]
+                before = raw(os.path.join(agent2, "models.json"))
+                again = fs.resolve(probe)
+                check(again.merged is False and raw(os.path.join(agent2, "models.json")) == before,
+                      "夹窗口后不幂等（limit=%r）" % (limit,))
+                return got
+            finally:
+                shutil.rmtree(d2, ignore_errors=True)
+
+        check(window_with(None) == 80000, "默认没夹到 80000")
+        check(window_with("0") == 1048576, "0 应该不夹")
+        check(window_with("16000") == 16000, "上限比原值小要夹到上限")
+        check(window_with("2000000") == 1048576, "原值比上限小要留原值")
+        check(window_with("abc") == 80000, "坏值回默认")
+        check(window_with("-5") == 1048576, "负数按 0 处理（不夹）")
+        print("FOLLOW SETTINGS CHECK OK (9 cases + 6 window cases)")
     finally:
         shutil.rmtree(d, ignore_errors=True)
 

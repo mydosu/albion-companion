@@ -401,6 +401,38 @@ def get_session(session_id):
         return s
 
 
+COMPACTION_TITLE = "（这是之前和指挥官聊过的事，整理成的笔记）"
+COMPACTION_MAX_AGE_S = 7 * 86400      # 摘要只在 7 天内算数，更早的交回 OpenViking 回忆
+
+
+def compaction_note(session_id, now=None):
+    """上个身子压缩出来的中文摘要（agent/extensions/albion-turn.ts 的 session_compact 写的）。
+
+    落点跟扩展同一套规则：<她的 state>/compaction/<会话>.json，ephemeral 会话在 /tmp 那棵树下。
+    没有文件、坏的、空的、超过 7 天都返回 None —— 行为和没做压缩时一样（2026-11-04）。
+    """
+    now = time.time() if now is None else now
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", session_id or "unknown")[:120] or "unknown"
+    path = os.path.join(wake._state_dir(), "compaction", safe + ".json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    summary = data.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        return None
+    try:
+        created = float(data.get("created_at"))
+    except (TypeError, ValueError):
+        return None
+    if created < now - COMPACTION_MAX_AGE_S:
+        return None
+    return COMPACTION_TITLE + "\n" + summary.strip()
+
+
 def compose(session, msgs):
     """本轮递给 Pi 的 (文本, 图片, 是不是她自己醒来)。约定/回忆由扩展在 context 钩子里注入，这里只管接上历史。"""
     history, tail = split_tail(msgs)
@@ -440,8 +472,16 @@ def compose(session, msgs):
             history = activity_history(name)
             if history:
                 log("seeded from activity db", session=name, rows=len(history))
+        # 上个身子压缩出来的笔记先放：先摘要、后近况（2026-11-04）
+        blocks = []
+        note = compaction_note(name)
+        if note:
+            log("seeded compaction note", session=name, chars=len(note))
+            blocks.append(note)
         if history:
-            current = transcript(history) + "\n\n【现在】\n" + current
+            blocks.append(transcript(history))
+        if blocks:
+            current = "\n\n".join(blocks) + "\n\n【现在】\n" + current
     return current, images, woke
 
 
@@ -676,6 +716,13 @@ def chat(session_id, msgs):
                     reply = again
             except Exception as exc:
                 log("finish followup failed", session=session_id, error=repr(exc)[:120])
+        # 上下文占用：只写日志，读不到就算了，不能让日志影响这一轮（2026-11-04）
+        try:
+            tokens, window = session.context_usage()
+        except Exception:
+            tokens, window = None, None
+        if tokens is not None:
+            log("[ctx] session=%s tokens=%s window=%s" % (session_id, tokens, window))
     log("turn", session=session_id, ms=round((time.time() - started) * 1000), chars=len(reply))
     return reply
 
