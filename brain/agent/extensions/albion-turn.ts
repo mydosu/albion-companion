@@ -10,7 +10,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { spawnSync } from "node:child_process";
 import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { posix } from "node:path";
+import { dirname, join, posix } from "node:path";
 import { personalStatePath } from "../lib/session-scope.ts";
 
 const MEM = "/root/albion-pi/bin/memory.py";
@@ -19,6 +19,7 @@ const STATE_DB = process.env.ALBION_STATE_DB || `${STATE_DIR}/state.db`;
 // 每轮注入块的留档：原来写死生产路径，探针/验收会话会把它覆盖掉（2026-10-29 修）
 const LAST_CONTEXT = () => personalStatePath("last-context.json");
 const LOG = "/root/albion-pi/logs/albion-turn.log";
+const AGENT_DIR = process.env.PI_CODING_AGENT_DIR || "/root/albion-pi/agent";
 const SESSION_ID = process.env.ALBION_SESSION_ID || "albion-desktop";
 const RECALL_TIMEOUT_MS = 30_000;
 
@@ -639,6 +640,147 @@ function queueActivity(entries: [string, string, string | null][]): Promise<void
   return activityQueue;
 }
 
+// ── 上下文压缩（2026-11-04）──────────────────────────────────────────────────
+// Pi 到阈值时会先问 session_before_compact：用下面这套自己的中文提示词，拿当前会话模型写成五段笔记。
+// 失败、超时、空都返回 undefined，让 Pi 走它自己的英文摘要——绝不能让压缩卡住她。
+const COMPACTION_SYSTEM =
+  "你在给阿尔比恩整理她和指挥官之前的对话。整理出来的笔记会在下一段对话开头交给她，帮她记得前面聊过什么。只输出笔记本身，不加开场白和结尾。";
+const COMPACTION_PROMPT =
+  "把下面这段对话整理成一份中文笔记，用平常说话的大白话写，不用古旧的书面词，也不写成公文。按下面五段写，哪段没有内容就写「无」：\n" +
+  "## 指挥官说过的事\n" +
+  "他亲口说的近况、计划、身体和心情、喜好，一件事写一句，能看出是哪天说的就写上日期。只写他自己说过的，不推测，不补充。\n" +
+  "## 我们定好的事\n" +
+  "他让她记住的事、两人约好的事、他提的要求和纠正（包括对她说话方式的要求），照原意写。\n" +
+  "## 还没办完的事\n" +
+  "她答应了还没做完的事，他还在等结果的事。\n" +
+  "## 最近在聊什么\n" +
+  "最后几轮在聊的话题，一两句。\n" +
+  "## 她做过的事\n" +
+  "这段对话里她用工具实际做成的事（看了屏幕、写了便条、发了消息之类），只写确实做成的。\n" +
+  "如果下面附了旧笔记，把旧笔记的内容并进来，过时的删掉，不要重复。工具的原始输出、截图描述、系统加进来的回忆块和每轮约定都不用抄。整份不超过 1500 字。";
+const COMPACTION_TITLE = "（这是之前和指挥官聊过的事，整理成的笔记）";
+// 宿主种子首轮的分隔串：bin/server.py 的 NOW_SEPARATOR 必须跟这一字不差（tests/pi-brain/check_compaction_seed.py 有断言盯着）。
+// 第一个身子重启后的头一条 user 是「笔记 + 近况 transcript + 分隔 + 他这次说的话」，压缩时不能当成他亲口说的。
+export const NOW_SEPARATOR = "\n\n【现在】\n";
+const COMPACTION_TIMEOUT_MS = 90_000;      // 超过就当没做成，交回 Pi 自己的摘要
+const COMPACTION_MAX_CHARS = 60_000;       // 喂给摘要模型的对话上限，别把请求撑爆
+
+function sessionSlug(): string {
+  return SESSION_ID.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120) || "unknown";
+}
+
+/** 摘要落盘位置：<她的 state>/compaction/<会话>.json；ephemeral 会话跟着 personalStateDir 落 /tmp。 */
+export function compactionFile(): string {
+  return join(personalStatePath("compaction"), sessionSlug() + ".json");
+}
+
+/** 要压缩的消息串成文本：只留双方说的话和用过的工具名，工具原始输出按约定不抄。 */
+export function compactionDigest(messages: any[], limit = COMPACTION_MAX_CHARS): string {
+  const lines: string[] = [];
+  for (const m of messages ?? []) {
+    const role = m?.role;
+    if (role === "user") {
+      const t = msg_text(m).trim();
+      if (t) {
+        // 重启首轮：宿主把旧笔记+近况拼在他这句话前面，按最后一个分隔切开，别写成「指挥官说过的事」
+        const cut = t.lastIndexOf(NOW_SEPARATOR);
+        if (cut < 0) {
+          lines.push("指挥官：" + t);
+        } else {
+          const carried = t.slice(0, cut).trim();
+          const said = t.slice(cut + NOW_SEPARATOR.length).trim();
+          if (carried) lines.push("（重启时带进来的旧笔记和近况，不是指挥官这时说的话）：" + carried);
+          if (said) lines.push("指挥官：" + said);
+        }
+      }
+    } else if (role === "assistant") {
+      const t = msg_text(m).trim();
+      if (t) lines.push("阿尔比恩：" + t);
+      const blocks = Array.isArray(m?.content) ? m.content : [];
+      for (const b of blocks) if (b?.type === "toolCall" && b.name) lines.push(`（阿尔比恩用了工具 ${b.name}）`);
+    } else if (role === "toolResult" || role === "bashExecution") {
+      const name = typeof m?.toolName === "string" ? m.toolName : "";
+      if (name) lines.push(`（工具 ${name} 跑完了，输出略）`);
+    }
+  }
+  const text = lines.join("\n");
+  if (text.length <= limit) return text;
+  const head = text.slice(0, Math.floor(limit * 0.25));
+  return head + "\n……（中段省略）……\n" + text.slice(text.length - Math.floor(limit * 0.75));
+}
+
+/** 当前在用的模型和它的 provider 端点：跟 follow_settings 回写的 settings.json 走；找不到返回 null。 */
+function currentModelRoute(): { model: string; baseUrl: string; apiKey: string } | null {
+  try {
+    const cfg = JSON.parse(readFileSync(join(AGENT_DIR, "settings.json"), "utf-8"));
+    const provider = typeof cfg?.defaultProvider === "string" ? cfg.defaultProvider : "";
+    let model = typeof cfg?.defaultModel === "string" ? cfg.defaultModel : "";
+    if (provider && model.startsWith(provider + "/")) model = model.slice(provider.length + 1);
+    if (!model) return null;
+    const models = JSON.parse(readFileSync(join(AGENT_DIR, "models.json"), "utf-8"));
+    for (const p of Object.values(models?.providers ?? {}) as any[]) {
+      const ids = (p?.models ?? []).map((m: any) => (typeof m === "string" ? m : m?.id));
+      if (ids.includes(model) && p?.baseUrl) {
+        return { model, baseUrl: String(p.baseUrl), apiKey: String(p.apiKey ?? "") };
+      }
+    }
+  } catch {
+    /* 配置读不到就当没法自定义摘要：交回 Pi 默认 */
+  }
+  return null;
+}
+
+/** 用自己的提示词叫一次当前模型写笔记；任何失败都返回 null（调用方回退到 Pi 默认压缩）。 */
+async function summarizeConversation(digest: string, previous: string, signal?: AbortSignal): Promise<string | null> {
+  if (process.env.ALBION_COMPACTION === "0") return null;   // 关掉自定义摘要的开关（回滚不用改代码）
+  const route = currentModelRoute();
+  if (!route) return null;
+  const body = `${COMPACTION_PROMPT}\n\n<conversation>\n${digest}\n</conversation>`
+    + (previous.trim() ? `\n\n旧笔记：\n${previous.trim()}` : "");
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), COMPACTION_TIMEOUT_MS);
+  const onAbort = () => ctrl.abort();
+  if (signal) signal.addEventListener("abort", onAbort, { once: true });
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (route.apiKey) headers.Authorization = "Bearer " + route.apiKey;
+    const res = await fetch(String(route.baseUrl).replace(/\/+$/, "") + "/chat/completions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: route.model,
+        stream: false,
+        max_tokens: 4096,
+        messages: [{ role: "system", content: COMPACTION_SYSTEM }, { role: "user", content: body }],
+      }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) return null;
+    const data: any = await res.json();
+    const text = data?.choices?.[0]?.message?.content;
+    return typeof text === "string" && text.trim() ? text.trim() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener("abort", onAbort);
+  }
+}
+
+/** 摘要按会话原子落盘：同目录临时文件 + rename，读的人不会看到半个 JSON。 */
+function saveCompaction(summary: string, reason: string, tokensBefore: number): void {
+  const path = compactionFile();
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({
+    summary,
+    created_at: Math.floor(Date.now() / 1000),
+    reason,
+    tokens_before: tokensBefore,
+  }, null, 2) + "\n", "utf-8");
+  renameSync(tmp, path);
+}
+
 export default function albionTurn(pi: ExtensionAPI): void {
   // 本轮状态
   let lastSource = "";
@@ -698,6 +840,41 @@ export default function albionTurn(pi: ExtensionAPI): void {
       : composed.content };
     log("context", `chars=${composed.content.length} recall=${block ? block.length : 0} other=${other ? other.length : 0} has_tool_result=${hasToolResult}`);
     return { messages: copy };
+  });
+
+  // 压缩：Pi 到阈值会先问这里要摘要；我们给不出就返回 undefined，让它用自己的英文摘要。
+  pi.on("session_before_compact", async (event: any) => {
+    try {
+      const prep = event?.preparation;
+      if (!prep || typeof prep.firstKeptEntryId !== "string") return undefined;
+      const messages = [...(prep.messagesToSummarize ?? [])];
+      if (prep.isSplitTurn && Array.isArray(prep.turnPrefixMessages)) messages.push(...prep.turnPrefixMessages);
+      const digest = compactionDigest(messages);
+      if (!digest.trim()) return undefined;
+      const summary = await summarizeConversation(digest, String(prep.previousSummary ?? ""), event?.signal);
+      if (!summary) {
+        log("compaction: 自定义摘要没做成，交回 pi 默认", `reason=${event?.reason ?? "?"}`);
+        return undefined;
+      }
+      log("compaction summary ready", `chars=${summary.length} reason=${event?.reason ?? "?"} tokens_before=${prep.tokensBefore ?? 0}`);
+      return { compaction: { summary, firstKeptEntryId: prep.firstKeptEntryId, tokensBefore: Number(prep.tokensBefore) || 0 } };
+    } catch (e) {
+      log("warn: compaction hook failed, fall back to pi default", String((e as Error)?.message ?? e));
+      return undefined;
+    }
+  });
+
+  // 压缩落盘：宿主重启后 bin/server.py 会先把这份笔记播给她，再接最近 40 条（2026-11-04）。
+  pi.on("session_compact", async (event: any) => {
+    try {
+      const entry = event?.compactionEntry;
+      const summary = typeof entry?.summary === "string" ? entry.summary.trim() : "";
+      if (!summary) return;
+      saveCompaction(summary, String(event?.reason ?? ""), Number(entry?.tokensBefore) || 0);
+      log("compaction saved", `chars=${summary.length} reason=${event?.reason ?? ""}`);
+    } catch (e) {
+      log("warn: compaction save failed", String((e as Error)?.message ?? e));
+    }
   });
 
   pi.on("tool_call", async (event: any) => {
@@ -781,4 +958,5 @@ export default function albionTurn(pi: ExtensionAPI): void {
 }
 
 // 自检钩子：bin/test_guard_ext.ts 直接驱动这些函数。
-export const _albionTest = { MARKER, CONTEXT, turn_guidance, composeTurnContent, tool_row, msg_text, recentAsides, timeLine, slotName, bjParts, agoText, stampsOf, previousUserMs, crossChannelBlock, CROSS_TITLE, CROSS_TITLE_FROM_GROUP, CROSS_TITLE_FROM_PRIVATE };
+export const _albionTest = { MARKER, CONTEXT, turn_guidance, composeTurnContent, tool_row, msg_text, recentAsides, timeLine, slotName, bjParts, agoText, stampsOf, previousUserMs, crossChannelBlock, CROSS_TITLE, CROSS_TITLE_FROM_GROUP, CROSS_TITLE_FROM_PRIVATE,
+  compactionDigest, compactionFile, COMPACTION_TITLE, COMPACTION_PROMPT, COMPACTION_SYSTEM, NOW_SEPARATOR };

@@ -217,6 +217,31 @@ class PiSession:
                 self._resp_event.wait(min(left, 1.0))
             return self._responses.pop(rid)
 
+    def context_usage(self, timeout=5):
+        """当前上下文占用（RPC get_session_stats 的 contextUsage）→ (tokens, window)；读不到 (None, None)。
+
+        只给日志看：进程没了、回包慢了、字段缺了都当没有，绝不影响这一轮（2026-11-04）。
+        """
+        if not self.running:
+            return (None, None)
+        try:
+            with self._lock:
+                self._req += 1
+                rid = "%s-ctx-%d" % (self.name, self._req)
+            self._send({"id": rid, "type": "get_session_stats"})
+            rec = self._wait_response(rid, timeout)
+        except Exception:
+            return (None, None)
+        data = rec.get("data") if isinstance(rec, dict) else None
+        usage = data.get("contextUsage") if isinstance(data, dict) else None
+        if not isinstance(usage, dict):
+            return (None, None)
+        tokens, window = usage.get("tokens"), usage.get("contextWindow")
+        try:
+            return (int(tokens), int(window))
+        except (TypeError, ValueError):
+            return (None, None)
+
     # ── prompting ────────────────────────────────────────────────────────────
     def prompt(self, text, images=None, timeout=600):
         """Send one user turn, wait for Pi to settle, return the assistant text.

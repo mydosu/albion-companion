@@ -36,6 +36,10 @@ DEFAULT_SETTINGS = "/root/.pi/agent/settings.json"
 # 来源 provider 没写 baseUrl 时的兜底：magpie 自己
 MAGPIE_BASE = "http://127.0.0.1:3425/v1"
 OPENAI_API = "openai-completions"
+CONTEXT_WINDOW_ENV = "ALBION_CONTEXT_WINDOW"
+# 声明给 Pi 的上下文窗口上限（默认 80000）：压缩阈值 = contextWindow - reserveTokens(默认 16384)
+# ≈ 6.4 万 token 触发，之后保留最近 20000 token 原文。设 0 = 不夹，沿用模型原来的窗口（2026-11-04）。
+CONTEXT_WINDOW_DEFAULT = 80000
 
 
 class Route(NamedTuple):
@@ -144,8 +148,46 @@ def provider_block(models_file, provider):
     return block
 
 
-def merge_provider(agent_models_file, provider, block):
-    """只增/替换 agent/models.json 里这一个 provider 键；内容没变就不落盘。"""
+def context_window_limit(env=None):
+    """在用模型的 contextWindow 上限：ALBION_CONTEXT_WINDOW（默认 80000，0 表示不夹）。
+
+    改 contextWindow 而不是 settings.json 的 compaction.reserveTokens：后者还会被摘要请求拿去当
+    maxTokens 上限（0.8 x reserveTokens），要压到 6 万就得填近百万，不现实（2026-11-04）。
+    """
+    env = os.environ if env is None else env
+    raw = str(env.get(CONTEXT_WINDOW_ENV, "") or "").strip()
+    if not raw:
+        return CONTEXT_WINDOW_DEFAULT
+    try:
+        value = int(raw)
+    except ValueError:
+        return CONTEXT_WINDOW_DEFAULT
+    return 0 if value <= 0 else value
+
+
+def cap_context_window(block, model, limit):
+    """把这个 provider 段里在用模型的 contextWindow 夹到 min(原值, limit)；limit<=0 原样不动。"""
+    if not limit or not model or not isinstance(block, dict):
+        return block
+    models = block.get("models")
+    if not isinstance(models, list):
+        return block
+    for entry in models:
+        if isinstance(entry, dict) and entry.get("id") == model:
+            current = entry.get("contextWindow")
+            if isinstance(current, (int, float)) and current > 0:
+                entry["contextWindow"] = int(min(current, limit))
+            else:
+                entry["contextWindow"] = int(limit)
+            break
+    return block
+
+
+def merge_provider(agent_models_file, provider, block, model=None, context_window=None):
+    """只增/替换 agent/models.json 里这一个 provider 键；内容没变就不落盘。
+
+    model + context_window 给了就先把在用模型的 contextWindow 夹到上限（见 cap_context_window）。"""
+    block = cap_context_window(block, model, context_window)
     data = _read_json(agent_models_file) or {}
     providers = data.get("providers")
     if not isinstance(providers, dict):
@@ -226,7 +268,8 @@ def resolve(env=None, settings_file=None, source_models=None, agent_dir=None):
     merged = False
     block = provider_block(source_models, provider)
     if block:
-        merged = merge_provider(os.path.join(agent_dir, "models.json"), provider, block)
+        merged = merge_provider(os.path.join(agent_dir, "models.json"), provider, block,
+                                model=model, context_window=context_window_limit(env))
 
     written = write_settings_defaults(os.path.join(agent_dir, "settings.json"), provider, model)
     return Route(provider=provider, model=model, source=source, merged=merged, settings_written=written)

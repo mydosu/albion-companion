@@ -183,6 +183,36 @@ const { crossChannelBlock, CROSS_TITLE_FROM_GROUP, CROSS_TITLE_FROM_PRIVATE } = 
   console.log("I 水位分文件/旧文件兼容/并发互不覆盖 OK");
 }
 
+// ── J 压缩摘要：重启首轮的「旧笔记+近况」不能当成他这次说的话（2026-11-04）
+{
+  const { compactionDigest, NOW_SEPARATOR } = _albionTest;
+  assert.equal(NOW_SEPARATOR, "\n\n【现在】\n", "分隔串要跟 server.py 的 NOW_SEPARATOR 一致");
+  // 没有分隔：照旧一句「指挥官：」
+  assert.equal(
+    compactionDigest([
+      { role: "user", content: "在吗" },
+      { role: "assistant", content: "在的。" },
+    ]),
+    "指挥官：在吗\n阿尔比恩：在的。",
+    "普通 user 消息照旧",
+  );
+  // 有分隔：前半标成「重启时带进来的」，后半才是他这次说的
+  const seeded = compactionDigest([
+    {
+      role: "user",
+      content: "（这是之前和指挥官聊过的事，整理成的笔记）\n## 指挥官说过的事\n他在赶论文。" + NOW_SEPARATOR + "下午去实验室",
+    },
+  ]);
+  assert.equal(
+    seeded,
+    "（重启时带进来的旧笔记和近况，不是指挥官这时说的话）：（这是之前和指挥官聊过的事，整理成的笔记）\n## 指挥官说过的事\n他在赶论文。"
+      + "\n指挥官：下午去实验室",
+    "重启首轮要拆成两行",
+  );
+  assert.ok(!seeded.includes("指挥官：（这是之前"), "旧笔记不能挂到「指挥官：」后面");
+  console.log("J 压缩摘要里重启首轮的拆分 OK");
+}
+
 db.close();
 rmSync(TMP, { recursive: true, force: true });
 console.log("CROSS CHANNEL SELFTEST OK");
