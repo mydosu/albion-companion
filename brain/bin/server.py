@@ -402,6 +402,9 @@ def get_session(session_id):
 
 
 COMPACTION_TITLE = "（这是之前和指挥官聊过的事，整理成的笔记）"
+# 种子首轮的分隔串：agent/extensions/albion-turn.ts 的 NOW_SEPARATOR 必须跟这一字不差
+# （tests/pi-brain/check_compaction_seed.py 有断言盯着）；压缩摘要靠它把旧笔记和“他这次说的话”分开。
+NOW_SEPARATOR = "\n\n【现在】\n"
 COMPACTION_MAX_AGE_S = 7 * 86400      # 摘要只在 7 天内算数，更早的交回 OpenViking 回忆
 
 
@@ -481,7 +484,7 @@ def compose(session, msgs):
         if history:
             blocks.append(transcript(history))
         if blocks:
-            current = "\n\n".join(blocks) + "\n\n【现在】\n" + current
+            current = "\n\n".join(blocks) + NOW_SEPARATOR + current
     return current, images, woke
 
 

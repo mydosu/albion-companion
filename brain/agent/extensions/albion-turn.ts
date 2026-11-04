@@ -659,6 +659,9 @@ const COMPACTION_PROMPT =
   "这段对话里她用工具实际做成的事（看了屏幕、写了便条、发了消息之类），只写确实做成的。\n" +
   "如果下面附了旧笔记，把旧笔记的内容并进来，过时的删掉，不要重复。工具的原始输出、截图描述、系统加进来的回忆块和每轮约定都不用抄。整份不超过 1500 字。";
 const COMPACTION_TITLE = "（这是之前和指挥官聊过的事，整理成的笔记）";
+// 宿主种子首轮的分隔串：bin/server.py 的 NOW_SEPARATOR 必须跟这一字不差（tests/pi-brain/check_compaction_seed.py 有断言盯着）。
+// 第一个身子重启后的头一条 user 是「笔记 + 近况 transcript + 分隔 + 他这次说的话」，压缩时不能当成他亲口说的。
+export const NOW_SEPARATOR = "\n\n【现在】\n";
 const COMPACTION_TIMEOUT_MS = 90_000;      // 超过就当没做成，交回 Pi 自己的摘要
 const COMPACTION_MAX_CHARS = 60_000;       // 喂给摘要模型的对话上限，别把请求撑爆
 
@@ -678,7 +681,18 @@ export function compactionDigest(messages: any[], limit = COMPACTION_MAX_CHARS):
     const role = m?.role;
     if (role === "user") {
       const t = msg_text(m).trim();
-      if (t) lines.push("指挥官：" + t);
+      if (t) {
+        // 重启首轮：宿主把旧笔记+近况拼在他这句话前面，按最后一个分隔切开，别写成「指挥官说过的事」
+        const cut = t.lastIndexOf(NOW_SEPARATOR);
+        if (cut < 0) {
+          lines.push("指挥官：" + t);
+        } else {
+          const carried = t.slice(0, cut).trim();
+          const said = t.slice(cut + NOW_SEPARATOR.length).trim();
+          if (carried) lines.push("（重启时带进来的旧笔记和近况，不是指挥官这时说的话）：" + carried);
+          if (said) lines.push("指挥官：" + said);
+        }
+      }
     } else if (role === "assistant") {
       const t = msg_text(m).trim();
       if (t) lines.push("阿尔比恩：" + t);
@@ -945,4 +959,4 @@ export default function albionTurn(pi: ExtensionAPI): void {
 
 // 自检钩子：bin/test_guard_ext.ts 直接驱动这些函数。
 export const _albionTest = { MARKER, CONTEXT, turn_guidance, composeTurnContent, tool_row, msg_text, recentAsides, timeLine, slotName, bjParts, agoText, stampsOf, previousUserMs, crossChannelBlock, CROSS_TITLE, CROSS_TITLE_FROM_GROUP, CROSS_TITLE_FROM_PRIVATE,
-  compactionDigest, compactionFile, COMPACTION_TITLE, COMPACTION_PROMPT, COMPACTION_SYSTEM };
+  compactionDigest, compactionFile, COMPACTION_TITLE, COMPACTION_PROMPT, COMPACTION_SYSTEM, NOW_SEPARATOR };

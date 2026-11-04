@@ -95,6 +95,14 @@ def main():
         check(text.index(TITLE) < text.index("【现在】"), "笔记和近况的顺序反了")
         check(images == [] and woke is False, (images, woke))
 
+        # 6b) 分隔串两边一致：TS 字面量 vs python 常量 vs compose 拼出来的
+        with open(os.path.join(ROOT, "brain", "agent", "extensions", "albion-turn.ts"), encoding="utf-8") as fh:
+            ts = fh.read()
+        check('export const NOW_SEPARATOR = "\\n\\n【现在】\\n";' in ts,
+              "albion-turn.ts 的 NOW_SEPARATOR 变了（server.py 要跟着改）")
+        check(server.NOW_SEPARATOR == "\n\n【现在】\n", server.NOW_SEPARATOR)
+        check(server.NOW_SEPARATOR in text, "compose 拼出来的分隔串跟常量不一致")
+
         # 7) 没有笔记的会话：首轮还是原来那样
         text2, _, _ = server.compose(FakeSession("albion-discord"), [{"role": "user", "content": "在吗"}])
         check(text2 == "在吗", "没有笔记时首轮被改动了：%r" % (text2,))
