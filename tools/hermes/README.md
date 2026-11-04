@@ -185,6 +185,21 @@ cron 轮的手工验证：把 `GET /whisper_budget` 的 `remaining` 看到 0 时
 `hermes cron run <id>` 应该什么都没投递、`hermes cron list` 里这次 run 是 silent；`remaining>0`
 时投递的正文就是可畏自己写的话，不带 `Cronjob Response:` 壳。
 
+## 每轮约定：`turn-reminder` 插件（2026-11-03）
+
+会话一长、或者被压缩轮转之后，人设里的说话约定容易被冲淡。这个插件用 `pre_llm_call`
+每轮把一小段大白话约定（不古旧字眼、不 emoji/颜文字、`[分条]`、`[SILENT]`）拼在**最新一条
+user 消息末尾**，只对 `telegram` / `discord` 生效；cron、weixin、desktop/acp/subagent 和
+assistant/tongxi profile 都不注入。拼在 user 消息尾而不是 system prompt，是为了不破前缀缓存
+（`agent/turn_context.py:793` → `:1284-1299`，只改本轮 API 视图）。
+
+- 源文件：`tools/hermes/turn-reminder/`（`plugin.yaml` + `__init__.py`）。
+- 部署：整个目录复制到 `%LOCALAPPDATA%\hermes\plugins\turn-reminder\`，在 `config.yaml` 的
+  `plugins.enabled` 里加一行 `- turn-reminder`，重启网关。
+- 自检：`python tools\hermes\turn-reminder\__init__.py --selftest`（不联网、不写库）。
+- 压缩线下调（同批改动）：`config.yaml` 的 `compression.threshold_tokens: 60000`，让主 agent
+  在约 6 万 token 时压缩；`threshold: 0.06` 不可用，会被 `MINIMUM_CONTEXT_LENGTH=64000` 抬到 6.4 万。
+
 ## Hermes 升级后重打补丁（`hermes-local-patches.py`）
 
 `%LOCALAPPDATA%\hermes\hermes-agent` 是 Hermes 自己的代码目录，**升级会整份覆盖**。

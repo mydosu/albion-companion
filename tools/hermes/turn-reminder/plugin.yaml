@@ -1,0 +1,6 @@
+name: turn-reminder
+version: 0.1.0
+description: 可畏在 Telegram / Discord 每一轮都附一小段大白话约定（不用古旧字眼、不用 emoji/颜文字、[分条]、[SILENT]），注入在最新 user 消息末尾，不碰 system prompt
+author: albion
+provides_hooks:
+  - pre_llm_call
