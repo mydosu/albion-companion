@@ -14,7 +14,7 @@ echo.
 rem 检查一下现在跑没跑（不杀、不动任何进程）
 netstat -ano | findstr ":8790" | findstr "LISTENING" >nul 2>nul
 if not errorlevel 1 (
-  echo 8790 已经在跑, 不去动它。想重启就先双击"关闭采集端.bat", 再双击"启动采集端.bat"。
+  echo 8790 已经在跑, 不去动它。想重启就先双击"一键关闭.bat"全关掉, 再双击"启动采集端.bat"。
   echo.
   pause
   exit /b 0

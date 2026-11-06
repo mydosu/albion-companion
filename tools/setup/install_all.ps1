@@ -221,6 +221,7 @@ function Test-PythonModules([string]$Python, [string[]]$Modules) {
 function Invoke-PreflightStage {
     $fatal = New-Object System.Collections.Generic.List[string]
     $warnings = New-Object System.Collections.Generic.List[string]
+    $needStt = ($script:Selected -contains 'stt')
     $needTts = ($script:Selected -contains 'tts')
     $needBrain = ($script:Selected -contains 'brain')
 
@@ -263,8 +264,8 @@ function Invoke-PreflightStage {
         else { Write-WarnLine ('uv 在，但取不到版本：' + $uv); $warnings.Add('uv') }
     } else {
         Write-WarnLine 'uv 未找到：https://docs.astral.sh/uv/getting-started/installation/'
-        if ($needTts) { $fatal.Add('uv（TTS 阶段要用）：https://docs.astral.sh/uv/getting-started/installation/') }
-        else { Write-InfoLine '（本次没选 TTS 阶段，uv 不阻塞）' }
+        if ($needStt -or $needTts) { $fatal.Add('uv（耳朵 / TTS 阶段要用）：https://docs.astral.sh/uv/getting-started/installation/') }
+        else { Write-InfoLine '（本次没选耳朵 / TTS 阶段，uv 不阻塞）' }
     }
 
     $smi = Get-CommandSource 'nvidia-smi'

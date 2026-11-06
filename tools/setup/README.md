@@ -8,7 +8,7 @@
 
 | 阶段 | 做什么 | 已装好时 |
 |---|---|---|
-| `preflight` | 查 git、node/pnpm、uv、nvidia-smi、wsl 和 WSL 发行版；缺的给官方下载地址。uv 是 TTS 阶段的硬前提，WSL/发行版是脑阶段的硬前提 | 照常检查，不装系统软件 |
+| `preflight` | 查 git、node/pnpm、uv、nvidia-smi、wsl 和 WSL 发行版；缺的给官方下载地址。uv 是耳朵 / TTS 阶段的硬前提，WSL/发行版是脑阶段的硬前提 | 照常检查，不装系统软件 |
 | `stt` | 调 `setup_stt_runtime.ps1` 建耳朵的 uv 环境（`ear/.venv`） | 打印 `[skip]` |
 | `tts` | 调 `setup_tts_env.ps1` 建 `tts/irodori/.venv` | venv 依赖齐全时 `[skip]` |
 | `brain` | 在 WSL 里跑 `brain/install.sh` 和 `deploy.sh` | 两个脚本自身幂等，会打印 `[skip]`/`未变` |
