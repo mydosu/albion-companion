@@ -18,7 +18,7 @@ ear\.venv\Scripts\python.exe -c "import funasr, faster_whisper"   # 冒烟
 ```
 
 `.venv` 约 1.24 GB（旧的 `tts/GPT-sovits/runtime` 是 7.46 GB，那个只留给 GSV/Denia）。
-步 4 实测记录在 `_tmp/ear-env/REPORT.md`：同一句中文在新旧环境转写逐字一致，热转写 0.30s（旧 0.40s）。
+步 4 实测记录在 `docs/history/ear-REPORT-stt-env-20261101.md`：同一句中文在新旧环境转写逐字一致，热转写 0.30s（旧 0.40s）。
 
 改依赖：改 `pyproject.toml` → `uv lock --directory ear` → 提交新的 `uv.lock`。
 `tools/setup/setup_stt_runtime.ps1` 默认用 `--locked`，锁文件对不上会直接失败，不会静默换版本。

@@ -3,7 +3,7 @@
     建耳朵（ear/whisper_serve.py）的 Python 环境：ear/ 自己的 uv 项目。
 
 .DESCRIPTION
-    步 4 实测（2026-11-01，_tmp/ear-env/REPORT.md）：paraformer 三件套在
+    步 4 实测（2026-11-01，docs/history/ear-REPORT-stt-env-20261101.md）：paraformer 三件套在
     Python 3.10 + torch 2.14.1+cpu + funasr 1.4.19 + numpy 2.2.6 + kaldi-native-fbank
     下跑得起来，同一句中文的转写与旧 tts/GPT-sovits/runtime（Python 3.9.13）逐字一致，
     热转写 0.30s（旧 0.40s），`.venv` 1.24 GB（旧 runtime 7.46 GB）。
