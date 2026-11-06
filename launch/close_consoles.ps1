@@ -1,4 +1,4 @@
-$pat = '阿尔比恩|start_backend|start_bridge|start_stream|启动TTS桥|启动Irodori|start_ear|capture_agent|bridge\.py|irodori_serve|whisper_serve|electron-vite'
+﻿$pat = '阿尔比恩|start_backend|start_bridge|start_stream|启动TTS桥|启动Irodori|start_ear|capture_agent|bridge\.py|irodori_serve|whisper_serve|electron-vite'
 $killed = 0
 Get-Process | Where-Object { $_.MainWindowTitle -and $_.MainWindowTitle -match $pat } | ForEach-Object {
   taskkill /PID $_.Id /T /F 2>$null | Out-Null

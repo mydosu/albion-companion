@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     建耳朵（ear/whisper_serve.py）的 Python 环境：ear/ 自己的 uv 项目。
 
