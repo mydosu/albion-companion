@@ -247,6 +247,35 @@ def _quality_note(job, res):
     return note
 
 
+def _spoken_chars(text):
+    """这一块实际要念的字数（空白和标点不出声，算进去会把 cps 抬高、看着像"多念"）。"""
+    return sum(1 for ch in (text or "") if not ch.isspace() and ch.isalnum())
+
+
+def _audio_note(job, res):
+    """final 行补音频时长与语速（2026-11-03）：`secs` 比同字数常态短 ⇒ 模型吞字/少念。
+
+    用已经拿在手里的 `wave`/`sr` 算，不重读文件；失败/取消时拿不到就返回空串，绝不因此报错
+    （一段已经渲好的音频不能因为日志字段丢掉）。
+    """
+    try:
+        sr = int(res.get("sr") or 0)
+        wave = res.get("wave")
+        n = len(wave) if wave is not None else 0
+        if sr <= 0 or n <= 0:
+            return ""
+        secs = n / float(sr)
+        if secs <= 0:
+            return ""
+        note = "secs=%.2f" % secs
+        chars = _spoken_chars(job.unit.get("text"))
+        if chars:
+            note += " cps=%.1f" % (chars / secs)
+        return note
+    except Exception:              # noqa: BLE001 - 日志字段出错不能连累音频
+        return ""
+
+
 class _Job:
     __slots__ = ("session_id", "generation", "unit", "future", "queued_at", "state")
 
@@ -546,12 +575,13 @@ class RenderQueue:
             if not job.future.done():
                 # 最终状态（codex：S 断流后 I 侧继续跑的任务也必须有结局记录，否则看不出
                 # 后续请求是不是被一个已超时但仍在跑的任务堵住）。synth_ms 是**合成调用墙钟耗时**，
-                # 含 `_run_infer` 与其文件读写，不是纯 GPU 时间。
+                # 含 `_run_infer` 与其文件读写，不是纯 GPU 时间。secs/cps 见 `_audio_note`。
+                note = " ".join(p for p in (_audio_note(job, res), _quality_note(job, res)) if p)
                 print("[render_queue] %s unit=%s final=%s synth_ms=%s wall_ms=%d cancelled=%s %s"
                       % (job.session_id, _uid, res.get("status"), res.get("synth_ms"),
                          int((time.monotonic() - _t_run) * 1000),
                          self.is_cancelled(job.session_id, job.generation),
-                         _quality_note(job, res)), flush=True)
+                         note), flush=True)
                 job.future.set_result(res)
             self._release(job.session_id, job.generation)
 

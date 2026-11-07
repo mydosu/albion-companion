@@ -198,6 +198,19 @@ class SessionText:
     def _speakable_len(self, lo: int, limit: int):
         return sum(1 for i in range(lo, limit) if self.kinds[i] == "speech")
 
+    def _space_soft(self, i: int, limit: int) -> bool:
+        """空格算不算软切点：只有**左右两边都不是 word** 时才算（2026-11-03）。
+
+        中文里的空格基本只出现在英文词/数字两边（"…彻底关 Windows Defender 呀？"），切在那儿
+        会把同一串英文劈成两块，各自翻译、各自念。因果：右边字符还没到（`i + 1 >= limit`）就
+        当不能切，等下一个字到了再判 —— 否则逐字喂和一次性喂会切出不同的单元。
+        """
+        if i + 1 >= limit:                       # 右边还没到达：看不见就先不判
+            return False
+        if i > 0 and is_word(self.text[i - 1]):
+            return False
+        return not is_word(self.text[i + 1])
+
     def _next_candidate(self, limit: int):
         """最早的可提交切点 —— **因果**：只用已到达的文本，绝不看后面还会来什么。
 
@@ -222,13 +235,17 @@ class SessionText:
             if k == "speech":
                 if ch in HARD and has_word(self.speech_of_range(lo, cut)):
                     return (i, "hard")          # 硬边界：交给收尾窗口
+                space_ok = ch.isspace() and self._space_soft(i, limit)
+                space_pending = ch.isspace() and i + 1 >= limit   # 右边未到：这格先不判（否则看未来）
                 if first:
                     if ch in SOFT and speak >= min_len:
                         return (cut, "soft")    # 软边界：够长即切，不等后面的句子
-                    if ch.isspace() and speak > max_len:
+                    if space_ok and speak > max_len:
                         return (cut, "soft")
-                elif (ch in SOFT or ch.isspace()) and speak >= self.later_soft_min:
+                elif (ch in SOFT or space_ok) and speak >= self.later_soft_min:
                     last_soft = cut
+                if space_pending:
+                    continue                    # 空格右边未知时连 force 也不在这儿切，等下一字
             if speak >= force:
                 if last_soft is not None:
                     return (last_soft, "soft")

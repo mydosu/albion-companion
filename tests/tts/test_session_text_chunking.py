@@ -14,12 +14,20 @@ from session_text import SessionText  # noqa: E402
 
 TEXTS = {
     "中文多句": "指挥官，今天也辛苦了。要不要先休息一下？我给你泡杯茶吧。",
+    "英文词带空格": "指挥官，托着下巴在琢磨怎么彻底关 Windows Defender 呀？",
     "心声括号": "（小声）其实我一直在等你回来……那个，不要误会！只是有点担心而已。",
     "日语": "こんにちは、指揮官。今日もお疲れさまです。少し休みませんか？",
     "控制标记": "哎？<|ACT:{\"emotion\":\"happy\"}|>真的吗！太好了，我还以为你不会来了呢，所以一直一个人在这里发呆，连茶都凉了。",
     "无标点超长串": "没有标点的超长串" * 12,
     "换行与多种标点": "第一句。第二句！第三句？\n第四句，带逗号，再来一个；然后冒号：结束。",
 }
+
+# 2026-11-03：9885 把「…彻底关 Windows」和「Defender 呀？」切成两块各自翻译、各自念。
+# 英文词/数字两边的空格不是软切点（中文里的空格基本只出现在那里）。
+EN_MIXED = "指挥官，托着下巴在琢磨怎么彻底关 Windows Defender 呀？"
+PURE_CN = "指挥官，托着下巴在琢磨怎么彻底关掉那个东西呀，真的很难弄。"
+CUT_PUNCT = "，,。！？!?；;：:…"
+
 
 
 def run(chunks):
@@ -51,6 +59,31 @@ class SessionTextChunkingTest(unittest.TestCase):
                 with self.subTest(text=name, chunking=how):
                     self.assertEqual("".join(chunks), text)
                     self.assertEqual(run(chunks), whole)
+
+
+class SpaceCutTest(unittest.TestCase):
+    """空格软切点只认「左右都不贴英文/数字」的位置（2026-11-03 劈开 Windows/Defender 的回归）。"""
+
+    def test_english_word_not_split_at_space(self):
+        win, dfd = EN_MIXED.index("Windows"), EN_MIXED.index("Defender")
+        splits = {"整句": [EN_MIXED], "逐字": list(EN_MIXED),
+                  "词中间": [EN_MIXED[:win + 3], EN_MIXED[win + 3:]]}
+        for how, chunks in splits.items():
+            with self.subTest(chunking=how):
+                self.assertEqual("".join(chunks), EN_MIXED)
+                units = run(chunks)
+                self.assertEqual("".join(u[2] for u in units), EN_MIXED)
+                cuts = {u[1] for u in units[:-1]}
+                # 切在「关| Windows」或「Windows| Defender」之间 = 同一个英文词串被劈成两块
+                self.assertFalse(cuts & {win, dfd},
+                                 "%s: 切点 %s 劈开了英文词" % (how, sorted(cuts)))
+                self.assertEqual(units, run([EN_MIXED]), "%s: 分块不能改变单元" % how)
+
+    def test_pure_chinese_unchanged(self):
+        whole = run([PURE_CN])
+        self.assertEqual(run(list(PURE_CN)), whole)
+        for u in whole[:-1]:                  # 纯中文仍只在标点后切
+            self.assertIn(PURE_CN[u[1] - 1], CUT_PUNCT, "切点 %d 不在标点后：%r" % (u[1], u[2]))
 
 
 if __name__ == "__main__":

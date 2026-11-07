@@ -208,5 +208,29 @@ class MetricsTest(unittest.TestCase):
                           "无声段不计入，也不许编一个中位数出来")
 
 
+class AudioNoteTest(unittest.TestCase):
+    """final 行的音频时长/语速字段（2026-11-03）：secs 用已在手的 wave/sr 算，不重读文件。"""
+
+    @staticmethod
+    def _job(text):
+        return SimpleNamespace(unit={"text": text})
+
+    def test_secs_and_cps_from_wave(self):
+        wave = np.zeros(SR * 2, dtype="float32")            # 2.00s
+        note = RQ._audio_note(self._job("あいうえお"), {"sr": SR, "wave": wave})
+        self.assertEqual(note, "secs=2.00 cps=2.5")         # 5 字 / 2s
+
+    def test_punct_and_space_not_counted(self):
+        note = RQ._audio_note(self._job("あ、い。 う"), {"sr": SR, "wave": np.zeros(SR)})
+        self.assertEqual(note, "secs=1.00 cps=3.0")
+
+    def test_missing_audio_is_silent(self):
+        for res in ({"sr": SR}, {"sr": 0, "wave": np.zeros(10)}, {"status": "failed"}, {}):
+            with self.subTest(res=res):
+                self.assertEqual(RQ._audio_note(self._job("あ"), res), "", "拿不到就跳过，不报错")
+        self.assertEqual(RQ._audio_note(self._job(""), {"sr": SR, "wave": np.zeros(SR)}),
+                         "secs=1.00", "没文本就只报时长")
+
+
 if __name__ == "__main__":
     unittest.main()
