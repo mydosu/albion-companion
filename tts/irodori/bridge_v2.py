@@ -258,6 +258,103 @@ class PrepareResult:
                 "translated": self.translated, "duration_ms": self.duration_ms}
 
 
+# ---- 长日文子段再切（2026-11-07）---------------------------------------------------
+# 复现结论：90 字以上的日文块，模型会在「句尾」提前收尾并丢掉最后一整句（跨 5 个 seed、
+# 跨 15.2/16.4/17.4 秒三个时长档位都一样，尾静音还有 0.5~1.0s 说明不是被预算挤掉），
+# 对应 `inference_runtime` 里 `fixed_target_latent_steps` 那条「long-tail stability」警告。
+# 58 字（12 秒）的块复测全部完整 ⇒ 在**生成 ja_segments 的地方**把超过 60 字的子段再切开，
+# 9885 已经支持一个单元带多个子段（逐个 sub_index 送渲染），切点放这里不动 9885 的契约。
+JA_SEG_MAX = 60          # 一个子段最多这么多**朗读字**（口径同 render_queue._spoken_chars）
+JA_SEG_MIN = 8           # 切出来的碎片低于这个字数就并回相邻段
+_JA_SENT_END = "。！？!?"
+_JA_COMMA = "、，,"
+_JA_TRAIL = "」』）)】〕】\"'”’"      # 句末标点后面这些跟着留在左段
+
+
+def _ja_spoken_len(text):
+    """朗读字数：空白和标点不算（与 render_queue._spoken_chars 同口径）。"""
+    return sum(1 for ch in (text or "") if not ch.isspace() and ch.isalnum())
+
+
+def _ja_skip_trail(text, end):
+    """句末/逗号之后把尾随空格和收尾引号一并算进左段。"""
+    while end < len(text) and (text[end].isspace() or text[end] in _JA_TRAIL):
+        end += 1
+    return end
+
+
+def _ja_cut_at_sentence_end(text, limit):
+    """最靠后的、切完前缀朗读字数不超过 limit 的句末位置；没有返回 None。"""
+    best = None
+    for i, ch in enumerate(text):
+        if ch in _JA_SENT_END:
+            end = _ja_skip_trail(text, i + 1)
+            if _ja_spoken_len(text[:end]) <= limit:
+                best = end
+    return best
+
+
+def _ja_cut_at_comma(text, limit):
+    """没有句末可切时：在不超过 limit 的逗号里挑离整段中点最近的那个；没有返回 None。"""
+    mid = _ja_spoken_len(text) / 2.0
+    best, best_d = None, None
+    for i, ch in enumerate(text):
+        if ch in _JA_COMMA:
+            end = _ja_skip_trail(text, i + 1)
+            n = _ja_spoken_len(text[:end])
+            if n <= limit:
+                d = abs(n - mid)
+                if best_d is None or d < best_d:
+                    best, best_d = end, d
+    return best
+
+
+def _ja_split_text(text, limit=JA_SEG_MAX):
+    """把一段日文切成朗读字数 ≤ limit 的子段：先句末、再逗号、都没有就不切；超长递归再切。"""
+    if _ja_spoken_len(text) <= limit:
+        return [text]
+    cut = _ja_cut_at_sentence_end(text, limit)
+    if cut is None:
+        cut = _ja_cut_at_comma(text, limit)
+    if cut is None or cut <= 0 or cut >= len(text):
+        return [text]                    # 没有可用标点：不切，交给时长下限兜底
+    return _ja_split_text(text[:cut], limit) + _ja_split_text(text[cut:], limit)
+
+
+def _ja_merge_short(pieces):
+    """碎段并回相邻段（规则：每段至少 JA_SEG_MIN 个字）。"""
+    out = []
+    for p in pieces:
+        if out and _ja_spoken_len(p) < JA_SEG_MIN:
+            out[-1] += p
+        elif out and _ja_spoken_len(out[-1]) < JA_SEG_MIN:
+            out[-1] += p
+        else:
+            out.append(p)
+    return out
+
+
+def _split_ja_segments(segs, limit=JA_SEG_MAX):
+    """把过长的子段切开；其它字段（emotion / voice_caption / …）原样复制，sub_index 重编号。
+
+    只在文本上动刀：字幕走 `display.span`（源中文，一个单元一次），渲染按 `unit_id:sub_index`
+    配对，所以切开只让音频更细，不会影响显示。
+    """
+    out = []
+    for seg in segs:
+        text = seg.get("text") or ""
+        if _ja_spoken_len(text) <= limit:
+            out.append(dict(seg))
+            continue
+        for piece in _ja_merge_short(_ja_split_text(text, limit)):
+            child = dict(seg)
+            child["text"] = piece
+            out.append(child)
+    for i, seg in enumerate(out):
+        seg["sub_index"] = i
+    return out
+
+
 def _plan_version(v):
     """只认真整数（`True` 是 bool，不是版本号）。"""
     return v if isinstance(v, int) and not isinstance(v, bool) else None
@@ -486,6 +583,9 @@ class PrepareService:
             if extra:
                 seg.update(extra)
             segs.append(seg)
+        # 长日文子段再切（2026-11-07）：>60 朗读字的子段模型会提前收尾并吞掉最后一句，
+        # 在交给 9885 之前切开；emotion/voice_caption 等字段原样复制，sub_index 重编号。
+        segs = _split_ja_segments(segs)
         return PrepareResult(unit_id=req.unit_id, status="ready", source_unit_id=req.unit_id,
                              ja_segments=tuple(segs), translated=translated, duration_ms=_ms(t0))
 
@@ -640,3 +740,4 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("ALBION_V2_PORT", "19883")),
                 log_level="warning", access_log=False)
+
