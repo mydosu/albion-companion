@@ -67,6 +67,24 @@ MALE_F0_MAX_HZ = 260.0           # 正常最低 274Hz；10-31 一句 226Hz 的�
 TAIL_CLIP_DB = 30.0              # 原始 wav 末 30ms 峰值 > 全段峰值 -30dB ⇒ 上游把话截在响处
 TAIL_PROBE_S = 0.03              # 「末段」取多长（与 gap_shaper.FADE_GATE_DB 的 30ms 同口径）
 
+# ---- 时长下限：预测短了模型会吞掉句尾（2026-11-07）---------------------------------
+# 复现（同文本同 seed 重渲 45 段）：时长预测器只按文本给一个帧预算，预算紧了模型不是放慢而是
+# **丢尾**——90 字块 15.20s、尾静音 0.00s（全程有声到文件末尾）、whisper 转写缺最后一整句，
+# 且 5 个 seed 全中；105 字块 3/5 个 seed 丢尾。完整块实测 3.85～5.54 字/秒，丢尾块 5.92～6.02，
+# 故取 R = 5.3 字/秒做下限：`min_seconds = max(0.5, 块内朗读字数 / 5.3)`，封顶 30s（模型上限）。
+# cps ≤ 5.3 的块 min_seconds ≤ 预测时长 ⇒ 帧预算不变，行为与之前完全一致。
+TTS_MIN_CPS = 5.3
+TTS_MIN_SECONDS = 0.5
+TTS_MAX_SECONDS = 30.0
+
+
+def _min_seconds_for(text):
+    """这一块的时长下限（秒）：按「朗读字数 / 5.3」算，封顶 30s；没字数就退回默认 0.5s。"""
+    chars = _spoken_chars(text)
+    if not chars:
+        return TTS_MIN_SECONDS
+    return min(TTS_MAX_SECONDS, max(TTS_MIN_SECONDS, chars / TTS_MIN_CPS))
+
 
 def run_infer_synth(unit, out_wav, run_infer, default_ship):
     """把**当前进程**的 `_run_infer` 包成队列要的合成腿：生产接线用这个。
@@ -75,13 +93,36 @@ def run_infer_synth(unit, out_wav, run_infer, default_ship):
     `__main__`，按名字导入会把同一个文件再导入一份（两套模块状态、两份模型缓存）。
 
     `unit["seed"]`（可选）原样透传 —— 只给听测配对种子用（astra-3 §4.1），不改生产默认行为。
+
+    2026-11-07：同时按块内朗读字数传 `min_seconds`（时长下限，见 `_min_seconds_for`），
+    并让 infer.py 写一份时长报告，返回值第三个元素带上「这块是不是被下限抬过」（floor）。
+    老签名（测试桩只收 text/caption/cfg/out_wav/ship/seed）会 TypeError ⇒ 退回旧调用。
     """
+    import json
     import soundfile as sf
     ship = unit.get("voice") or default_ship
-    run_infer(unit["text"], unit.get("caption") or "", unit.get("cfg") or 3.0, out_wav, ship,
-              seed=unit.get("seed"))
+    report = out_wav + ".dur.json"
+    floor = None
+    try:
+        run_infer(unit["text"], unit.get("caption") or "", unit.get("cfg") or 3.0, out_wav, ship,
+                  seed=unit.get("seed"), min_seconds=_min_seconds_for(unit.get("text")),
+                  duration_report=report)
+    except TypeError:                                   # 旧签名/测试桩：保持原样，不加下限
+        run_infer(unit["text"], unit.get("caption") or "", unit.get("cfg") or 3.0, out_wav, ship,
+                  seed=unit.get("seed"))
+    else:
+        try:
+            with open(report, "r", encoding="utf8") as f:
+                floor = bool(json.load(f).get("floor"))
+        except (OSError, ValueError):
+            floor = None                                # 拿不到就不在 final 行标 floor
+        finally:
+            try:
+                os.remove(report)
+            except OSError:
+                pass
     d, sr = sf.read(out_wav, dtype="float32")
-    return sr, d
+    return sr, d, floor
 
 
 def _default_synth(unit, out_wav):
@@ -271,6 +312,8 @@ def _audio_note(job, res):
         chars = _spoken_chars(job.unit.get("text"))
         if chars:
             note += " cps=%.1f" % (chars / secs)
+        if res.get("floor"):
+            note += " floor=1"          # 这块的时长被字数下限抬过（复测时靠它认）
         return note
     except Exception:              # noqa: BLE001 - 日志字段出错不能连累音频
         return ""
@@ -606,9 +649,12 @@ class RenderQueue:
 
             def attempt(n):
                 seed = fixed if (n == 1 and fixed is not None) else _random_seed()
-                sr, wave = self._synth(dict(unit, seed=seed), os.path.join(d, "seg%d.wav" % n))
+                got = self._synth(dict(unit, seed=seed), os.path.join(d, "seg%d.wav" % n))
+                # 合成腿可能返回 2 元组（老接口/测试桩）或 3 元组（多了「被时长下限抬过」标记）
+                sr, wave = got[0], got[1]
+                floor = got[2] if len(got) > 2 else None
                 q = _quality(sr, wave, ship)
-                tries.append(dict(q, seed=seed, sr=sr, wave=wave))
+                tries.append(dict(q, seed=seed, sr=sr, wave=wave, floor=floor))
                 return tries[-1]
 
             first = attempt(1)
@@ -635,6 +681,7 @@ class RenderQueue:
             picked = max(range(len(tries)), key=lambda i: _rank(tries[i]))
             best = tries[picked]
             return {"status": "ok", "sr": best["sr"], "wave": best["wave"],
+                    "floor": best.get("floor"),
                     "synth_ms": int((time.monotonic() - _t_synth) * 1000),
                     "seed": best["seed"],
                     "quality": [{k: t[k] for k in ("seed", "tail_db", "f0_hz", "male", "clip")}

@@ -132,11 +132,15 @@ def _cached_from_key(key):
 infer_mod.InferenceRuntime.from_key = staticmethod(_cached_from_key)
 
 
-def _run_infer(text, caption, cfg_caption, out_wav, ship=DEFAULT_SHIP, seed=None):
+def _run_infer(text, caption, cfg_caption, out_wav, ship=DEFAULT_SHIP, seed=None,
+               min_seconds=None, duration_report=None):
     """在进程内以 CLI 等价参数调用 infer.py（模型已缓存，LoRA/嵌入按船切换）。
 
     `seed=None` 时**不传** `--seed` ⇒ 保持生产原有的随机采样（astra-3 §4.1：
     客户端多写一个 seed 不等于生效，要记录实际用了什么）。
+
+    `min_seconds`（2026-11-07）：块内朗读字数算出的时长下限；`None` ⇒ 不传，行为与之前一致。
+    `duration_report`：让 infer.py 把 pred/used/floor 写成 JSON，队列据此在 final 行标 `floor=1`。
     """
     lora, emb, refs = ship_assets(ship)
     argv = [os.path.join(ROOT, "infer.py"),          # argv[0] 必须是"程序名"，不能是 python 路径
@@ -151,6 +155,10 @@ def _run_infer(text, caption, cfg_caption, out_wav, ship=DEFAULT_SHIP, seed=None
             "--num-steps", os.environ.get("IRODORI_STEPS", "40")]
     if seed is not None:
         argv += ["--seed", str(int(seed))]        # 只在显式给了配对种子时出现（生产默认不带）
+    if min_seconds is not None:
+        argv += ["--min-seconds", "%.3f" % float(min_seconds)]   # 2026-11-07 时长下限
+    if duration_report:
+        argv += ["--duration-report", str(duration_report)]      # 只给日志取证用
     if emb:
         # B 方案（用户定稿）：Speaker Inversion 嵌入定音色
         argv += ["--ref-embed", emb]

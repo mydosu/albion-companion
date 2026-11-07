@@ -199,6 +199,25 @@ def main() -> None:
         help="Scale predicted duration when --seconds is omitted (>1 longer, <1 shorter).",
     )
     parser.add_argument(
+        "--min-seconds",
+        type=float,
+        default=None,
+        help=(
+            "Lower bound for the (predicted) output duration. 2026-11-07: 预测时长偏短时模型会把"
+            "句尾整句吞掉（实测 90 字块 15.20s 全程有声、尾静音 0.00s，转写缺最后一句），"
+            "宿主按块内朗读字数算一个下限传进来。默认 None ⇒ 沿用 SamplingRequest 的 0.5s。"
+        ),
+    )
+    parser.add_argument(
+        "--duration-report",
+        type=str,
+        default=None,
+        help=(
+            "把这一块的时长决策写成 JSON（pred_sec/used_sec/min_seconds/floor）。"
+            "宿主据此在 final 行标 floor=1；只给日志用，不影响音频。"
+        ),
+    )
+    parser.add_argument(
         "--num-candidates",
         type=int,
         default=1,
@@ -454,6 +473,7 @@ def main() -> None:
             decode_mode=str(args.decode_mode),
             seconds=None if args.seconds is None else float(args.seconds),
             duration_scale=float(args.duration_scale),
+            min_seconds=0.5 if args.min_seconds is None else float(args.min_seconds),
             max_ref_seconds=float(args.max_ref_seconds)
             if args.max_ref_seconds is not None
             else None,
@@ -508,6 +528,23 @@ def main() -> None:
             print(f"Saved[{i}]: {saved}")
     if args.show_timings:
         _print_timings(result.stage_timings, result.total_to_decode)
+    if args.duration_report:
+        # 时长决策的取证（2026-11-07）：只有 `--min-seconds` 这一层会改时长，
+        # 所以 `floor` 只看「下限是否真的高过预测值」，别的路径一律 False。
+        import json
+        import re
+        pred_sec = None
+        for msg in result.messages:
+            m = re.search(r"predicted duration frames=[\d.]+,.*?\(([\d.]+)s\)", msg)
+            if m:
+                pred_sec = float(m.group(1))
+                break
+        used_sec = round(len(result.audio) / float(result.sample_rate), 3)
+        floor_sec = 0.5 if args.min_seconds is None else float(args.min_seconds)
+        Path(args.duration_report).write_text(json.dumps({
+            "pred_sec": pred_sec, "used_sec": used_sec, "min_seconds": floor_sec,
+            "floor": bool(pred_sec is not None and floor_sec > pred_sec + 1e-6),
+        }), encoding="utf8")
 
 
 if __name__ == "__main__":
