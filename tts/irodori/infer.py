@@ -530,14 +530,20 @@ def main() -> None:
         _print_timings(result.stage_timings, result.total_to_decode)
     if args.duration_report:
         # 时长决策的取证（2026-11-07）：只有 `--min-seconds` 这一层会改时长，
-        # 所以 `floor` 只看「下限是否真的高过预测值」，别的路径一律 False。
+        # 所以 `floor` 只看「下限是否真的高过**预测**值」，别的路径一律 False。
+        # 注意 runtime 那条 message 里括号中的秒数是 **clamp 之后**的（= 真正用的），
+        # 预测值要用同一个消息里的 `frames=`（预测帧）与 `using_frames=`（夹取后帧）等比折算，
+        # 否则 pred_sec 会等于 used_sec，floor 永远是 False（11-07 首轮部署踩过）。
         import json
         import re
         pred_sec = None
         for msg in result.messages:
-            m = re.search(r"predicted duration frames=[\d.]+,.*?\(([\d.]+)s\)", msg)
+            m = re.search(r"predicted duration frames=([\d.]+),.*?using_frames=(\d+)", msg)
             if m:
-                pred_sec = float(m.group(1))
+                raw_frames, used_frames = float(m.group(1)), float(m.group(2))
+                if used_frames > 0:
+                    clamp_sec = float(result.audio.shape[-1]) / float(result.sample_rate)
+                    pred_sec = round(clamp_sec * raw_frames / used_frames, 3)
                 break
         used_sec = round(len(result.audio) / float(result.sample_rate), 3)
         floor_sec = 0.5 if args.min_seconds is None else float(args.min_seconds)
