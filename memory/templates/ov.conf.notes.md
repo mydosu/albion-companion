@@ -46,6 +46,11 @@
 | `vlm.max_retries` | `3` | 默认值 | `vlm_config.py:110` |
 | `vlm.credentials[]` | 一条 `backup-1` | 备用凭据，按数组顺序失败后往后跳（0 优先级最高）。**失效的凭据要删掉**，否则每次抽取都白跳 | `vlm_config.py:176` |
 
+- 2026-11-08 生产实配：`vlm` 段改指本机 Magpie 网关（`api_base` = `http://127.0.0.1:3425/v1`，
+  `model` = `antigravity/gemini-3.8-flash`）。Magpie 对本机回环不校验 key，`api_key` 填占位串即可；
+  `credentials` 留空数组时 OpenViking 会把主配置镜像成一条 `default` 凭据（`_normalize_credentials`），
+  不会引入别的上游。这一段只动 `vlm`，`embedding`（SiliconFlow bge-m3，dimension 1024）保持原样。
+
 ## server
 
 | 键 | 模板值 | 说明 | 出处 |
