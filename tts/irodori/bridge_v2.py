@@ -390,6 +390,26 @@ def intimate_codebook_anchor(emo, ja_text, zh_text="", context_before=""):
     }
 
 
+# 非高潮纯拟声去「！」（2026-11-09，样张结论）：亲密族里「はぁ……！」这种孤立拟声，末尾的
+# 「！」会让模型把它当一声惊呼念完（并跟着一段 ~0.9s 的收尾静音）；去掉后是拖着的喘息。
+# 高潮固定式（译法里带「——っ」「んんんっ」的）必须保留 —— 那个「！」是表演本身的一部分。
+# 只改**送去渲染**的日文；字幕走中文源账本（`display.span`），一个字都不动。
+CLIMAX_MARKS = ("——っ", "んんんっ")
+
+
+def strip_nonclimax_bang(text):
+    """亲密纯拟声句末尾的「！」去掉；不是拟声 / 是高潮固定式 / 本来没「！」⇒ 原样返回。"""
+    t = (text or "").rstrip()
+    if not t.endswith(("！", "!")):
+        return text
+    body = t.rstrip("！!").rstrip()
+    if not body or any(m in body for m in CLIMAX_MARKS):
+        return text
+    if not SP._is_interjection(body):
+        return text
+    return body
+
+
 def _hint_tier(emo):
     """没有拟声时：按提示强度估档（口径同 `emotion_codebook.tier_for` 的冷启动分支）。"""
     v = emo.get("intensity")
@@ -770,6 +790,14 @@ class PrepareService:
                 # 有拟声时同时把提示抬成 breathy + 高强度，规划器才会落到强锚而不是弱锚。
                 if anchor["hint"]:
                     emo.update(anchor["hint"])
+                # 桥的判定要让下游看得见（2026-11-09）：
+                #  * `emo["intimate_anchor"]`：规划器 v4 的弱线索闸门不得把 phonation 剥掉
+                #    （否则「あっ……！」那种句面读不出族的拟声会被折成 bright/strong，样张 B:1）；
+                #  * 段级 `intimate`：9885 用它给句尾气口选 `ALBION_GAP_INTIMATE`（0.3s）。
+                emo["intimate_anchor"] = anchor["tier"]
+                extra["intimate"] = True
+                # 非高潮纯拟声去「！」（只动渲染文本，字幕不受影响）
+                text = strip_nonclimax_bang(text)
                 print("[voice] unit=%s 亲密句走码本锚 %s/%s（%s）"
                       % (req.unit_id, anchor["family"], anchor["tier"], anchor["why"]), flush=True)
             elif not voice_caption.breath_cue_prefers_codebook(emo, ja_text, zh_text):
