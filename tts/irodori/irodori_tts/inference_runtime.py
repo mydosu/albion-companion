@@ -45,12 +45,16 @@ from .watermark import SilentCipherWatermarker
 # 字数下限 40 句里只真正生效 1 句（预测值几乎总比它大），管不到这件事。
 # 所以给**预测时长**本身加一个固定余量（秒），与字数无关、与拍数无关（拍数假设已被实验否掉）：
 # `latent_steps >= ceil((pred_sec + margin) * sr / hop)`。0 等于关，读环境变量，改完重启生效。
+#
+# 2026-11-08 晚：0.6s 的对照实测**不要**——40 句同 seed，Δ总时长中位正好 +0.600s、均值 +0.575s，
+# 余量几乎全被吃成语速（平均慢 4.5%）；尾静音只 +0.07s，个别块反而更紧（0.57→0.00s）。所以默认
+# 改成 0（关），机制与环境变量照旧保留：它是个可复现的旋钮，但目前不认为它是解法。
 PRED_MARGIN_ENV = "TTS_PRED_MARGIN_S"
-PRED_MARGIN_DEFAULT_S = 0.6
+PRED_MARGIN_DEFAULT_S = 0.0
 
 
 def pred_margin_seconds(default: float = PRED_MARGIN_DEFAULT_S) -> float:
-    """`TTS_PRED_MARGIN_S`（秒，默认 0.6，0=关）。非数字/负数按 0 处理（宁可少给，不炸）。"""
+    """`TTS_PRED_MARGIN_S`（秒，默认 0=关）。非数字/负数按 0 处理（宁可少给，不炸）。"""
     raw = os.environ.get(PRED_MARGIN_ENV)
     if raw is None or not str(raw).strip():
         return max(0.0, float(default))

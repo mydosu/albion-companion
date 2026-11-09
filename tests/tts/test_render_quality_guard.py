@@ -199,22 +199,27 @@ class SynthPassthroughTest(unittest.TestCase):
 
 
 class TailTightTest(GuardCase):
-    """尾巴太紧就拉长重渲（2026-11-08）。
+    """尾巴太紧就换 seed 重抽一次（2026-11-08）。
 
     现场：`s642d032b0fb8:1:2` 渲出 12.32s、尾静音只剩 0.10s、cps 4.3 —— 模型一路念到预算末尾，
-    句尾被挤掉，而 cps 没到 5.0，字数下限管不着。判据是**原始音频的尾静音**，重渲一次把目标
-    时长 ×1.25（`min_seconds` 覆盖），最多一次，取消的不重渲。
+    句尾被挤掉，而 cps 没到 5.0，字数下限管不着。判据是**原始音频的尾静音**。
+
+    重渲方式（2026-11-08 晚改）：**同一个预算、换一个新 seed**（`TAIL_STRETCH=1.0`），是拒绝采样
+    而不是「多给预算」——40 句对照证明多给预算只会让她念慢（`Δ有声/Δ总长` 中位 0.97），尾巴不一定
+    变长；而紧不紧看起来跟着 seed 走。最多一次，取消的不重渲，挑法仍是尾巴更长者。
     """
 
-    def test_tight_tail_rerenders_with_stretched_target(self):
+    def test_tight_tail_rerenders_with_new_seed_same_budget(self):
         tight = tone(320.0, dur_s=4.0, silence_s=0.10)     # 4.00s 有声 + 0.10s 静音
         loose = tone(320.0, dur_s=5.0, silence_s=0.50)
         res, calls = self.render([tight, loose])
         self.assertEqual(len(calls), 2, "尾静音 0.10s < 0.30s ⇒ 必须重渲一次")
         self.assertEqual(res["rerender"], "tail_tight")
         self.assertIsNone(res["rerender_skipped"])
-        # 目标时长 = 上一遍实测时长 × 1.25 = 4.10 × 1.25 = 5.125（不超过 30s、也不低于字数下限）
+        # 预算不变：还是上一遍那 4.10s（TAIL_STRETCH=1.0），不是 ×1.25 的 5.125
+        self.assertEqual(RQ.TAIL_STRETCH, 1.0, "默认必须是同预算的拒绝采样")
         self.assertAlmostEqual(calls[1]["min_seconds"], 4.10 * RQ.TAIL_STRETCH, places=3)
+        self.assertNotEqual(calls[0]["seed"], calls[1]["seed"], "第二遍必须是新 seed")
         self.assertEqual(res["picked"], 2, "重渲那份尾巴更长 ⇒ 用它")
         self.assertTrue(np.array_equal(res["wave"], loose))
 
@@ -298,19 +303,38 @@ class AudioNoteTest(unittest.TestCase):
         wave = np.concatenate([tone(320.0, dur_s=1.5, silence_s=0.5)])   # 2.00s
         note = RQ._audio_note(self._job("あいうえお"), {"sr": SR, "wave": wave})
         self.assertEqual(note, "secs=2.00 cps=2.5"
-                               " tail_voiced_s=1.50 tail_sil_s=0.50")   # 5 字 / 2s
+                               " tail_voiced_s=1.50 tail_sil_s=0.50 margin=0.00s")   # 5 字 / 2s
 
     def test_punct_and_space_not_counted(self):
         note = RQ._audio_note(self._job("あ、い。 う"), {"sr": SR, "wave": np.zeros(SR)})
-        self.assertEqual(note, "secs=1.00 cps=3.0 tail_voiced_s=-1.00 tail_sil_s=-1.00",
+        self.assertEqual(note, "secs=1.00 cps=3.0 tail_voiced_s=-1.00 tail_sil_s=-1.00"
+                               " margin=0.00s",
                          "全零波形量不出有声帧 ⇒ 两个字段都记 -1")
+
+    def test_margin_field_follows_env(self):
+        """final 行要能看出这块用的句尾余量（探针靠它核对服务器配置），默认 0。"""
+        import os
+        wave = tone(320.0, dur_s=1.0, silence_s=0.5)
+        old = os.environ.get("TTS_PRED_MARGIN_S")
+        try:
+            os.environ.pop("TTS_PRED_MARGIN_S", None)
+            self.assertTrue(RQ._audio_note(self._job("あ"), {"sr": SR, "wave": wave})
+                            .endswith("margin=0.00s"))
+            os.environ["TTS_PRED_MARGIN_S"] = "0.6"
+            self.assertTrue(RQ._audio_note(self._job("あ"), {"sr": SR, "wave": wave})
+                            .endswith("margin=0.60s"))
+        finally:
+            if old is None:
+                os.environ.pop("TTS_PRED_MARGIN_S", None)
+            else:
+                os.environ["TTS_PRED_MARGIN_S"] = old
 
     def test_missing_audio_is_silent(self):
         for res in ({"sr": SR}, {"sr": 0, "wave": np.zeros(10)}, {"status": "failed"}, {}):
             with self.subTest(res=res):
                 self.assertEqual(RQ._audio_note(self._job("あ"), res), "", "拿不到就跳过，不报错")
         self.assertEqual(RQ._audio_note(self._job(""), {"sr": SR, "wave": np.zeros(SR)}),
-                         "secs=1.00 tail_voiced_s=-1.00 tail_sil_s=-1.00",
+                         "secs=1.00 tail_voiced_s=-1.00 tail_sil_s=-1.00 margin=0.00s",
                          "没文本就只报时长")
 
 

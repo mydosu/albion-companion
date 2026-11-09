@@ -82,9 +82,15 @@ TTS_MAX_SECONDS = 30.0
 # ---- 尾巴太紧就重渲（2026-11-08）----------------------------------------------
 # 11-08 现场：`s642d032b0fb8:1:2` 12.32s、`tail_sil_s=0.10`、cps 4.3 —— 模型一路念到预算末尾，
 # 句尾被挤掉；cps 没到 5.0，字数下限管不着这种「贴着预算收尾」。渲完量一下原始音频的尾静音，
-# 小于 `TAIL_TIGHT_S` 就把目标时长拉长 `TAIL_STRETCH` 倍再渲**一次**（复用同一套重渲/取消纪律）。
+# 小于 `TAIL_TIGHT_S` 就**换一个新 seed、同样预算**再渲一次（复用同一套重渲/取消纪律）。
+#
+# 2026-11-08 晚：原来这里把目标时长 ×1.25（`TAIL_STRETCH=1.25`），实测是「头痛砍头」——40 句对照
+# 证明预算就是语速旋钮（`Δ有声/Δ总长` 中位 0.97），多给 25% 预算 ≈ 这句念慢 25%，而尾巴不一定
+# 变长（0.6s 余量的对照里甚至有块从 0.57s 变 0.00s）。紧尾巴看起来跟着 **seed** 走而不是跟着
+# 句子走（同句换 seed 时紧时松），所以正确做法是**拒绝采样**：同预算换 seed 再抽一次。
+# `TAIL_STRETCH` 留成常量只为可回退（设回 1.25 就恢复旧行为），默认 1.0 = 同预算。
 TAIL_TIGHT_S = 0.30        # 尾部静音少于这个就算「贴着预算收尾」（正常句尾 0.3~1.1s）
-TAIL_STRETCH = 1.25        # 重渲时把目标时长拉长的倍数
+TAIL_STRETCH = 1.0         # 重渲时的目标时长倍数；1.0 = 同一预算（只换 seed）
 
 
 def _min_seconds_for(text):
@@ -319,7 +325,11 @@ def _tail_rank(q):
 
 
 def _stretch_seconds(prev, unit):
-    """把这块的目标时长拉长 `TAIL_STRETCH` 倍（下限：原来那条 floor 与 30s 上限之间取小）。"""
+    """重渲时要的目标时长：上一遍实测时长 × `TAIL_STRETCH`，与字数下限取大、30s 封顶。
+
+    `TAIL_STRETCH=1.0`（默认）时它等于「上一遍的预算」，重渲只是换 seed 再抽一次；设回 1.25
+    就是旧的「拉长 25%」行为（可回退用）。
+    """
     sr = float(prev.get("sr") or 0)
     wave = prev.get("wave")
     if sr <= 0 or wave is None or not len(wave):
@@ -413,9 +423,21 @@ def _audio_note(job, res):
         # 2026-11-08：话说到第几秒 / 后面还剩多少静音（-1 = 量不出来）
         voiced_end, silence = _tail_profile(wave, sr)
         note += " tail_voiced_s=%.2f tail_sil_s=%.2f" % (voiced_end, silence)
+        # 这块实际用的句尾余量（跟 irodori_tts 的 TTS_PRED_MARGIN_S 同一个进程环境变量）。
+        # 之前这个值只在 runtime 的 return messages 里，落不进 logs/irodori.log，探针核不了。
+        note += " margin=%.2fs" % _pred_margin_s()
         return note
     except Exception:              # noqa: BLE001 - 日志字段出错不能连累音频
         return ""
+
+
+def _pred_margin_s():
+    """本进程的句尾余量（秒）；读不到就当 0——日志字段绝不能连累出声。"""
+    try:
+        from irodori_tts.inference_runtime import pred_margin_seconds
+        return float(pred_margin_seconds())
+    except Exception:              # noqa: BLE001
+        return 0.0
 
 
 class _Job:
@@ -783,7 +805,9 @@ class RenderQueue:
                         if not _bad_reasons(cur):
                             break                   # 不男声也不截尾：立刻停，不再往下渲
             elif fixed is None and _tail_tight(first):
-                # 2026-11-08：模型贴着预算收尾（尾静音 < 0.3s）⇒ 目标时长 ×1.25 再渲**一次**。
+                # 2026-11-08：模型贴着预算收尾（尾静音 < 0.3s）⇒ **换 seed、同预算**再抽一次
+                # （TAIL_STRETCH=1.0；拒绝采样，不靠放慢语速）。重渲用的 seed 由 attempt() 现取
+                # （n≥2 一律 `_random_seed()`），所以两遍不再是同一个 seed。
                 # 取消过的块不重渲（结果反正会被丢）；最多一次，重渲后仍紧就按「尾巴更长」挑。
                 sid, gen = getattr(job, "session_id", None), getattr(job, "generation", None)
                 reason = "tail_tight"

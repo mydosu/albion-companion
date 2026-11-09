@@ -94,7 +94,14 @@ class MarginTest(unittest.TestCase):
         old = os.environ.get(RT.PRED_MARGIN_ENV)
         try:
             os.environ.pop(RT.PRED_MARGIN_ENV, None)
-            self.assertAlmostEqual(RT.pred_margin_seconds(), RT.PRED_MARGIN_DEFAULT_S)
+            # 2026-11-08 晚：默认值改回 0（0.6s 的 40 句对照证明余量被吃成语速、尾巴没变松）
+            self.assertEqual(RT.PRED_MARGIN_DEFAULT_S, 0.0)
+            self.assertEqual(RT.pred_margin_seconds(), 0.0)
+            self.assertEqual(budget(100)["latent_steps"], legacy_steps(100, 1.0, 0.5, 30.0),
+                             "默认（不设环境变量）必须与改之前逐帧一致")
+            os.environ[RT.PRED_MARGIN_ENV] = "0.6"
+            self.assertAlmostEqual(RT.pred_margin_seconds(), 0.6)
+            self.assertEqual(budget(100)["latent_steps"], 112, "开关还在，设了照样生效")
             os.environ[RT.PRED_MARGIN_ENV] = "0"
             self.assertEqual(RT.pred_margin_seconds(), 0.0)
             self.assertEqual(budget(100)["latent_steps"], 100, "0 等于关")
