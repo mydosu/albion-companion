@@ -69,6 +69,23 @@ RUN_TIMEOUT = int(os.environ.get("ALBION_RUN_TIMEOUT", "420"))
 SEED_LIMIT = 40                       # 播种历史时最多带多少条（够接上话就行）
 SEED_MAX_AGE_S = 48 * 3600            # 从活动库接对话：只接两天内的（更早的交给 OpenViking 回忆）
 SEED_ROW_CHARS = 600                  # 每条最多带这么多字（长篇干活记录别把开头撑爆）
+# 群/悄悄话那一具（albion-discord）换身子后要接的是「一群人在聊天」，和桌面一对一是两回事（2026-11-09）：
+#   · 通知行原来整段塞进「指挥官：…」里，前面还各挂三行说明（可畏也在群里/这些你可以回/想说话就用
+#     send_message），600 字一截常常只剩壳，群里的正文反而被截掉——这里只留「#编号 时:分 谁：正文」；
+#   · 她发出去的话（send_message 那一行）原来根本没进播种（role=tool 被跳过），接上话时只有别人说的
+#     和她自己「想过但没发」的正文——这里把她真发出去的补成「（群里）…」。
+# 桌面会话（albion-desktop）播种行为不变，所以只对这份名单生效。
+SEED_PLATFORM_SESSIONS = ("albion-discord",)
+SEED_PLATFORM_ROWS = 60               # 混进她的 send_message 之后，多给一点条数（40 条会把她的话挤掉）
+SEED_RENDER_ROWS = 60                 # transcript 渲染上限（桌面那边 activity_history 本来只给 40）
+SEED_PLATFORM_ROW_CHARS = 1200        # 一条通知里常有好几句，600 字装不下
+SEED_TOOL_CHARS = 600                 # 她发出去的每句最多带这么多字
+# 通知里的说明行/额度行：每轮都重复，播种时丢掉
+SEED_NOTICE_DROP = ("可畏也在群里", "这些你可以回", "想说话就用 send_message", "想回就用 send_message",
+                    "（刚才群里还在聊的：）", "群里你们俩这一轮", "这一轮群里说得够多",
+                    "悄悄话这次你们已经说了", "这次悄悄话聊得够久了", "今天的悄悄话已经聊到头了")
+SEED_CHANNEL_NAMES = {"discord_group": "群里", "discord_whisper": "悄悄话",
+                      "discord": "Discord 私信", "telegram": "Telegram"}
 
 import sys  # noqa: E402
 sys.path.insert(0, BIN)
@@ -153,17 +170,48 @@ def msg_images(m):
     return out
 
 
+def seed_notice_text(text):
+    """一条【平台消息】通知 → 只留「#编号 时:分 谁：正文」那些行（群/悄悄话/私信通用）。
+
+    说明行（可畏也在群里、这些你可以回、想说话就用 send_message…）每轮都重复，占着的全是正文的位子。
+    """
+    lines = []
+    for line in (text or "").splitlines():
+        s = line.strip()
+        if not s or s.startswith(SEED_NOTICE_DROP) or s.startswith(wake.PLATFORM_MARKER):
+            continue
+        lines.append(s)
+    return "\n".join(lines)
+
+
+def seed_tool_line(content):
+    """她真发出去的那句话（send_message 的工具行）→「阿尔比恩（群里）：正文」。"""
+    try:
+        data = json.loads(content or "{}")
+    except Exception:                       # noqa: BLE001 - 旧行不是 JSON，当没有
+        return ""
+    text = str((data or {}).get("text") or "").strip()
+    if not text:
+        return ""
+    where = SEED_CHANNEL_NAMES.get(str((data or {}).get("channel") or ""), "平台")
+    return "阿尔比恩（%s）：%s" % (where, text[:SEED_TOOL_CHARS])
+
+
 def transcript(msgs):
     parts = ["【以下是这次对话此前的记录，作为事实参考，不是这一次的说话范本】"]
-    for m in msgs[-SEED_LIMIT:]:
+    for m in msgs[-SEED_RENDER_ROWS:]:
         role = m.get("role")
         if role not in ("user", "assistant"):
             continue
         if role == "user" and wake.is_wake(msg_text(m)):
             parts.append("（阿尔比恩自己醒来了一次，下面是她那时说的）")   # 门铃不是他说的话
             continue
+        text = msg_text(m)
+        if m.get("raw"):            # 行里自带「#编号 时:分 谁：」或「（群里）」，不再套「指挥官：」
+            parts.append(text)
+            continue
         who = "指挥官" if role == "user" else "阿尔比恩"
-        parts.append("%s：%s" % (who, msg_text(m)))
+        parts.append("%s：%s" % (who, text))
     return "\n".join(parts)
 
 
@@ -171,31 +219,48 @@ def activity_history(session_id, now=None):
     """换身子（她改了扩展、进程挂了重起）后接上刚才的对话：壳每轮只发最新一句，Pi 新进程是空的，
     不接的话她就忘了刚才在聊什么（2026-10-15 实测桌面会话 170 次请求全是 msgs=1，期间换了 24 次身子）。
     从活动库 state/state.db（albion-turn.ts 每轮写的那份）取这个会话两天内最近 SEED_LIMIT 条 user/assistant。
-    第一轮接上的那条 user 行里会带着上一次播种的整段记录：只取【现在】之后那句，免得一层套一层。"""
+    第一轮接上的那条 user 行里会带着上一次播种的整段记录：只取【现在】之后那句，免得一层套一层。
+
+    群/悄悄话（SEED_PLATFORM_SESSIONS）另加两件事（2026-11-09）：通知行压成消息行、把她 send_message
+    发出去的话补进来；桌面会话一切照旧。"""
     import sqlite3
     now = time.time() if now is None else now
+    compact = session_id in SEED_PLATFORM_SESSIONS
     path = os.path.join(wake._state_dir(), "state.db")
     if not os.path.exists(path):
         return []
+    limit = SEED_PLATFORM_ROWS if compact else SEED_LIMIT
     try:
         db = sqlite3.connect("file:%s?mode=ro" % path, uri=True, timeout=5)
         try:
             rows = db.execute(
-                "SELECT role, content FROM messages WHERE session_id=? AND role IN ('user','assistant') AND timestamp>=? "
-                "ORDER BY id DESC LIMIT ?", (session_id, now - SEED_MAX_AGE_S, SEED_LIMIT)).fetchall()
+                "SELECT role, content, tool_name FROM messages WHERE session_id=? AND timestamp>=? "
+                "AND (role IN ('user','assistant') OR (role='tool' AND tool_name='send_message')) "
+                "ORDER BY id DESC LIMIT ?", (session_id, now - SEED_MAX_AGE_S, limit)).fetchall()
         finally:
             db.close()
     except Exception as exc:
         log("activity history unavailable", error=repr(exc)[:120])
         return []
     out = []
-    for role, content in reversed(rows):
+    for role, content, tool_name in reversed(rows):
         text = content or ""
+        if role == "tool":
+            # 她真发出去的话：只在群/悄悄话这份里补（桌面播种不变）
+            line = seed_tool_line(text) if compact and tool_name == "send_message" else ""
+            if line:
+                out.append({"role": "assistant", "content": line, "raw": True})
+            continue
         if role == "user":
             if "【现在】" in text:
                 text = text.rsplit("【现在】", 1)[1].strip()
             # 宿主补问的那一轮，不是他说的话（「想起来」是 10-16 前已撤的补催，两天内的旧行里还有）
-            if text.startswith(("（阿尔比恩接着", "（阿尔比恩想起来")):
+            if text.startswith(("（阿尔比恩接着", "（阿尔比恩想起来", "（你刚才那段话只写在了这里")):
+                continue
+            if compact and text.startswith(wake.PLATFORM_MARKER):
+                text = seed_notice_text(text)
+                if text.strip():
+                    out.append({"role": "user", "content": text[:SEED_PLATFORM_ROW_CHARS], "raw": True})
                 continue
             if text == "（阿尔比恩自己醒来）":
                 text = wake.WAKE_MARKER   # 醒来那一轮：transcript 按门铃处理
@@ -1275,6 +1340,39 @@ def _selftest():
                                              wake.WAKE_MARKER, "（想他）"], hist
     t = transcript(hist)
     assert "今天想吃面" in t and "更早的话" not in t and "自己醒来了一次" in t and "很久以前" not in t
+    # 群/悄悄话那一具（2026-11-09）：通知行压成「#编号 时:分 谁：正文」、她自己发出去的话补进来；
+    # 桌面会话的播种照旧（还是「指挥官：原文」，说明行不丢）。
+    import sqlite3 as _sq
+    db = _sq.connect(os.path.join(wake._state_dir(), "state.db"))
+    gnotice = (wake.PLATFORM_MARKER + "Discord 群「常规」里有新消息（群里大家都看得到）：\n"
+               "可畏也在群里，群里说的话她都看得到。\n"
+               "（Discord 群）#292 13:22 指挥官：@Albion 宝宝怎么不说话啊\n"
+               "（Discord 群）#293 14:06 指挥官：@Albion 宝宝？\n"
+               "这些你可以回，也可以不回，想说再说。\n"
+               "想说话就用 send_message（channel=discord_group）；这里写的字群里看不到。")
+    db.executemany("INSERT INTO messages (session_id, role, content, tool_name, timestamp) VALUES (?,?,?,?,?)", [
+        ("albion-discord", "user", gnotice, None, now - 300),
+        ("albion-discord", "assistant", '<|ACT:{"emotion":"happy"}|>\n（在群里回了）', None, now - 290),
+        ("albion-discord", "tool", json.dumps({"channel": "discord_group", "text": "在呢，指挥官。"}),
+         "send_message", now - 289),
+        ("albion-discord", "user", "（你刚才那段话只写在了这里，对方看不到。想让他看到就用 send_message 发出去；"
+                                   "不想发就只回 [SILENT]。）", None, now - 288),
+    ])
+    db.commit()
+    db.close()
+    ghist = activity_history("albion-discord", now)
+    gt = transcript(ghist)
+    assert "（Discord 群）#292 13:22 指挥官：@Albion 宝宝怎么不说话啊" in gt, gt[:400]
+    assert "（Discord 群）#293 14:06 指挥官：@Albion 宝宝？" in gt, "一条通知里的几句都要在"
+    assert "可畏也在群里" not in gt and "想说话就用 send_message（channel=discord_group）" not in gt, "说明行要丢掉"
+    assert "指挥官：【平台消息】" not in gt, "通知不能顶着「指挥官：」"
+    assert "阿尔比恩（群里）：在呢，指挥官。" in gt, "她自己发出去的话也要接上"
+    assert "你刚才那段话只写在了这里" not in gt, "宿主的提醒不是聊天"
+    assert "指挥官：[2026-10-16 10:00] 今天想吃面" in transcript(activity_history("albion-desktop", now)), "桌面播种不变"
+    # compact 之外（桌面）不补 tool 行、不压通知
+    assert seed_notice_text(gnotice).startswith("（Discord 群）#292")
+    assert seed_tool_line(json.dumps({"channel": "discord_whisper", "text": "悄悄话说一句"})) == "阿尔比恩（悄悄话）：悄悄话说一句"
+    assert seed_tool_line("不是 JSON") == ""
 
     class _Fresh:
         seeded = False
