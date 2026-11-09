@@ -296,6 +296,27 @@ const T0 = BASE + 100_000;
   console.log("N 超过问话+12 小时的回信不进 OK");
 }
 
+// ── P 平台轮的每轮约定 + 宿主那句「答了没发」提醒（2026-11-09）
+{
+  const plat = "【平台消息】Discord 群「常规」里有新消息：\n（Discord 群）#1 13:16 指挥官：@Albion 在吗";
+  const g1 = _albionTest.turn_guidance(plat);
+  assert.ok(g1.includes("这一轮是平台消息：你在这里写的字对方看不到"), g1.slice(-320));
+  assert.ok(g1.includes("[SILENT]"), "平台轮要给出「不回」的写法");
+  const g2 = _albionTest.turn_guidance("[2026-11-09 13:00] 在吗");
+  assert.ok(!g2.includes("这一轮是平台消息"), "桌面他自己的话不加这句");
+  const seeded = "【以下是这次对话此前的记录】\n指挥官：【平台消息】旧通知\n\n【现在】\n在吗";
+  assert.ok(!_albionTest.turn_guidance(seeded).includes("这一轮是平台消息"), "历史里的平台通知不算这一轮");
+  // 宿主追的那句提醒是内部提示：不进 Discord 那边的跨渠道块
+  clearState();
+  const T3 = BASE + 400_000;
+  add(D, "user", "（你刚才那段话只写在了这里，对方看不到。想让他看到就用 send_message 发出去；不想发就只回 [SILENT]。）", T3);
+  add(D, "user", "[2026-11-03 16:20] 桌面这边正常的一句话", T3 + 60);
+  const block = await crossChannelBlock(G, (T3 + 120) * 1000);
+  assert.ok(block && block.includes("桌面这边正常的一句话"), String(block));
+  assert.ok(!block.includes("你刚才那段话只写在了这里"), "提醒的那句不进跨渠道块");
+  console.log("P 平台轮约定提醒 + 内部提示不进跨渠道块 OK");
+}
+
 db.close();
 rmSync(TMP, { recursive: true, force: true });
 console.log("CROSS CHANNEL SELFTEST OK");
