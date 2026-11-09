@@ -1,5 +1,6 @@
 /**
- * 常驻技能 albion-intimate 的自检：读文件、去 frontmatter、接在 system 末尾、没有文件就不动。
+ * 常驻技能 albion-intimate 的自检：读文件、去 frontmatter、写进 system 的自定义 section、
+ * 没有文件就把 section 删掉。**不返回 systemPrompt**（那会冻住整段 system，见任务 9f768f51）。
  * 不碰网络、不碰生产，全部用临时目录里的假技能文本。
  *
  * 跑：node bin/test_intimate_skill.ts      （Node 22.18+ 直接跑 TS；Windows 上也能跑）
@@ -20,8 +21,8 @@ const BODY = "（假技能正文：一声一顿，别连成长句。）\n第二�
 writeFileSync(FILE, "---\nname: albion-intimate\ndescription: test only\n---\n" + BODY + "\n", "utf-8");
 
 const ext: any = await import("../agent/extensions/albion-turn.ts");
-const { readIntimateSkill, withIntimateSkill, stripFrontmatter, _albionTest } = ext;
-const SKILL_HEAD = _albionTest.SKILL_HEAD as string;
+const { readIntimateSkill, intimateSkillSection, stripFrontmatter, _albionTest } = ext;
+const SECTION = _albionTest.INTIMATE_SECTION as string;
 
 // A) frontmatter：有就去掉，没有就原样
 assert.equal(stripFrontmatter("---\na: 1\n---\n正文"), "正文");
@@ -31,30 +32,34 @@ assert.equal(stripFrontmatter("---\na: 1\nb: 2\n---\n"), "");
 // B) 有文件：读出的正文不含 frontmatter，且是原文
 assert.equal(readIntimateSkill(), BODY, "读出的正文应等于去掉 frontmatter 的原文");
 
-// C) 接在 system 末尾：原 system 一个字不改，后面正好是标题行 + 正文
-assert.equal(withIntimateSkill("SYS", BODY), "SYS" + SKILL_HEAD + BODY);
-assert.ok(withIntimateSkill("SYS", BODY).startsWith("SYS\n\n【我已经读过的技能：albion-intimate】\n"));
-// 没有正文就原样返回（同一个引用，不是新串）
-const same = "SYS-2";
-assert.equal(withIntimateSkill(same, null), same);
+// C) 区块文本：标题 + 正文
+assert.equal(intimateSkillSection(BODY), "我已经读过的技能：albion-intimate\n" + BODY);
 
-// D) 没有文件：null，且 hook 返回 undefined（Pi 不会替换 system）
+// D) 没有文件：null
 assert.equal(readIntimateSkill(join(TMP, "nope")), null);
 
-// E) 钩子接线：before_agent_start 真的注册了，且按上面规则返回
+// E) 钩子接线：before_agent_start 写 section（不是 systemPrompt），返回 undefined
 const handlers: Record<string, Function> = {};
 const fakePi = { on: (name: string, fn: Function) => { handlers[name] = fn; return () => {}; } };
 ext.default(fakePi as any);
 assert.equal(typeof handlers.before_agent_start, "function", "应当注册 before_agent_start");
-const r1: any = await handlers.before_agent_start({ type: "before_agent_start", prompt: "x", systemPrompt: "BASE" });
-assert.equal(r1.systemPrompt, "BASE" + SKILL_HEAD + BODY);
+const ev1: any = { type: "before_agent_start", prompt: "x", systemPrompt: "BASE", systemPromptOptions: { sections: {} } };
+const r1: any = await handlers.before_agent_start(ev1);
+assert.equal(r1, undefined, "不许返回 systemPrompt：那会让 runner 设 forceSystemPrompt");
+assert.equal(ev1.systemPrompt, "BASE", "原 systemPrompt 不该被改");
+assert.equal(ev1.systemPromptOptions.sections[SECTION], "我已经读过的技能：albion-intimate\n" + BODY);
 
-// F) 技能文件删掉之后：缓存不再顶用，hook 返回 undefined
+// F) 技能文件删掉之后：缓存不再顶用，section 被删掉，钩子仍返回 undefined
 rmSync(FILE);
 assert.equal(readIntimateSkill(), null);
-assert.equal(await handlers.before_agent_start({ type: "before_agent_start", prompt: "x", systemPrompt: "BASE" }), undefined);
+const ev2: any = { type: "before_agent_start", prompt: "x", systemPrompt: "BASE", systemPromptOptions: { sections: { [SECTION]: "旧内容" } } };
+assert.equal(await handlers.before_agent_start(ev2), undefined);
+assert.ok(!(SECTION in ev2.systemPromptOptions.sections), "文件不在就该把 section 删掉");
 
-// G) 每轮约定里那句已经换成主脑定的措辞，旧句不在了
+// G) 事件里没有 systemPromptOptions（老宿主）：不炸、返回 undefined
+assert.equal(await handlers.before_agent_start({ type: "before_agent_start", prompt: "x" }), undefined);
+
+// H) 每轮约定里那句已经换成主脑定的措辞，旧句不在了
 assert.ok(_albionTest.CONTEXT.includes("这时照 albion-intimate 技能出声和断句。"));
 assert.ok(!_albionTest.CONTEXT.includes("一进到亲密就先读它"));
 

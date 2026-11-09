@@ -27,7 +27,7 @@ const RECALL_TIMEOUT_MS = 30_000;
 // 离线对照：技能全文常驻在 system 末尾时，中文拟声密度 4.64→5.97、种类 6→9、开头占比 27%→8%
 // （tests/output/intimate-skill-ab-20261109/report.md）。技能原文只在 WSL 生产，不进公开库，
 // 运行时从 Pi 根下读；读不到就当没这回事，一轮照常跑。
-const SKILL_HEAD = "\n\n【我已经读过的技能：albion-intimate】\n";
+const INTIMATE_SECTION = "albion_intimate_skill";
 const INTIMATE_SKILL_REL = ["skills", "albion-intimate", "SKILL.md"];
 let skillCache: { mtimeMs: number; body: string } | null = null;
 let skillWarnedFor = "";
@@ -62,9 +62,9 @@ export function readIntimateSkill(root: string = AGENT_DIR): string | null {
   }
 }
 
-/** 把技能正文接到 system 末尾；没有正文就原样返回（不给就不动）。 */
-export function withIntimateSkill(systemPrompt: string, body: string | null): string {
-  return body ? String(systemPrompt ?? "") + SKILL_HEAD + body : systemPrompt;
+/** 技能在 system 里的区块文本：标题 + 正文（Pi 渲染成 <albion_intimate_skill>…</albion_intimate_skill>）。 */
+export function intimateSkillSection(body: string): string {
+  return "我已经读过的技能：albion-intimate\n" + body;
 }
 
 // ── 每轮约定 ───────────────────────────────────────────────────────────────
@@ -973,13 +973,19 @@ export default function albionTurn(pi: ExtensionAPI): void {
   let pendingWrite = false;
   let toolCalls: { name: string; args: Record<string, unknown> }[] = [];
 
-  // 常驻技能：每轮开头把 albion-intimate 正文接在 system 末尾。Pi 的 before_agent_start 支持返回
-  // systemPrompt 整段替换（pi-coding-agent dist/core/extensions/types.d.ts 的
-  // BeforeAgentStartEventResult.systemPrompt）。文件不在就返回 undefined，system 原样不动。
+  // 常驻技能：每轮开头把 albion-intimate 正文放进 system 的自定义 section（Pi 排在 cwd 之后、
+  // 渲染成 <albion_intimate_skill>…</albion_intimate_skill>，即 system 末尾）。**不返回 systemPrompt** ——
+  // 那会让 runner 设 forceSystemPrompt、把整段 system 冻成字符串，壳插件/mcp 的 section 和工具段都会丢。
+  // 机制同 brain/agent/shell-tools-bridge.ts 的 applyPromptSections。文件不在就删掉 section、返回 undefined。
   pi.on("before_agent_start", async (event: any) => {
+    const sections = event?.systemPromptOptions?.sections;
+    if (!sections) return;
     const body = readIntimateSkill();
-    if (!body) return;
-    return { systemPrompt: withIntimateSkill(event?.systemPrompt ?? "", body) };
+    if (!body) {
+      delete sections[INTIMATE_SECTION];
+      return;
+    }
+    sections[INTIMATE_SECTION] = intimateSkillSection(body);
   });
 
   pi.on("context", async (event: any) => {
@@ -1151,4 +1157,4 @@ export default function albionTurn(pi: ExtensionAPI): void {
 // 自检钩子：bin/test_guard_ext.ts 直接驱动这些函数。
 export const _albionTest = { MARKER, CONTEXT, turn_guidance, composeTurnContent, tool_row, msg_text, recentAsides, timeLine, slotName, bjParts, agoText, stampsOf, previousUserMs, crossChannelBlock, CROSS_TITLE, CROSS_TITLE_FROM_GROUP, CROSS_TITLE_FROM_PRIVATE, CROSS_TITLE_WHISPER_REPLY,
   compactionDigest, compactionFile, COMPACTION_TITLE, COMPACTION_PROMPT, COMPACTION_SYSTEM, NOW_SEPARATOR,
-  readIntimateSkill, withIntimateSkill, stripFrontmatter, SKILL_HEAD };
+  readIntimateSkill, intimateSkillSection, stripFrontmatter, INTIMATE_SECTION };
