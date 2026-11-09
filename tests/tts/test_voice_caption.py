@@ -1014,6 +1014,75 @@ class TestActCuePrefix(unittest.TestCase):
         self.assertIsNone(CS.active_directive(ACT_SAD + "今天好累。"))
 
 
+class TestIntimateGoesToCodebook(unittest.TestCase):
+    """亲密句不写自由描述，改走码本锚（2026-11-09 用户听感定档）。
+
+    背景：自由描述把 `phonation=soft` 折成 shy「小さな声で、語尾を消え入るように」，
+    句首那声「哈啊」听成高潮尾声。样张实听后只有**带喘息的强锚**合格，弱锚对带拟声的句子
+    同样不合格。所以族=intimate 时桥不写 `voice_caption`，并把有拟声的句子的提示抬成
+    breathy + 高强度，让规划器落到训练过的强锚（cfg 4.5）。
+    """
+
+    def test_intimate_with_moan_goes_to_strong_anchor(self):
+        emo = {"arousal": 0.3, "intensity": 0.3, "valence": 0.0, "phonation": "soft"}
+        a = B2.intimate_codebook_anchor(emo, "はぁ……！", "哈啊……！")
+        self.assertIsNotNone(a)
+        self.assertEqual(a["family"], "intimate")
+        self.assertEqual(a["tier"], "strong")
+        self.assertEqual(a["caption"], CB.A_BREATHY)
+        self.assertAlmostEqual(a["cfg"], 4.5)
+        # 抬提示：breathy 在 family_from_hint 里直接折成 intimate，强度够高才到强档
+        self.assertEqual(a["hint"]["phonation"], "breathy")
+        self.assertGreaterEqual(a["hint"]["intensity"], 0.9)
+
+    def test_intimate_without_moan_weak_keeps_whisper(self):
+        emo = {"arousal": 0.2, "intensity": 0.2, "valence": 0.0, "phonation": "voiced"}
+        ja = "恥ずかしいです……"                 # 句面 shy ⇒ 族 intimate，但没有拟声
+        a = B2.intimate_codebook_anchor(emo, ja, "好害羞……")
+        self.assertIsNotNone(a)
+        self.assertEqual((a["family"], a["tier"]), ("intimate", "weak"))
+        self.assertEqual(a["caption"], CB.A_WHISPER)
+        self.assertAlmostEqual(a["cfg"], 4.5)
+        self.assertIsNone(a["hint"])          # 没拟声就不动提示
+
+    def test_intimate_without_moan_strong(self):
+        emo = {"arousal": 0.8, "intensity": 0.8, "valence": 0.0, "phonation": "voiced"}
+        a = B2.intimate_codebook_anchor(emo, "恥ずかしいです……", "好害羞……")
+        self.assertEqual((a["family"], a["tier"]), ("intimate", "strong"))
+        self.assertEqual(a["caption"], CB.A_BREATHY)
+
+    def test_other_families_keep_free_caption(self):
+        """bright / flirty / sad 一律照旧：还是写自由描述，码本锚决定为 None。"""
+        for ja, want in (("はぁっ……！", "bright"),
+                         ("あなたのものよ、ずっと。", "flirty"),
+                         ("とても悲しいです……", "sad")):
+            emo = {"arousal": 0.75, "intensity": 0.75, "valence": 0.0, "phonation": "soft"}
+            self.assertIsNone(B2.intimate_codebook_anchor(emo, ja, ""), ja)
+            self.assertEqual(B2.planned_family(emo, ja), want, ja)
+
+    def test_prepare_writes_no_voice_caption_for_intimate(self):
+        """接线：亲密句的准备结果里**没有** voice_caption（规划器因此回码本锚）。"""
+        emo = {"arousal": 0.3, "intensity": 0.3, "valence": 0.0, "phonation": "soft"}
+        s, _ = svc(ja="はぁ……！", emo=emo)
+        with mock.patch.dict(os.environ, ON):
+            res = prepare(s, req(unit_id="hi", speech="哈啊……！"))
+        seg = res.ja_segments[0]
+        self.assertNotIn("voice_caption", seg)
+        # 提示被抬成 breathy（规划器据此判 intimate + 强档）
+        self.assertEqual(seg["emotion"]["phonation"], "breathy")
+        self.assertGreaterEqual(seg["emotion"]["intensity"], 0.9)
+
+    def test_prepare_keeps_voice_caption_for_bright(self):
+        """对照：bright 那句照旧写自由描述（本例是 shy 档的「小さな声で…」，已知局限）。"""
+        emo = {"arousal": 0.75, "intensity": 0.75, "valence": 0.0, "phonation": "soft"}
+        s, _ = svc(ja="はぁっ……！", emo=emo)
+        with mock.patch.dict(os.environ, ON):
+            res = prepare(s, req(unit_id="bri", speech="哈啊……！"))
+        seg = res.ja_segments[0]
+        self.assertIn("voice_caption", seg)
+        self.assertIsNone(VC.validate_caption(seg["voice_caption"]))
+
+
 try:
     import httpx
 except ImportError:              # 生产 venv 有 httpx；缺了就把转发测试标 skip，别让整套挂掉

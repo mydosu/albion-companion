@@ -25,6 +25,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 import cue_scope
+import emotion_codebook
+import scene_plan as SP
 import voice_caption
 from json_body import read_json_body    # 非 UTF-8 请求体（GBK）不再 500，见模块注释
 
@@ -269,6 +271,94 @@ JA_SEG_MIN = 8           # 切出来的碎片低于这个字数就并回相邻�
 _JA_SENT_END = "。！？!?"
 _JA_COMMA = "、，,"
 _JA_TRAIL = "」』）)】〕】\"'”’"      # 句末标点后面这些跟着留在左段
+
+
+# ---- 亲密句不写自由描述，改走码本锚（2026-11-09 用户听感定档）----------------------
+# 起因：亲密句开头那声「哈啊」经自由描述被折成 shy「小さな声で、語尾を消え入るように」，
+# 听成了高潮尾声；连规划器明确判成 intimate/strong 的句子也一样，因为 free caption 会整段
+# 盖掉规划器选的码本锚（`scene_plan._apply_voice_caption`）。样张实听（6 句 × 现状/强锚/弱锚）
+# 用户定 Y：**只有带出一段喘息的强锚合格**，弱锚「柔らかく、優しく囁くように」对带拟声的句子
+# 同样不合格（它只是一声「哈啊」的惊呼，没有喘息）。
+#
+# 所以这一处判断改成：**族是 intimate 时桥不写 `voice_caption`**，让规划器用训练过的码本锚
+# （`emotion_codebook.LADDER["intimate"]` = 弱 A_WHISPER / 强 A_BREATHY，cfg 4.5，
+# `plan_version=4` 带 `codebook_version=2`）。判据全部复用既有表，不新增词表：
+#   * 族：`scene_plan._match`/`STYLE_FAMILY` 折一次，读不出来再用 `emotion_codebook.family_from_hint`；
+#   * 拟声：`scene_plan.ONO`（只认词/句边界命中，复用它的 `_ono_hits`）+ 中文叹词；
+#   * 档位：有拟声一律强档；没拟声按提示强度走 `emotion_codebook.tier_for`。
+# 「有拟声 ⇒ 强锚」还要规划器真的落到强档，所以**同时把提示改成 breathy + 高强度**：
+# `family_from_hint` 里 breathy 直接折成 intimate（且不再被高唤醒抢成 bright，
+# `emotion_codebook.py:125-130`），档位由 `cue_level` 抬高到 ≥T_PROMOTE。这不是新词表，
+# 是把"这句确实在喘"写进提示里。
+INTIMATE_FAMILY = "intimate"
+INTIMATE_STRONG_HINT = {"phonation": "breathy", "intensity": 0.9}
+# 中文叹词：只在**句首或标点/空白之后**，且后面紧跟语气延长（啊/…/标点）才算——
+# 「是啊，我也觉得」里的「啊」、句中的「好舒服啊」都不算。
+_ZH_MOAN = re.compile(
+    r"(?:^|[。！？!?…，,、\s])[哈啊嗯唔呜哼嗯](?:啊|呀|…|\.{3}|[！!？?，,、。\s]|$)")
+
+
+def moan_cues(ja_text, zh_text=""):
+    """这句里有没有喘息/娇声拟声。返回命中的拟声词列表（空 = 没有）。
+
+    日语侧复用 `scene_plan._ono_hits`（它已经处理了「あったかい」里「あっ」这种假命中）；
+    中文侧只有叹词（`_ZH_MOAN`），因为拟声主要出现在译文里。
+    """
+    hits = list(SP._ono_hits(ja_text or ""))
+    if not hits and _ZH_MOAN.search(zh_text or ""):
+        hits.append("zh:叹词")
+    return hits
+
+
+def planned_family(emo, ja_text):
+    """本单元**规划器那一侧**最可能定的族（桥侧近似，用于判断要不要写自由描述）。
+
+    顺序与 `scene_plan.plan_units_v3` 一致：关键词表命中就听关键词表，读不出来再听提示。
+    桥看不到规划器的 prev/上下文滞回，所以这只是**判断要不要写描述**的近似，不是替规划器决策
+    ——真正的族/档位仍由规划器算，桥只是不再拿自由描述去盖它。
+    """
+    style = SP._match(ja_text or "")
+    fam = SP.STYLE_FAMILY.get(style or "calm", "neutral")
+    if fam == "neutral":
+        fam = emotion_codebook.family_from_hint(
+            emo, emotion_codebook.CODEBOOK_VERSION_V2) or "neutral"
+    return fam
+
+
+def intimate_codebook_anchor(emo, ja_text, zh_text=""):
+    """族=intimate 时的码本锚决定。返回 dict 或 None（None = 照旧走自由描述）。
+
+    返回 `{"family", "caption", "cfg", "tier", "hint", "why"}`：
+    `caption/cfg` 是规划器**将要**用的码本锚（`plan_version=4` 口径，码本 v2），
+    `hint` 是要合进 `emo` 的提示修正（没有就 None）。
+    """
+    if not isinstance(emo, dict):
+        return None                          # 没有情绪依据：桥侧判不出族，照旧（规划器自己走码本）
+    # 只认**句面**证据（关键词表判出 intimate）：耳语/气声这种 hint 自述单独成立的句子
+    # （普通「（小声）今天好累」）不算——否则会连带改掉日常耳语行的声音描述。
+    if SP.STYLE_FAMILY.get(SP._match(ja_text or "") or "calm") != INTIMATE_FAMILY:
+        return None
+    hits = moan_cues(ja_text, zh_text)
+    tier = "strong" if hits else _hint_tier(emo)
+    ladder = emotion_codebook.ladder(INTIMATE_FAMILY)
+    return {
+        "family": INTIMATE_FAMILY,
+        "caption": ladder[1] if tier == "strong" else ladder[0],
+        "cfg": emotion_codebook.cfg_of(INTIMATE_FAMILY),
+        "tier": tier,
+        "hint": dict(INTIMATE_STRONG_HINT) if hits else None,
+        "why": ("moan:%s" % "/".join(hits)) if hits else "hint:%s" % tier,
+    }
+
+
+def _hint_tier(emo):
+    """没有拟声时：按提示强度估档（口径同 `emotion_codebook.tier_for` 的冷启动分支）。"""
+    v = emo.get("intensity")
+    if not isinstance(v, (int, float)) or isinstance(v, bool):
+        v = emo.get("arousal")
+    if not isinstance(v, (int, float)) or isinstance(v, bool):
+        v = 0.45
+    return emotion_codebook.tier_for(INTIMATE_FAMILY, float(v))
 
 
 def _ja_spoken_len(text):
@@ -630,7 +720,15 @@ class PrepareService:
             # 明示「喘」线索不写自由描述：自由描述里 breath→coq 是「鼻にかけて、柔らかく、
             # 甘える」（撒娇），不是喘；留给规划器用训练过的喘息锚
             # `息を荒くして、甘く喘ぐように、近い距離で`（cfg 4.5）。
-            if not voice_caption.breath_cue_prefers_codebook(emo, ja_text, zh_text):
+            anchor = intimate_codebook_anchor(emo, ja_text, zh_text)
+            if anchor:
+                # 亲密句：**不写** `voice_caption`，让规划器的码本锚说了算（见 anchor 的注释）。
+                # 有拟声时同时把提示抬成 breathy + 高强度，规划器才会落到强锚而不是弱锚。
+                if anchor["hint"]:
+                    emo.update(anchor["hint"])
+                print("[voice] unit=%s 亲密句走码本锚 %s/%s（%s）"
+                      % (req.unit_id, anchor["family"], anchor["tier"], anchor["why"]), flush=True)
+            elif not voice_caption.breath_cue_prefers_codebook(emo, ja_text, zh_text):
                 caption = voice_caption.caption_for(
                     emo, ja_text, zh_text, prefix=getattr(req, "source_prefix", "") or "")
                 if caption:
