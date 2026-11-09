@@ -330,6 +330,22 @@ def _ctx_family(context_before):
     return SP.STYLE_FAMILY.get(SP._match(context_before or "") or "calm", "neutral")
 
 
+# 跨轮兜底（2026-11-09，补 02 号那种「本轮第一句、只有拟声」）：9885 现在不发前文，
+# 而本轮第一句连 `source_prefix` 都是空，句面又只能读成 bright —— 只剩「刚才有没有在亲密」
+# 这一条线索可依。所以记下**上一次真的走亲密锚**的时刻（句面族判成 intimate 的那些单元）。
+INTIMATE_RECENT_S = 300.0
+_last_intimate_at = None        # time.monotonic() 的时刻；None = 本进程还没走过亲密锚
+# shortcut: 单用户桌宠按进程全局记，多会话并发时可能串场；要分会话再按 session 记
+
+
+def _intimate_recent(now=None):
+    """上一次亲密锚是否还在 `INTIMATE_RECENT_S` 窗口内。"""
+    if _last_intimate_at is None:
+        return False
+    now = time.monotonic() if now is None else now
+    return (now - _last_intimate_at) <= INTIMATE_RECENT_S
+
+
 def intimate_codebook_anchor(emo, ja_text, zh_text="", context_before=""):
     """族=intimate 时的码本锚决定。返回 dict 或 None（None = 照旧走自由描述）。
 
@@ -339,9 +355,12 @@ def intimate_codebook_anchor(emo, ja_text, zh_text="", context_before=""):
 
     `context_before`（2026-11-09 补局限 1）：句面读不出族的**纯拟声短句**（「はぁっ……！」）
     在句面上永远是 bright/neutral，可它是不是亲密要看刚才在干什么。所以这类句子额外看前文：
-    前文的句面族是 intimate ⇒ 按 intimate 强锚处理（`why="ctx+moan:…"`）。
+    前文的句面族是 intimate ⇒ 按 intimate 强锚处理（`why="ctx+moan:…"`）；
+    前文为空（本轮第一句，9885 不发 context_before 时每句都如此）⇒ 再用跨轮兜底
+    `_intimate_recent()`（`why="recent+moan:…"`）。
     带台词的句子不走这条（`scene_plan._is_interjection` 判不过），免得把明亮句误伤成亲密。
     """
+    global _last_intimate_at
     if not isinstance(emo, dict):
         return None                          # 没有情绪依据：桥侧判不出族，照旧（规划器自己走码本）
     # 只认**句面**证据（关键词表判出 intimate）：耳语/气声这种 hint 自述单独成立的句子
@@ -349,10 +368,14 @@ def intimate_codebook_anchor(emo, ja_text, zh_text="", context_before=""):
     hits = moan_cues(ja_text, zh_text)
     if SP.STYLE_FAMILY.get(SP._match(ja_text or "") or "calm") == INTIMATE_FAMILY:
         why = ("moan:%s" % "/".join(hits)) if hits else "hint:%s" % _hint_tier(emo)
-    elif hits and SP._is_interjection(ja_text or "") \
-            and _ctx_family(context_before) == INTIMATE_FAMILY:
-        # 局限性 1：纯拟声短句靠前文认亲（「はぁっ……！」紧跟在亲密句后面）
-        why = "ctx+moan:%s" % "/".join(hits)
+        _last_intimate_at = time.monotonic()      # 只有句面判成亲密才刷新时间戳
+    elif hits and SP._is_interjection(ja_text or ""):
+        if _ctx_family(context_before) == INTIMATE_FAMILY:
+            why = "ctx+moan:%s" % "/".join(hits)  # 局限性 1：紧跟亲密句
+        elif _intimate_recent():
+            why = "recent+moan:%s" % "/".join(hits)   # 跨轮兜底：刚才在亲密
+        else:
+            return None
     else:
         return None
     tier = "strong" if hits else _hint_tier(emo)
@@ -736,8 +759,12 @@ class PrepareService:
             # 明示「喘」线索不写自由描述：自由描述里 breath→coq 是「鼻にかけて、柔らかく、
             # 甘える」（撒娇），不是喘；留给规划器用训练过的喘息锚
             # `息を荒くして、甘く喘ぐように、近い距離で`（cfg 4.5）。
+            # 前文：context_before（9885 目前不发，恒为空）+ source_prefix（本单元之前的原文，
+            # 一直都有）。两条拼起来才是"这句之前说过什么"。
             anchor = intimate_codebook_anchor(
-                emo, ja_text, zh_text, context_before=getattr(req, "context_before", "") or "")
+                emo, ja_text, zh_text,
+                context_before=((getattr(req, "context_before", "") or "")
+                                + (getattr(req, "source_prefix", "") or "")))
             if anchor:
                 # 亲密句：**不写** `voice_caption`，让规划器的码本锚说了算（见 anchor 的注释）。
                 # 有拟声时同时把提示抬成 breathy + 高强度，规划器才会落到强锚而不是弱锚。

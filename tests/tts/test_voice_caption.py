@@ -24,6 +24,7 @@ import asyncio
 import json
 import os
 import sys
+import time
 import types
 import unittest
 from unittest import mock
@@ -1023,6 +1024,10 @@ class TestIntimateGoesToCodebook(unittest.TestCase):
     breathy + 高强度，让规划器落到训练过的强锚（cfg 4.5）。
     """
 
+    def setUp(self):
+        # 跨轮兜底按进程记时间戳，用例之间必须清掉，否则互相串
+        B2._last_intimate_at = None
+
     def test_intimate_with_moan_goes_to_strong_anchor(self):
         emo = {"arousal": 0.3, "intensity": 0.3, "valence": 0.0, "phonation": "soft"}
         a = B2.intimate_codebook_anchor(emo, "はぁ……！", "哈啊……！")
@@ -1087,6 +1092,30 @@ class TestIntimateGoesToCodebook(unittest.TestCase):
         self.assertFalse(SP._is_interjection(ja))
         self.assertIsNone(B2.intimate_codebook_anchor(emo, ja, "哈啊……！我还撑得住。",
                                                       context_before=ctx))
+
+    def test_interjection_after_recent_intimate_goes_strong(self):
+        """跨轮兜底：刚走过一句亲密锚，紧接着一个**没有前文**的纯「はぁっ……！」→ 强锚。"""
+        emo = {"arousal": 0.75, "intensity": 0.75, "valence": 0.0, "phonation": "soft"}
+        first = B2.intimate_codebook_anchor(
+            emo, "はぁ……指揮官……ふぅ……そんな風に埋もれて、こんなに強く抱きしめられては……",
+            "哈啊……指挥官……")
+        self.assertIsNotNone(first)
+        self.assertIsNotNone(B2._last_intimate_at)          # 句面亲密才刷新时间戳
+        a = B2.intimate_codebook_anchor(emo, "はぁっ……！", "哈啊……！", context_before="")
+        self.assertIsNotNone(a)
+        self.assertEqual((a["family"], a["tier"]), ("intimate", "strong"))
+        self.assertEqual(a["caption"], CB.A_BREATHY)
+        self.assertTrue(a["why"].startswith("recent+moan:"), a["why"])
+
+    def test_interjection_after_window_expired_unchanged(self):
+        """窗口过期（拨到 301 秒前）：同样的纯拟声短句回到原样，不写锚。"""
+        emo = {"arousal": 0.75, "intensity": 0.75, "valence": 0.0, "phonation": "soft"}
+        B2.intimate_codebook_anchor(
+            emo, "はぁ……指揮官……ふぅ……そんな風に埋もれて、こんなに強く抱きしめられては……",
+            "哈啊……指挥官……")
+        B2._last_intimate_at = time.monotonic() - (B2.INTIMATE_RECENT_S + 1)
+        self.assertIsNone(B2.intimate_codebook_anchor(emo, "はぁっ……！", "哈啊……！",
+                                                      context_before=""))
 
     def test_prepare_writes_no_voice_caption_for_intimate(self):
         """接线：亲密句的准备结果里**没有** voice_caption（规划器因此回码本锚）。"""
