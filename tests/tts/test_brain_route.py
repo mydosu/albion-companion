@@ -11,7 +11,9 @@ import json
 import os
 import pathlib
 import sys
+import time
 import unittest
+import urllib.error
 from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -122,6 +124,50 @@ class BrainRouteTest(unittest.TestCase):
             self.assertEqual(bridge._ask_magpie("再见。", "m"), "")
         self.assertEqual(up.call_count, 2)           # 第一次两条 variant 都打空了才算失败
         bridge._magpie_down_until = 0.0
+
+    def test_magpie_timeout_skips_second_variant_and_cools_down(self):
+        """超时不再换 payload 重打同一台上游：两次 40s 会吃光 9885 的 60s 准备窗口。"""
+        with patch.object(bridge.urllib.request, "urlopen", side_effect=TimeoutError("timed out")) as up:
+            bridge._magpie_down_until = 0.0
+            try:
+                started = time.time()
+                self.assertEqual(bridge._ask_magpie("你好。", "m"), "")
+                self.assertEqual(up.call_count, 1)          # 只打一次，不试「原样」变体
+                self.assertGreater(bridge._magpie_down_until, started)   # 冷却已设置
+            finally:
+                bridge._magpie_down_until = 0.0
+
+    def test_magpie_urlerror_timeout_also_skips_second_variant(self):
+        """urllib 把超时包进 URLError.reason 时同样算超时。"""
+        err = urllib.error.URLError(TimeoutError("timed out"))
+        with patch.object(bridge.urllib.request, "urlopen", side_effect=err) as up:
+            bridge._magpie_down_until = 0.0
+            try:
+                self.assertEqual(bridge._ask_magpie("你好。", "m"), "")
+                self.assertEqual(up.call_count, 1)
+            finally:
+                bridge._magpie_down_until = 0.0
+
+    def test_magpie_http_error_still_retries_plain(self):
+        """压思考参数被拒（HTTP 400）不是超时：照旧退回原样那次。"""
+        seen = []
+
+        def fake(req, timeout=0):
+            seen.append(json.loads(req.data.decode("utf-8")))
+            if len(seen) == 1:
+                raise urllib.error.HTTPError("http://magpie/chat/completions", 400,
+                                             "Bad Request", {}, None)
+            return _Resp(json.dumps({"choices": [{"message": {"content": "こんにちは。"}}]}).encode())
+
+        with patch.object(bridge.urllib.request, "urlopen", side_effect=fake):
+            bridge._magpie_down_until = 0.0
+            try:
+                self.assertEqual(bridge._ask_magpie("你好。", "m"), "こんにちは。")
+            finally:
+                bridge._magpie_down_until = 0.0
+        self.assertEqual(len(seen), 2)
+        self.assertIn("reasoning_effort", seen[0])
+        self.assertNotIn("reasoning_effort", seen[1])
 
 
 if __name__ == "__main__":

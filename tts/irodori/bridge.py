@@ -9,7 +9,7 @@
 - 流式（可选）：请求带 `Accept: text/event-stream` 或 `stream_format:"sse"` → 透传后端 /tts_stream 的 SSE
   （每段一个 audio_chunk，选船方式不变）；不带 → 与原来完全一致（整条 wav）。denia(GSV) 不支持流式。
 """
-import io, json, os, re, struct, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request, wave
+import io, json, os, re, socket, struct, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request, wave
 import queue
 import hashlib
 import logging
@@ -508,6 +508,15 @@ def reset_brain_route() -> None:
         _brain_route.update(at=0.0, provider="", model="")
 
 
+def _is_timeout_error(exc: BaseException) -> bool:
+    """urlopen 的超时可能是 socket.timeout / TimeoutError，也可能包在 URLError.reason 里。"""
+    if isinstance(exc, (TimeoutError, socket.timeout)):
+        return True
+    if isinstance(exc, urllib.error.URLError):
+        return isinstance(exc.reason, (TimeoutError, socket.timeout))
+    return False
+
+
 def _ask_magpie(text: str, model: str, prompt: str | None = None) -> str:
     """走 magpie 的 OpenAI 口（/chat/completions）。先把思考压到 MAGPIE_EFFORT，失败再不带重试一次。"""
     global _magpie_down_until
@@ -537,6 +546,11 @@ def _ask_magpie(text: str, model: str, prompt: str | None = None) -> str:
         except Exception as e:              # noqa: BLE001 - 翻译失败不该让整条链路 500
             last = type(e).__name__
             _tlog(f"magpie {model} source={text_meta(text)} : {last}")
+            if _is_timeout_error(e):
+                # 超时不是「参数不被接受」，换个 payload 再打同一台上游只会白等第二个
+                # MAGPIE_TIMEOUT（40s）；两次就吃光 9885 每单元 60s 的准备窗口，整轮静音
+                # （2026-11-09 事故）。这里直接放弃，调用方立刻走老腿。
+                break
         if payload is variants[0] and len(variants) > 1:
             print("[translate] magpie 压思考那次没成，退回原样重试", flush=True)
     _magpie_down_until = time.time() + MAGPIE_DOWN_SEC
