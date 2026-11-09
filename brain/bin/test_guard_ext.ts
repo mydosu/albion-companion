@@ -338,8 +338,12 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   // 放到约定最前面
   const g = T.turn_guidance("在吗", false, [], "", now, now - 90_000);
   assert.ok(g.startsWith(T.MARKER + "\n现在是 2026-10-29 18:20，星期四，傍晚。他上一条消息是1分钟前。" + TAIL), g.slice(0, 140));
-  // 心声那句之后紧接着一行“只说他自己提过的”
-  assert.ok(T.CONTEXT.includes("一时不知道说什么好。\n说到他平时怎么样，只说他自己提过的；没提过的，就只说这一次。\n我最看重的一件事"), "约定里要加这一行");
+  // 心声那句之后是「亲密的时候是例外」那一段，再往后才是「只说他自己提过的」那一行
+  // （594d38c 把亲密段插进这两句之间；这条断言原来按紧邻写，改后一直是红的）
+  const iAside = T.CONTEXT.indexOf("一时不知道说什么好。");
+  const iIntimate = T.CONTEXT.indexOf("亲密的时候是例外：");
+  const iOwnFacts = T.CONTEXT.indexOf("说到他平时怎么样，只说他自己提过的；没提过的，就只说这一次。\n我最看重的一件事");
+  assert.ok(iAside >= 0 && iIntimate > iAside && iOwnFacts > iIntimate, "约定里要加这一行（顺序：心声 → 亲密段 → 只说他自己提过的）");
   assert.ok(g.includes("说到他平时怎么样，只说他自己提过的；没提过的，就只说这一次。"), "每轮约定也带上");
   // 醒来轮不加（时间在 wake.py 的醒来提示里）
   const woke = T.turn_guidance("【自主醒来】现在是 2026-10-29 18:20（星期四）。", false, [], "", now, now - 90_000);
