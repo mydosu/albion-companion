@@ -325,20 +325,36 @@ def planned_family(emo, ja_text):
     return fam
 
 
-def intimate_codebook_anchor(emo, ja_text, zh_text=""):
+def _ctx_family(context_before):
+    """前文的句面族（与 `planned_family` 同一口径，只看关键词表）。"""
+    return SP.STYLE_FAMILY.get(SP._match(context_before or "") or "calm", "neutral")
+
+
+def intimate_codebook_anchor(emo, ja_text, zh_text="", context_before=""):
     """族=intimate 时的码本锚决定。返回 dict 或 None（None = 照旧走自由描述）。
 
     返回 `{"family", "caption", "cfg", "tier", "hint", "why"}`：
     `caption/cfg` 是规划器**将要**用的码本锚（`plan_version=4` 口径，码本 v2），
     `hint` 是要合进 `emo` 的提示修正（没有就 None）。
+
+    `context_before`（2026-11-09 补局限 1）：句面读不出族的**纯拟声短句**（「はぁっ……！」）
+    在句面上永远是 bright/neutral，可它是不是亲密要看刚才在干什么。所以这类句子额外看前文：
+    前文的句面族是 intimate ⇒ 按 intimate 强锚处理（`why="ctx+moan:…"`）。
+    带台词的句子不走这条（`scene_plan._is_interjection` 判不过），免得把明亮句误伤成亲密。
     """
     if not isinstance(emo, dict):
         return None                          # 没有情绪依据：桥侧判不出族，照旧（规划器自己走码本）
     # 只认**句面**证据（关键词表判出 intimate）：耳语/气声这种 hint 自述单独成立的句子
     # （普通「（小声）今天好累」）不算——否则会连带改掉日常耳语行的声音描述。
-    if SP.STYLE_FAMILY.get(SP._match(ja_text or "") or "calm") != INTIMATE_FAMILY:
-        return None
     hits = moan_cues(ja_text, zh_text)
+    if SP.STYLE_FAMILY.get(SP._match(ja_text or "") or "calm") == INTIMATE_FAMILY:
+        why = ("moan:%s" % "/".join(hits)) if hits else "hint:%s" % _hint_tier(emo)
+    elif hits and SP._is_interjection(ja_text or "") \
+            and _ctx_family(context_before) == INTIMATE_FAMILY:
+        # 局限性 1：纯拟声短句靠前文认亲（「はぁっ……！」紧跟在亲密句后面）
+        why = "ctx+moan:%s" % "/".join(hits)
+    else:
+        return None
     tier = "strong" if hits else _hint_tier(emo)
     ladder = emotion_codebook.ladder(INTIMATE_FAMILY)
     return {
@@ -347,7 +363,7 @@ def intimate_codebook_anchor(emo, ja_text, zh_text=""):
         "cfg": emotion_codebook.cfg_of(INTIMATE_FAMILY),
         "tier": tier,
         "hint": dict(INTIMATE_STRONG_HINT) if hits else None,
-        "why": ("moan:%s" % "/".join(hits)) if hits else "hint:%s" % tier,
+        "why": why,
     }
 
 
@@ -720,7 +736,8 @@ class PrepareService:
             # 明示「喘」线索不写自由描述：自由描述里 breath→coq 是「鼻にかけて、柔らかく、
             # 甘える」（撒娇），不是喘；留给规划器用训练过的喘息锚
             # `息を荒くして、甘く喘ぐように、近い距離で`（cfg 4.5）。
-            anchor = intimate_codebook_anchor(emo, ja_text, zh_text)
+            anchor = intimate_codebook_anchor(
+                emo, ja_text, zh_text, context_before=getattr(req, "context_before", "") or "")
             if anchor:
                 # 亲密句：**不写** `voice_caption`，让规划器的码本锚说了算（见 anchor 的注释）。
                 # 有拟声时同时把提示抬成 breathy + 高强度，规划器才会落到强锚而不是弱锚。

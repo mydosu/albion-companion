@@ -1060,6 +1060,34 @@ class TestIntimateGoesToCodebook(unittest.TestCase):
             self.assertIsNone(B2.intimate_codebook_anchor(emo, ja, ""), ja)
             self.assertEqual(B2.planned_family(emo, ja), want, ja)
 
+    def test_pure_interjection_with_intimate_context(self):
+        """局限性 1：「はぁっ……！」句面只能判出 bright，靠亲密前文认亲 → 强锚。"""
+        emo = {"arousal": 0.75, "intensity": 0.75, "valence": 0.0, "phonation": "soft"}
+        ctx = "はぁ……指揮官……ふぅ……そんな風に埋もれて、こんなに強く抱きしめられては……"
+        self.assertEqual(B2.planned_family(emo, "はぁっ……！"), "bright")   # 句面确实读不出亲密
+        a = B2.intimate_codebook_anchor(emo, "はぁっ……！", "哈啊……！", context_before=ctx)
+        self.assertIsNotNone(a)
+        self.assertEqual((a["family"], a["tier"]), ("intimate", "strong"))
+        self.assertEqual(a["caption"], CB.A_BREATHY)
+        self.assertAlmostEqual(a["cfg"], 4.5)
+        self.assertTrue(a["why"].startswith("ctx+moan:"), a["why"])
+
+    def test_pure_interjection_with_daily_context_unchanged(self):
+        """同样是纯拟声短句，前文在聊考试 ⇒ 不动（还是原来那条自由描述）。"""
+        emo = {"arousal": 0.75, "intensity": 0.75, "valence": 0.0, "phonation": "soft"}
+        ctx = "四大力学のこの体系はかなり広大ですから、もしお疲れになったら目を休めてくださいね。"
+        self.assertIsNone(B2.intimate_codebook_anchor(emo, "はぁっ……！", "哈啊……！",
+                                                      context_before=ctx))
+
+    def test_bright_line_with_dialogue_and_intimate_context_unchanged(self):
+        """带台词的 bright 句即使前面是亲密句也不动（`_is_interjection` 判不过，防误伤）。"""
+        emo = {"arousal": 0.75, "intensity": 0.75, "valence": 0.0, "phonation": "soft"}
+        ctx = "はぁ……指揮官……ふぅ……そんな風に埋もれて、こんなに強く抱きしめられては……"
+        ja = "はぁっ……！まだ、平気です。"
+        self.assertFalse(SP._is_interjection(ja))
+        self.assertIsNone(B2.intimate_codebook_anchor(emo, ja, "哈啊……！我还撑得住。",
+                                                      context_before=ctx))
+
     def test_prepare_writes_no_voice_caption_for_intimate(self):
         """接线：亲密句的准备结果里**没有** voice_caption（规划器因此回码本锚）。"""
         emo = {"arousal": 0.3, "intensity": 0.3, "valence": 0.0, "phonation": "soft"}
