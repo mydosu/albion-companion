@@ -145,6 +145,22 @@ const FADE_SECONDS = 0.1
 /** 只有这个中断理由走淡出（`Stage.vue` 的 `onBeforeMessageComposed` → `stopAll('new-message')`）。 */
 const FADE_REASON = 'new-message'
 
+/**
+ * 播放记录前缀（2026-11-09）：渲染进程的 console 不落盘，主窗口只把以它开头的行转发进
+ * `userData/logs/airi-tamagotchi-*.log`。句尾截断这类问题事后只能靠这段记录查「那一段到底
+ * 播满没有」，所以字段固定、时间统一 3 位小数。**只写日志，不参与任何排程/停止判断。**
+ */
+const PLAYBACK_LOG_PREFIX = '[albion-playback]'
+
+/** 日志里的秒数统一到毫秒，别让浮点尾巴把一行撑长。 */
+function round3(value: number) {
+  return Math.round(value * 1000) / 1000
+}
+
+function logPlayback(payload: Record<string, unknown>) {
+  console.info(`${PLAYBACK_LOG_PREFIX} ${JSON.stringify(payload)}`)
+}
+
 export function createStreamingPlayback(options: StreamingPlaybackOptions): StreamingPlayback {
   const ctx = options.audioContext
   const lead = options.leadSeconds ?? 0.05
@@ -165,10 +181,14 @@ export function createStreamingPlayback(options: StreamingPlaybackOptions): Stre
     startNotified: boolean
     /** source/gain 是否已断开（幂等清理用，别重复 disconnect）。 */
     released: boolean
+    /** 本段起点 - 上一段终点（首次排程为 null）—— 只进播放记录，用来分辨"气口"和"断档"。 */
+    gapFromPrev: number | null
   }
 
   let nextStart: number | null = null
   let lastEndWithPause: number | null = null
+  /** 最后一段**排出去**的终点（播放记录算 gap 用；取排程时的 `endAt`，不看回调时刻的墙钟）。 */
+  let lastScheduledEndAt: number | null = null
   /** 本轮第一段不许早于这个时刻（AudioContext 时间轴秒）—— 跨轮屏障，取消/淡出后由宿主给。 */
   let notBefore = 0
   const pending: StreamingPlaybackSpan[] = []
@@ -194,6 +214,27 @@ export function createStreamingPlayback(options: StreamingPlaybackOptions): Stre
     resyncs: 0,
   }
 
+  // 上下文状态（running/suspended/interrupted）也进播放记录：句尾被掐时能一眼看出那一轮
+  // 有没有掉到 suspended/切设备。监听只活在本实例的生命周期里，`drained` 收尾/`stop()` 时摘掉。
+  let ctxLogAttached = false
+  function onCtxStateChange() {
+    logPlayback({ ev: 'ctx', state: ctx.state })
+  }
+  function detachCtxLogger() {
+    if (!ctxLogAttached)
+      return
+    ctxLogAttached = false
+    try {
+      ctx.removeEventListener('statechange', onCtxStateChange)
+    }
+    catch {}
+  }
+  // 测试/宿主可能塞一个只实现了播放所需方法的假上下文：没有事件 API 就静默跳过。
+  if (typeof (ctx as Partial<EventTarget>).addEventListener === 'function') {
+    ctx.addEventListener('statechange', onCtxStateChange)
+    ctxLogAttached = true
+  }
+
   function maybeDrained() {
     const idle = scheduled.length === 0 && pending.length === 0
     // 取消（`stopped`）也**必须等节点清干净**才收尾 —— 淡出中的段还挂在 `scheduled` 上，
@@ -210,6 +251,7 @@ export function createStreamingPlayback(options: StreamingPlaybackOptions): Stre
     }
     const done = resolveDrained
     resolveDrained = null
+    detachCtxLogger() // 这一轮结束 = 本实例不再需要上下文状态记录
     done()
     options.onDrained?.()
   }
@@ -248,7 +290,9 @@ export function createStreamingPlayback(options: StreamingPlaybackOptions): Stre
       timer: null,
       startNotified: false,
       released: false,
+      gapFromPrev: lastScheduledEndAt == null ? null : startAt - lastScheduledEndAt,
     }
+    lastScheduledEndAt = entry.endAt
     scheduled.push(entry)
     stats.spansScheduled += 1
 
@@ -298,6 +342,27 @@ export function createStreamingPlayback(options: StreamingPlaybackOptions): Stre
     return options.isPlayable?.() ?? true
   }
 
+  /**
+   * 段结束的播放记录：`completed=false` 时 `short_s` 是「离预定终点还差多少没播」。
+   * 正常播完（`onEnded`）和被 stop 掉的淡出段（`onCancelledEnded`）都走它 —— 这两条是
+   * 句尾截断唯一能留下证据的出口；硬停的未来段没有出声，由 `stop` 那行统一记账。
+   */
+  function logSpanEnd(entry: Scheduled, completed: boolean) {
+    const endedAt = ctx.currentTime
+    logPlayback({
+      ev: 'span',
+      unit: entry.span.unitId,
+      intent: entry.span.intentId ?? null,
+      dur: round3(entry.duration),
+      start: round3(entry.startAt),
+      end: round3(entry.endAt),
+      ended: round3(endedAt),
+      completed,
+      short_s: completed ? 0 : round3(Math.max(0, entry.endAt - endedAt)),
+      gap_s: entry.gapFromPrev == null ? null : round3(entry.gapFromPrev),
+    })
+  }
+
   function onEnded(entry: Scheduled) {
     if (entry.timer != null) {
       clearTimeout(entry.timer)
@@ -323,6 +388,7 @@ export function createStreamingPlayback(options: StreamingPlaybackOptions): Stre
 
     // 正常播完 = 没被取消、且真的走到了预定终点（`stop()` 会让 `currentTime` 停在半路）。
     const completed = !stopped && ctx.currentTime >= entry.endAt - COMPLETED_EPSILON
+    logSpanEnd(entry, completed)
     if (completed) {
       playedSeconds += entry.duration
       playedUnits += 1
@@ -435,6 +501,7 @@ export function createStreamingPlayback(options: StreamingPlaybackOptions): Stre
    * 不报 `onSegmentEnd`（旧轮不补"整段已播完"的 ACK）、不记 `spansPlayed`、不动口型/说话状态。
    */
   function onCancelledEnded(entry: Scheduled) {
+    logSpanEnd(entry, false) // 被 stop 的段：照样留一条"没播满"的记录
     releaseNodes(entry)
     const index = scheduled.indexOf(entry)
     if (index >= 0)
@@ -493,6 +560,15 @@ export function createStreamingPlayback(options: StreamingPlaybackOptions): Stre
     // 只有"新一轮开始"这种**主动打断**才淡出；静音、卸载、所有权取消、意图取消都还是立即停
     // （理由由 `stopAll(reason)` → `controller.abort(reason)` → 信号 reason 一路透传上来）。
     const canFade = reason === FADE_REASON && ctx.state === 'running'
+    // 播放记录：谁在什么时候、因为什么被停掉，当时正在响几段、还有几段没排。
+    logPlayback({
+      ev: 'stop',
+      reason: reason ?? null,
+      playing: scheduled.filter(e => now >= e.startAt && now < e.endAt).length,
+      pending: pending.length,
+      fade: canFade,
+    })
+    detachCtxLogger() // stop 之后这一轮不再有上下文状态可记
     const removed: Scheduled[] = []
     let fadeEnd: number | null = null
     let completedEndAt = lastCompletedEndAt

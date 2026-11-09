@@ -17,6 +17,7 @@ import { env } from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 import { is } from '@electron-toolkit/utils'
+import { useLogg } from '@guiiai/logg'
 import { defineInvokeHandler } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { initScreenCaptureForWindow } from '@proj-airi/electron-screen-capture/main'
@@ -32,6 +33,11 @@ import { protectPrivilegedWindowNavigation, setWindowAlwaysOnTop, transparentWin
 import { sinkWindowToDesktopBottom } from '../shared/window'
 import { appConfig, getAppConfig, readWindowFlags, updateAppConfig } from './app-config'
 import { setupMainWindowElectronInvokes } from './rpc/index.electron'
+
+/** 播放记录前缀：与 `stage-ui/libs/speech/streaming-playback.ts` 里的常量逐字一致。 */
+const PLAYBACK_LOG_PREFIX = '[albion-playback]'
+
+const log = useLogg('albion-playback').useGlobalConfig()
 
 export async function setupMainWindow(params: {
   editorWindow: EditorWindowManager
@@ -87,6 +93,14 @@ export async function setupMainWindow(params: {
   let allowClose = false
   onAppBeforeQuit(() => {
     allowClose = true
+  })
+
+  // 播放记录落盘（2026-11-09）：渲染进程的 console 不落盘，句尾截断这类事后才报的问题
+  // 没有现场可查。只转发 `[albion-playback]` 开头的行进主进程文件日志，别的 console 行
+  // 一律不转发 —— 否则整页日志会把 `airi-tamagotchi-*.log` 灌满。
+  window.webContents.on('console-message', (_event, _level, message) => {
+    if (message.startsWith(PLAYBACK_LOG_PREFIX))
+      log.log(message)
   })
 
   // NOTICE: in development mode, open devtools by default

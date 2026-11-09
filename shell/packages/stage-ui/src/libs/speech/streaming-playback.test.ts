@@ -62,6 +62,12 @@ function makeFakeContext() {
     currentTime: 0,
     sampleRate: 24000,
     state: 'running' as AudioContextState,
+    /** `statechange` 监听：播放记录会挂一个，测试可以手动触发/断言摘掉。 */
+    listeners: [] as { type: string, fn: () => void }[],
+    addEventListener(type: string, fn: () => void) { raw.listeners.push({ type, fn }) },
+    removeEventListener(type: string, fn: () => void) {
+      raw.listeners = raw.listeners.filter(l => !(l.type === type && l.fn === fn))
+    },
     createBufferSource(): FakeSource {
       const source: FakeSource = {
         buffer: null,
@@ -682,5 +688,96 @@ describe('节点取证元数据', () => {
     expect(node.__albionUnitId).toBe('local-0')
     expect(node.__albionIdentity).toBeUndefined()
     expect(node.__albionIntentId).toBeUndefined()
+  })
+})
+
+describe('播放记录（[albion-playback] 落盘行）', () => {
+  /** 取出所有播放记录行（跳过主进程不关心的普通 console）。 */
+  function rows(spy: ReturnType<typeof vi.spyOn>) {
+    return spy.mock.calls
+      .map((call: unknown[]) => String(call[0]))
+      .filter((line: string) => line.startsWith('[albion-playback] '))
+      .map((line: string) => JSON.parse(line.slice('[albion-playback] '.length)) as Record<string, unknown>)
+  }
+
+  it('正常播完打 ev=span：completed:true、short_s:0、gap_s 记与前一段的间隔', () => {
+    const spy = vi.spyOn(console, 'info').mockImplementation(() => {})
+    try {
+      const { ctx, clock, sources } = makeFakeContext()
+      const playback = createArmed({ audioContext: ctx })
+
+      playback.push(span('u1', 1.0))
+      playback.push(span('u2', 0.5))
+      finish(sources[0], clock, 1.05) // 首段 0.05 → 1.05 播满
+
+      const first = rows(spy).find((r: Record<string, unknown>) => r.ev === 'span')
+      expect(first).toMatchObject({
+        ev: 'span',
+        unit: 'u1',
+        intent: null,
+        dur: 1,
+        start: 0.05,
+        end: 1.05,
+        completed: true,
+        short_s: 0,
+        gap_s: null,
+      })
+      expect(first!.ended).toBeCloseTo(1.05, 3)
+
+      finish(sources[1], clock, 1.65) // 第二段 1.15 → 1.65
+      const second = rows(spy).filter((r: Record<string, unknown>) => r.ev === 'span')[1]
+      expect(second).toMatchObject({ unit: 'u2', completed: true, short_s: 0 })
+      expect(second.gap_s).toBeCloseTo(0.1, 3) // 1.15 - 1.05 = 有意的 pauseAfter
+    }
+    finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('stop 打 ev=stop：reason/playing/pending/fade，并摘掉 statechange 监听', () => {
+    const spy = vi.spyOn(console, 'info').mockImplementation(() => {})
+    try {
+      const { ctx, clock } = makeFakeContext()
+      const playback = createArmed({ audioContext: ctx, maxAheadSpans: 1 })
+
+      playback.push(span('u1', 1.0))
+      playback.push(span('u2', 1.0)) // 窗口 1 段 ⇒ 第二段留在 pending
+      clock.currentTime = 0.5
+      playback.stop('new-message')
+
+      expect(rows(spy).find((r: Record<string, unknown>) => r.ev === 'stop')).toEqual({
+        ev: 'stop',
+        reason: 'new-message',
+        playing: 1,
+        pending: 1,
+        fade: true,
+      })
+      const listeners = (clock as unknown as { listeners: unknown[] }).listeners
+      expect(listeners).toHaveLength(0) // stop 之后不再记上下文状态
+    }
+    finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('上下文 statechange 打 ev=ctx（用监听而不是覆盖 onstatechange）', () => {
+    const spy = vi.spyOn(console, 'info').mockImplementation(() => {})
+    try {
+      const { ctx, clock } = makeFakeContext()
+      createStreamingPlayback({ audioContext: ctx })
+
+      const state = clock as unknown as {
+        state: AudioContextState
+        listeners: { type: string, fn: () => void }[]
+      }
+      state.state = 'suspended'
+      for (const listener of state.listeners)
+        listener.fn()
+
+      expect(rows(spy).find((r: Record<string, unknown>) => r.ev === 'ctx')).toMatchObject({ ev: 'ctx', state: 'suspended' })
+    }
+    finally {
+      spy.mockRestore()
+    }
   })
 })
