@@ -85,6 +85,10 @@
 对不上就警告。11-08 的 40 句实验结论：预算就是语速旋钮（多给预算 ≈ 念得更慢，`Δ有声/Δ总长` 中位 0.97），
 拍数假设不成立（字数 R²=0.9394 vs 拍数 R²=0.9399，汉字密度与尾静音相关 r=−0.03），`chars/5.0` 的字数下限
 40 句只生效 1 句 —— 所以改成「预测时长 + 固定余量」（见 `test_pred_margin.py` 与 `TTS_PRED_MARGIN_S`）。
+`--seeds N` 换成**采样实验**：同一句渲 N 个 seed（同预算、全带显式 seed ⇒ 生产队列的 tail_tight 重渲不参与，
+换 seed 完全由探针做），输出 p(紧)、每句 N 次里紧几次的分布、以及「对每一次紧的再换一个新 seed 同预算重渲一次」的
+修复率与两次都紧的比例；`--batch` 控制每批提交段数（默认 20）。用来判断紧尾巴是句子属性还是采样属性 ——
+若是后者，「同预算换 seed 重抽」就是正当的拒绝采样（`render_queue.TAIL_STRETCH=1.0`）。
 切分/气口的环境变量（网关 :9885 启动时读，`/health` 的 `config.cut`/`config.gap` 可核对）：
 `ALBION_CUT_SOFT_UNITS`(1) `ALBION_CUT_LATER_FORCE`(64) `ALBION_CUT_LATER_SOFT_MIN`(12) `ALBION_CUT_LATER_IDLE`(2.0)
 `ALBION_CUT_RAMP`(3.5，0=关) `ALBION_CUT_RAMP_FLOOR`(24)；`ALBION_GAP_SHAPE`(1) `ALBION_GAP_LEAD`(0.06)

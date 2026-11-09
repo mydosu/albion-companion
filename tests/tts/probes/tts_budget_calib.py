@@ -72,33 +72,50 @@ def measure(path):
     return secs, voiced, max(0.0, secs - voiced)
 
 
-def render(texts, outdir, port, voice):
+def seed_for(text, k=None):
+    """固定的种子派生：同一个 (文本, k) 永远同一颗种子 ⇒ 跨次对照可复现。
+
+    显式带 seed 还会让队列**跳过 tail_tight 重渲**（那是生产兜底），测量时必须这样：
+    换 seed 的动作要由探针自己做，不能让服务在背后偷偷换掉。
+    """
+    h = hashlib.sha256(("%s|%s" % (text, k)).encode()).hexdigest()[:8]
+    return int(h, 16) % (2 ** 31 - 1)
+
+
+def render_units(units, outdir, port, voice, batch=20):
+    """逐批提交（一批 20 段，别把 200 段塞进一个 SSE），返回 {unit_id: wav 路径}。"""
     url = "http://127.0.0.1:%d" % port
-    h = requests.post(url + "/v2/render/open", json={"voice": voice}, timeout=30).json()
-    units = []
-    for i, t in enumerate(texts):
-        units.append({
-            "unit_id": "calib:%d" % i, "sub_index": 0, "text": t, "caption": CAPTION,
-            "cfg": 3.0, "family": "neutral", "scene_id": 2, "codebook_version": 2,
-            "caption_mode": "free",
-            # 种子只由文本决定 ⇒ 两次对照可复现，且显式 seed 让队列不做重渲兜底
-            "seed": int(hashlib.sha256(t.encode()).hexdigest()[:8], 16) % (2 ** 31 - 1),
-        })
-    body = {"session_id": h["session_id"], "generation": h["generation"], "plan_version": 4,
-            "voice": voice, "format": "wav", "units": units}
     got = {}
-    r = requests.post(url + "/v2/render", json=body, stream=True, timeout=900)
-    r.raise_for_status()
-    for line in r.iter_lines(decode_unicode=True):
-        if line and line.startswith("data:") and "audio_base64" in line:
-            p = json.loads(line[5:])
-            pth = os.path.join(outdir, "%s.wav" % p.get("unit_id", "u").replace(":", "_"))
-            with open(pth, "wb") as f:
-                f.write(base64.b64decode(p.get("audio_base64") or ""))
-            got[p.get("unit_id")] = pth
-    requests.post(url + "/v2/render/close",
-                  json={"session_id": h["session_id"], "generation": h["generation"]}, timeout=30)
+    for i in range(0, len(units), batch):
+        chunk = units[i:i + batch]
+        h = requests.post(url + "/v2/render/open", json={"voice": voice}, timeout=30).json()
+        body = {"session_id": h["session_id"], "generation": h["generation"], "plan_version": 4,
+                "voice": voice, "format": "wav", "units": chunk}
+        r = requests.post(url + "/v2/render", json=body, stream=True, timeout=900)
+        r.raise_for_status()
+        for line in r.iter_lines(decode_unicode=True):
+            if line and line.startswith("data:") and "audio_base64" in line:
+                p = json.loads(line[5:])
+                pth = os.path.join(outdir, "%s.wav" % p.get("unit_id", "u").replace(":", "_"))
+                with open(pth, "wb") as f:
+                    f.write(base64.b64decode(p.get("audio_base64") or ""))
+                got[p.get("unit_id")] = pth
+        requests.post(url + "/v2/render/close",
+                      json={"session_id": h["session_id"], "generation": h["generation"]},
+                      timeout=30)
+        print("  批 %d-%d 完成" % (i, i + len(chunk) - 1), flush=True)
     return got
+
+
+def calib_unit(uid, text, seed):
+    return {"unit_id": uid, "sub_index": 0, "text": text, "caption": CAPTION, "cfg": 3.0,
+            "family": "neutral", "scene_id": 2, "codebook_version": 2, "caption_mode": "free",
+            "seed": seed}
+
+
+def render(texts, outdir, port, voice):
+    units = [calib_unit("calib:%d" % i, t, seed_for(t)) for i, t in enumerate(texts)]
+    return render_units(units, outdir, port, voice)
 
 
 def server_margin(logfile):
@@ -114,6 +131,90 @@ def server_margin(logfile):
     return None
 
 
+def run_seeds(texts, args, outdir):
+    """同一句 × N 个 seed（同预算），看紧尾巴是「句子属性」还是「采样属性」。
+
+    再对**每一次紧的**用一颗新 seed 重渲一次（也是同预算），量拒绝采样的修复率。
+    这批请求全带显式 seed，所以生产队列的 tail_tight 重渲不会参与（它只在没给 seed 时才跑），
+    换 seed 完全由探针自己做。
+    """
+    n = args.seeds
+    units, meta = [], []
+    for i, t in enumerate(texts):
+        for k in range(n):
+            uid = "s%d_%d" % (i, k)
+            units.append(calib_unit(uid, t, seed_for(t, k)))
+            meta.append((uid, i, k))
+    print("渲染 %d 句 × %d seed = %d 段…" % (len(texts), n, len(units)), flush=True)
+    files = render_units(units, str(outdir), args.port, args.voice, args.batch)
+
+    rows = []
+    for uid, i, k in meta:
+        p = files.get(uid)
+        if not p:
+            continue
+        secs, voiced, sil = measure(p)
+        rows.append(dict(uid=uid, idx=i, k=k, text=texts[i], chars=_spoken_chars(texts[i]),
+                         secs=secs, voiced=voiced, sil=sil, tight=sil < TIGHT_S, wav=p))
+
+    tight_rows = [r for r in rows if r["tight"]]
+    print("\n紧尾巴 %d / %d 段 ⇒ p=%.3f" % (len(tight_rows), len(rows),
+                                           len(tight_rows) / max(1, len(rows))))
+
+    # 每句 N 次里紧几次
+    per = {}
+    for r in rows:
+        per.setdefault(r["idx"], []).append(r)
+    hist = {}
+    for i, rs in per.items():
+        c = sum(1 for r in rs if r["tight"])
+        hist[c] = hist.get(c, 0) + 1
+    print("每句 %d 次里紧几次的分布：" % n
+          + "  ".join("%d次:%d句" % (k, hist[k]) for k in sorted(hist)))
+    all_tight = [i for i, rs in per.items() if rs and all(r["tight"] for r in rs)]
+    any_tight = [i for i, rs in per.items() if any(r["tight"] for r in rs)]
+    print("  至少紧过一次的句子 %d/%d，%d 次全紧的句子 %d 句" % (len(any_tight), len(per), n, len(all_tight)))
+
+    # 对每一次紧的，换 seed 重渲一次
+    retry_units, retry_meta = [], []
+    for r in tight_rows:
+        uid = "r%s" % r["uid"]
+        retry_units.append(calib_unit(uid, r["text"], seed_for(r["text"], "retry-%s" % r["k"])))
+        retry_meta.append((uid, r))
+    fixed = still = 0
+    retried = []
+    if retry_units:
+        print("\n对 %d 个紧段换 seed 重渲一次…" % len(retry_units), flush=True)
+        rfiles = render_units(retry_units, str(outdir), args.port, args.voice, args.batch)
+        for uid, r in retry_meta:
+            p = rfiles.get(uid)
+            if not p:
+                continue
+            secs, voiced, sil = measure(p)
+            ok = sil >= TIGHT_S
+            fixed += int(ok)
+            still += int(not ok)
+            retried.append(dict(src=r, retry_sil=sil, retry_secs=secs, fixed=ok, wav=p))
+        total = fixed + still
+        print("  换 seed 后修好 %d/%d = %.1f%%，两次都紧 %d（%.1f%%）"
+              % (fixed, total, 100.0 * fixed / max(1, total), still,
+                 100.0 * still / max(1, total)))
+
+    summary = {"tag": args.tag, "seeds": n, "n_units": len(rows), "tight": len(tight_rows),
+               "p_tight": len(tight_rows) / max(1, len(rows)),
+               "hist_tight_per_sentence": {str(k): v for k, v in sorted(hist.items())},
+               "sentences_any_tight": len(any_tight),
+               "sentences_all_tight": len(all_tight),
+               "retry": {"n": fixed + still, "fixed": fixed, "still_tight": still,
+                         "fixed_rate": fixed / max(1, fixed + still)},
+               "rows": [{k: v for k, v in r.items() if k != "wav"} for r in rows],
+               "retried": [{k: v for k, v in t.items() if k != "wav"} for t in retried]}
+    dst = outdir / ("seeds-%s.json" % args.tag)
+    dst.write_text(json.dumps(summary, ensure_ascii=False, indent=1), "utf8")
+    print("  明细 -> %s" % dst)
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, help="输出目录（tests/output 下）")
@@ -127,6 +228,9 @@ def main():
     ap.add_argument("--log", default=str(ROOT / "logs" / "irodori.log"))
     ap.add_argument("--sentences-log", default=str(ROOT / "logs" / "tts_bridge.log"),
                     help="从哪个 bridge 日志里取句子（工作树里没有 logs/ 时指向生产那份）")
+    ap.add_argument("--seeds", type=int, default=0,
+                    help=">0 时跑「同句 N 个 seed」实验（p(紧)、每句紧几次、换 seed 修复率）")
+    ap.add_argument("--batch", type=int, default=20, help="每批提交多少段（默认 20）")
     args = ap.parse_args()
 
     outdir = pathlib.Path(args.out)
@@ -135,6 +239,8 @@ def main():
         texts = json.loads(pathlib.Path(args.sentences_file).read_text("utf8"))
     else:
         texts = log_sentences(args.sentences_log, args.count)
+    if args.seeds:
+        return run_seeds(texts, args, outdir)
     print("句子 %d 句，开始渲染（: %d）…" % (len(texts), args.port), flush=True)
 
     files = render(texts, str(outdir), args.port, args.voice)
