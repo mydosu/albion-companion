@@ -77,6 +77,14 @@
 （首段 +0.05s、段间 +0.10s、渲染不及就欠载）模拟出 `X-sim.wav` 与可听间隔；会花少量翻译额度，只读。
 `probes/f0_tail_probe.py --group 名字=通配符 …` 粗略比较句尾音高走向；自相关 F0 很糙，**分不出逗号收尾和句号收尾**，
 只能当同一说话人成组对比的参考，别当结论。
+`probes/tts_budget_calib.py --out <tests/output 下目录> --tag X [--margin 0.6] [--baseline 上次的 json]` 是**预算校准对照**：
+从 `logs/tts_bridge.log` 取一批真实 ja（`--count`，默认 40，按朗读字数均匀取样），每句只渲一次（seed 由文本决定 ⇒
+两次对照可复现，显式 seed 也关掉了重渲兜底），量总时长/有声时长/尾部静音/cps，输出「尾巴 < 0.3s 的句数、平均总时长、
+平均尾静音」。它**不改服务配置**，只量当前部署：`TTS_PRED_MARGIN_S=0` 重启 9889 跑一次做基线，默认 0.6 再跑一次
+`--baseline` 打差分；`--margin` 只是声明这次服务器该跑的值，脚本会从 `logs/irodori.log` 的 final 行读回 `margin=`
+对不上就警告。11-08 的 40 句实验结论：预算就是语速旋钮（多给预算 ≈ 念得更慢，`Δ有声/Δ总长` 中位 0.97），
+拍数假设不成立（字数 R²=0.9394 vs 拍数 R²=0.9399，汉字密度与尾静音相关 r=−0.03），`chars/5.0` 的字数下限
+40 句只生效 1 句 —— 所以改成「预测时长 + 固定余量」（见 `test_pred_margin.py` 与 `TTS_PRED_MARGIN_S`）。
 切分/气口的环境变量（网关 :9885 启动时读，`/health` 的 `config.cut`/`config.gap` 可核对）：
 `ALBION_CUT_SOFT_UNITS`(1) `ALBION_CUT_LATER_FORCE`(64) `ALBION_CUT_LATER_SOFT_MIN`(12) `ALBION_CUT_LATER_IDLE`(2.0)
 `ALBION_CUT_RAMP`(3.5，0=关) `ALBION_CUT_RAMP_FLOOR`(24)；`ALBION_GAP_SHAPE`(1) `ALBION_GAP_LEAD`(0.06)

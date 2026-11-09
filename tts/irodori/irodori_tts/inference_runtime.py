@@ -4,6 +4,7 @@ import gc
 import hashlib
 import json
 import math
+import os
 import secrets
 import threading
 import time
@@ -36,6 +37,71 @@ from .speaker_inversion import (
 from .text_normalization import normalize_text
 from .tokenizer import PretrainedTextTokenizer
 from .watermark import SilentCipherWatermarker
+
+
+# ---- 句尾余量（2026-11-08）-----------------------------------------------------
+# 11-08 的 40 句对照（tests/tts/probes/tts_budget_calib.py）：预算就是她的语速旋钮 —— 预测时长
+# 被模型吃掉约 95~99%，40 句里 3 句尾部静音只剩 0.14/0.19/0.23s，句尾被挤短；而 chars/5.0 那条
+# 字数下限 40 句里只真正生效 1 句（预测值几乎总比它大），管不到这件事。
+# 所以给**预测时长**本身加一个固定余量（秒），与字数无关、与拍数无关（拍数假设已被实验否掉）：
+# `latent_steps >= ceil((pred_sec + margin) * sr / hop)`。0 等于关，读环境变量，改完重启生效。
+PRED_MARGIN_ENV = "TTS_PRED_MARGIN_S"
+PRED_MARGIN_DEFAULT_S = 0.6
+
+
+def pred_margin_seconds(default: float = PRED_MARGIN_DEFAULT_S) -> float:
+    """`TTS_PRED_MARGIN_S`（秒，默认 0.6，0=关）。非数字/负数按 0 处理（宁可少给，不炸）。"""
+    raw = os.environ.get(PRED_MARGIN_ENV)
+    if raw is None or not str(raw).strip():
+        return max(0.0, float(default))
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return 0.0
+    if value != value or value < 0:          # NaN / 负数
+        return 0.0
+    return value
+
+
+def resolve_latent_steps(
+    *,
+    pred_frames: float,
+    duration_scale: float,
+    min_seconds: float,
+    max_seconds: float,
+    sample_rate: int,
+    hop_length: int,
+    margin_s: float | None = None,
+) -> dict[str, float | int]:
+    """预测器给的帧预算 → 真正用的 `latent_steps`（含句尾余量）。
+
+    `pred_frames` 是 predict_duration 出来的**帧数**（滚动预测的 expm1 均值，精确值，不是反推的）；
+    帧↔秒换算是 `frames * hop_length / sample_rate`，所以余量折帧是 `margin_s * sample_rate / hop_length`。
+    余量作用在**乘过 duration_scale 之后**的预算上（那才是真正要用的时长）；`min_seconds` 那条
+    字数下限照旧，两条取大；最后仍被 `max_frames` 封顶。显式给了秒数的请求走另一条分支，不进这里。
+    """
+    margin = pred_margin_seconds() if margin_s is None else max(0.0, float(margin_s))
+    scaled_frames = float(pred_frames) * float(duration_scale)
+    min_frames = max(1, math.ceil(float(min_seconds) * sample_rate / hop_length))
+    max_frames = max(1, math.floor(float(max_seconds) * sample_rate / hop_length))
+    margin_frames = 0
+    if margin > 0:
+        # 帧数直接算（别先折成秒再乘回去，0.5+0.6 那种二进制小数会被 ceil 多进一帧），
+        # 末尾减 eps 是为了让「正好整数帧」不被浮点误差顶上去。
+        margin_frames = math.ceil(scaled_frames + margin * sample_rate / hop_length - 1e-9)
+        # 只抬下限，且不把 max_seconds 顶破；字数下限（min_seconds）的老行为一个字节都不动，
+        # 这样 TTS_PRED_MARGIN_S=0 时与改之前逐帧一致。
+        min_frames = max(min_frames, min(max(1, margin_frames), max_frames))
+    latent_steps = int(round(scaled_frames))
+    latent_steps = max(min_frames, min(max_frames, latent_steps))
+    return {
+        "latent_steps": int(latent_steps),
+        "min_frames": int(min_frames),
+        "max_frames": int(max_frames),
+        "margin_frames": int(margin_frames),
+        "margin_s": float(margin),
+        "pred_sec": scaled_frames * hop_length / float(sample_rate),
+    }
 
 
 def _is_mps_available() -> bool:
@@ -1308,18 +1374,27 @@ class InferenceRuntime:
                     else None,
                 )
                 pred_frames = torch.expm1(pred_log_frames).float().mean().item()
-                scaled_frames = pred_frames * duration_scale
-                min_frames = max(1, math.ceil(min_seconds * self.codec.sample_rate / hop_length))
-                max_frames = max(1, math.floor(max_seconds * self.codec.sample_rate / hop_length))
-                latent_steps = int(round(scaled_frames))
-                latent_steps = max(min_frames, min(max_frames, latent_steps))
+                # 2026-11-08：预测时长 + 固定句尾余量（TTS_PRED_MARGIN_S，默认 0.6s，0=关）。
+                # 换算与封顶都在 resolve_latent_steps 里，见那里的注释。
+                budget = resolve_latent_steps(
+                    pred_frames=float(pred_frames),
+                    duration_scale=float(duration_scale),
+                    min_seconds=float(min_seconds),
+                    max_seconds=float(max_seconds),
+                    sample_rate=int(self.codec.sample_rate),
+                    hop_length=int(hop_length),
+                )
+                latent_steps = int(budget["latent_steps"])
                 target_samples = int(latent_steps * hop_length)
                 stage_sec = _measure_end(self.model_device, t0)
                 stage_timings.append(("predict_duration", stage_sec))
+                # 这段文案被 tts/irodori/infer.py 的正则解析（frames=… 与 using_frames=…），
+                # 只在句尾追加 margin，别动前面两个字段的顺序与分隔符。
                 msg = (
                     f"info: predicted duration frames={pred_frames:.1f}, "
                     f"scale={duration_scale:.3f}, using_frames={latent_steps} "
-                    f"({target_samples / float(self.codec.sample_rate):.3f}s)."
+                    f"({target_samples / float(self.codec.sample_rate):.3f}s), "
+                    f"margin={float(budget['margin_s']):.3f}s."
                 )
                 messages.append(msg)
                 _log(msg)
