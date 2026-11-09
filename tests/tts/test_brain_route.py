@@ -261,6 +261,48 @@ class RefusalTest(unittest.TestCase):
                 patch("builtins.print"):
             self.assertEqual(bridge.to_japanese_ex("这是个测试句子，别念英文。"), ("", None))
 
+    def test_emotion_first_leg_refusal_falls_to_deepseek_json(self):
+        """情绪主路（JSON 那次）首腿被拒 → 直接换 DeepSeek 的 JSON 腿：只问一次 Gemini，译文+情绪都要有。"""
+        good = json.dumps({"ja": "今日はいいお天気ですね。", "arousal": 0.3,
+                           "intensity": 0.4, "valence": 0.5}, ensure_ascii=False)
+        prompt = bridge.TRANSLATE_PROMPT + bridge.EMOTION_PROMPT
+        with patch.object(bridge, "TRANSLATE_BACKEND", "codex"), \
+                patch.object(bridge, "TRANSLATE_ENABLED", True), \
+                patch.object(bridge, "EMOTION_HINT", True), \
+                patch.object(bridge, "ask_brain", return_value=REFUSAL_EN) as brain, \
+                patch.object(bridge, "_cc_keys", return_value=["offline-placeholder"]), \
+                patch.object(bridge, "_ask", return_value=good) as ask, \
+                patch.object(bridge, "_ask_codex") as codex, \
+                patch("builtins.print"):
+            ja, emo = bridge.to_japanese_ex("这是个测试句子，别念英文。")
+        self.assertEqual(ja, "今日はいいお天気ですね。")
+        self.assertIsNotNone(emo)
+        self.assertEqual(emo.get("arousal"), 0.3)
+        brain.assert_called_once()                       # 拒绝后不再问第二次 Gemini
+        ask.assert_called_once()
+        self.assertEqual(ask.call_args.args[:4],
+                         ("offline-placeholder", "这是个测试句子，别念英文。",
+                          bridge.FALLBACK_MODEL, bridge.FALLBACK_BASE))
+        self.assertEqual(ask.call_args.kwargs.get("prompt"), prompt)
+        codex.assert_not_called()
+
+    def test_emotion_first_leg_ok_skips_second_leg(self):
+        """首腿正常回 JSON（ja 有日文）→ 不算拒绝，不调 DeepSeek 那条 JSON 腿。"""
+        good = json.dumps({"ja": "今日はいいお天気ですね。", "arousal": 0.3}, ensure_ascii=False)
+        with patch.object(bridge, "TRANSLATE_BACKEND", "codex"), \
+                patch.object(bridge, "TRANSLATE_ENABLED", True), \
+                patch.object(bridge, "EMOTION_HINT", True), \
+                patch.object(bridge, "ask_brain", return_value=good) as brain, \
+                patch.object(bridge, "_cc_keys", return_value=["offline-placeholder"]), \
+                patch.object(bridge, "_ask") as ask, \
+                patch("builtins.print"):
+            ja, emo = bridge.to_japanese_ex("这是个测试句子，别念英文。")
+        self.assertEqual(ja, "今日はいいお天気ですね。")
+        self.assertIsNotNone(emo)
+        self.assertFalse(bridge._looks_rejected("这是个测试句子，别念英文。", good))   # 正常 JSON 不误判
+        brain.assert_called_once()
+        ask.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

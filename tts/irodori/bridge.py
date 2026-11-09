@@ -251,7 +251,10 @@ def to_japanese_ex(text: str, context: str = ""):
         model, endpoint = TRANSLATE_MODEL, TRANSLATE_BASE
     if EMOTION_HINT:                         # 只在**主路**（同一次调用顺带出情绪）上开
         # 首腿跟着脑的模型走；脑没起/没回还是老规矩用 Command Code（或 TTS_TRANSLATE_BACKEND=api 的 DeepSeek）
-        got = ask_brain(t, prompt=TRANSLATE_PROMPT + EMOTION_PROMPT)
+        # 拒绝闸门同样套在 JSON 这条腿上（2026-11-09）：英文拒绝在 _parse_emotion_json 里抠不出 ja，
+        # 但 got 非空 ⇒ 不走下面 DeepSeek 的 JSON 腿，白等一次又退回 to_japanese 再问一次 Gemini（还是拒）。
+        # 过 _leg 之后拒绝＝空串，直接落到 DeepSeek，译文和情绪一起拿回来。正常 JSON 里有日文，不会误判。
+        got = _leg(t, "首腿", ask_brain, t, prompt=TRANSLATE_PROMPT + EMOTION_PROMPT)
         if not got and key:
             got = _ask(key, t, model, endpoint, prompt=TRANSLATE_PROMPT + EMOTION_PROMPT)
         ja, emo = _parse_emotion_json(got) if got else ("", None)
