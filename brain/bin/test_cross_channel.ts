@@ -69,7 +69,7 @@ add(D, "user", "【接着说完】（这是我自己心里的念头）", BASE + 
 add(D, "user", "【以下是这次对话此前的记录】\n指挥官：桌面旧话\n阿尔比恩：旧回复", BASE + 1680);
 
 const { _albionTest } = await import("../agent/extensions/albion-turn.ts");
-const { crossChannelBlock, CROSS_TITLE_FROM_GROUP, CROSS_TITLE_FROM_PRIVATE } = _albionTest;
+const { crossChannelBlock, CROSS_TITLE_FROM_GROUP, CROSS_TITLE_FROM_PRIVATE, CROSS_TITLE_WHISPER_REPLY } = _albionTest;
 
 // A) 桌面：群近况 + 她发的群消息；悄悄话、播种块、6 小时外、内部提示都不进来
 {
@@ -211,6 +211,89 @@ const { crossChannelBlock, CROSS_TITLE_FROM_GROUP, CROSS_TITLE_FROM_PRIVATE } = 
   );
   assert.ok(!seeded.includes("指挥官：（这是之前"), "旧笔记不能挂到「指挥官：」后面");
   console.log("J 压缩摘要里重启首轮的拆分 OK");
+}
+
+// ── K–O 桌面问过悄悄话之后，前辈的回信带回桌面（2026-11-08）
+const stateFiles = ["cross-channel.json", "cross-channel-desktop.json", "cross-channel-discord.json"];
+const clearState = () => stateFiles.forEach((n) => rmSync(join(TMP, n), { force: true }));
+const WHISPER_TAIL = "想回就用 send_message（channel=discord_whisper）；这里写的字她看不到。";
+// 一篇课表式的长文：500 字以上，末尾留标记，用来验证不再被 180 字截断。
+const LONG_SCHEDULE = [
+  "【平台消息】悄悄话里有新消息（这里是我和可畏两个人说话的地方）：",
+  "#130 15:48 可畏：我把指挥官这学期的课程安排理好了，免得你到处去找。",
+  "",
+  "**周四**",
+  "- 08:15 - 09:55 单周数电 / 双周模电（教学中心102）",
+  "- 10:15 - 11:55 概率论（教学中心202）",
+  "- 13:00 - 14:40 普通物理实验（物质学院4-303B）",
+  "- 18:00 - 19:40 毛概理论课（教学中心102）",
+  "- 19:50 - 21:30 普物II辅导课（物质学院1-505）+ 20:45 - 21:30 模电习题课（信息学院1D107，隔周连堂，中间有5分钟换楼）",
+  "",
+  "**周末与作息要点**",
+  "- 周六周日没有早课，周六下午主要处理通识课，17:00 之后留给他自由支配",
+  "- 周日晚上 23:00 前必须让他睡下，因为周一一大早就是数电",
+  "- 周四晚上是连堂，20:45 换楼容易匆忙，到时记得留心",
+  "- 周四下午做完普物实验后，周五有大头实验报告要写，别由着他拖延",
+  "- 你存一份在手边，往后看着时间提醒他就是了；末尾标记：周四连堂。",
+  WHISPER_TAIL,
+].join("\n");
+assert.ok(LONG_SCHEDULE.length > 500, `长文要够长：${LONG_SCHEDULE.length}`);
+
+// K) 桌面发过悄悄话 → 回信带回桌面，长文不截断；没有群内容也要出块
+const T0 = BASE + 100_000;
+{
+  clearState();
+  add(D, "tool", JSON.stringify({ channel: "discord_whisper", text: "可畏前辈，能分我一份课表吗？" }), T0, "send_message");
+  add(G, "user", LONG_SCHEDULE, T0 + 120);
+  const block = await crossChannelBlock(D, (T0 + 180) * 1000);
+  assert.ok(block, "问过之后桌面要拿到回信");
+  assert.ok(block.startsWith(CROSS_TITLE_WHISPER_REPLY), block.slice(0, 120));
+  assert.ok(block.includes("15:48 [悄悄话] 可畏：我把指挥官这学期的课程安排理好了"), block.slice(0, 200));
+  assert.ok(block.includes("末尾标记：周四连堂"), "长文不能被 180 字截断");
+  assert.ok(block.includes("20:45 - 21:30 模电习题课"), block);
+  assert.ok(!block.includes(CROSS_TITLE_FROM_GROUP), "没有群内容时不出群段");
+  assert.ok(!block.includes("想回就用 send_message"), "通知尾巴不要");
+  console.log("K 桌面问过悄悄话→回信带回桌面、长文不截断 OK");
+}
+
+// O) 回信注入过就不再重复；水位越过也不重复
+{
+  assert.equal(await crossChannelBlock(D, (T0 + 240) * 1000), null, "同一份回信不重复注入");
+  writeFileSync(join(TMP, "cross-channel-desktop.json"), JSON.stringify({ ts: T0 + 130 }));
+  assert.equal(await crossChannelBlock(D, (T0 + 300) * 1000), null, "水位越过回信就不重复注入");
+  console.log("O 回信只注入一次（水位/去重）OK");
+}
+
+// L) 桌面没问过（上一次问话已超 12 小时）→ 悄悄话照旧不进桌面
+{
+  clearState();
+  const later = T0 + 13 * 3600;
+  add(G, "user", "【平台消息】悄悄话里有新消息（这里是我和可畏两个人说话的地方）：\n#200 09:00 可畏：没问过也塞进来的悄悄话\n" + WHISPER_TAIL, later - 600);
+  const block = await crossChannelBlock(D, later * 1000);
+  assert.ok(!block || !block.includes("没问过也塞进来的悄悄话"), String(block));
+  console.log("L 没问过时悄悄话照旧不进桌面 OK");
+}
+
+// M) 回信早于问话时间 → 不进
+{
+  clearState();
+  const T1 = BASE + 200_000;
+  add(G, "user", "【平台消息】悄悄话里有新消息（这里是我和可畏两个人说话的地方）：\n#201 10:00 可畏：早于问话的回信\n" + WHISPER_TAIL, T1 - 600);
+  add(D, "tool", JSON.stringify({ channel: "discord_whisper", text: "问一句" }), T1, "send_message");
+  const block = await crossChannelBlock(D, (T1 + 600) * 1000);
+  assert.ok(!block || !block.includes("早于问话的回信"), String(block));
+  console.log("M 回信早于问话时间不进 OK");
+}
+
+// N) 回信晚于 问话+12 小时 → 不进（这时问话本身也已出窗口，两道界都挡住）
+{
+  clearState();
+  const T2 = BASE + 300_000;
+  add(D, "tool", JSON.stringify({ channel: "discord_whisper", text: "问一句" }), T2, "send_message");
+  add(G, "user", "【平台消息】悄悄话里有新消息（这里是我和可畏两个人说话的地方）：\n#202 12:00 可畏：十二小时之后的迟来回信\n" + WHISPER_TAIL, T2 + 12 * 3600 + 60);
+  const block = await crossChannelBlock(D, (T2 + 12 * 3600 + 120) * 1000);
+  assert.ok(!block || !block.includes("十二小时之后的迟来回信"), String(block));
+  console.log("N 超过问话+12 小时的回信不进 OK");
 }
 
 db.close();

@@ -169,14 +169,23 @@ export function recentAsides(messages: any[], before: number): string[] {
 // 桌面（albion-desktop）和 Discord 群/悄悄话（albion-discord）是两个 Pi 会话，中间只靠 OV
 // 长期记忆，有延迟。这里把「另一边」上次给过之后新增的消息按行塞进每轮约定。
 // 悄悄话一律不进桌面：他看得见，但她们以为他看不到，带进桌面她会当着他的面提起。
+// 唯一的例外（2026-11-08）：桌面自己用 send_message 去悄悄话问过前辈之后，前辈在悄悄话里的回信
+// 带回桌面——是指挥官让她去问的，她拿到答案告诉他不算偷看（见 CROSS_TITLE_WHISPER_REPLY）。
 const CROSS_DESKTOP = "albion-desktop";
 const CROSS_DISCORD = "albion-discord";
 export const CROSS_TITLE_FROM_GROUP = "（群里最近的事，供你知道，不用逐条回应）";
 export const CROSS_TITLE_FROM_PRIVATE = "（指挥官私下和你聊的事，供你知道，不用逐条回应；私下聊的事不要在群里说出来，除非他自己在群里提起）";
+export const CROSS_TITLE_WHISPER_REPLY = "（你在悄悄话里问前辈的事，她回你了；是指挥官知道你去问的，可以照实告诉他）";
 export const CROSS_TITLE = CROSS_TITLE_FROM_GROUP;
 const CROSS_LOOKBACK_S = 6 * 3600;
 const CROSS_MAX_LINES = 12;
 const CROSS_MAX_CHARS = 1500;
+// 悄悄话回信段（2026-11-08）：从桌面上一次去悄悄话问话算起 12 小时内，前辈的回信带回来。
+const CROSS_ASK_WINDOW_S = 12 * 3600;
+const CROSS_WHISPER_LINE_CHARS = 1200; // 单条放宽到 1200 字（课表那种长文不截断）
+const CROSS_WHISPER_MAX_CHARS = 1500; // 整段上限，超了留最新的
+// 和 bin/chat_bridge.py 的 WHISPER_PEER_ALIASES 同一口径：悄悄话里另一个 bot 都算「前辈」。
+const CROSS_WHISPER_PEER = /^(可畏|formidable)$/i;
 // 两个会话各写各的水位文件，避免 desktop/discord 同时注入时互相覆盖（2026-11-03）。
 const CROSS_STATE_FILES: Record<"desktop" | "discord", string> = {
   desktop: "cross-channel-desktop.json",
@@ -232,6 +241,105 @@ function dmNoticeLines(raw: string): string[] {
     if (m) out.push(crossLine(m[2], m[1], "指挥官", m[3]));
   }
   return out;
+}
+
+// ── 悄悄话回信（2026-11-08）：桌面问过才带回桌面 ─────────────────────────────
+// 通知格式：「#130 15:48 可畏：正文」；正文可能跨很多行（课表那种整篇列表），到下一条编号或结尾说明行为止。
+// 群那条正则（groupNoticeLines）不动——悄悄话在那边天然不匹配。
+const CROSS_WHISPER_HEAD = /^#\d+\s+(\d{2}:\d{2})\s+(.+?)：(.*)$/;
+// 通知里的收尾/额度行，不算正文。
+const CROSS_WHISPER_TAIL = /^想回就用 send_message|^悄悄话这次你们已经说了|^这次悄悄话聊得够久了|^今天的悄悄话已经聊到头了/;
+
+/** 保换行的清洗：剥 <|ACT|>、去行尾空白、压掉多余空行；不把整段压成一行。 */
+function crossCleanMulti(text: string, limit = CROSS_WHISPER_LINE_CHARS): string {
+  return String(text ?? "")
+    .replace(/<\|[^|]*\|>/g, "")
+    .split(/\r?\n/)
+    .map((l) => l.replace(/\s+$/, ""))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, limit);
+}
+
+/** 悄悄话通知里的一条条「#编号 时:分 作者：正文」，正文跨行保留。 */
+function whisperNotifyMessages(raw: string): { time: string; who: string; body: string }[] {
+  const out: { time: string; who: string; body: string }[] = [];
+  let cur: { time: string; who: string; body: string } | null = null;
+  const flush = () => {
+    if (cur) out.push(cur);
+    cur = null;
+  };
+  for (const line of raw.split(/\r?\n/)) {
+    const m = line.match(CROSS_WHISPER_HEAD);
+    if (m) {
+      flush();
+      cur = { time: m[1], who: m[2].trim(), body: m[3] };
+      continue;
+    }
+    if (!cur) continue;
+    if (CROSS_WHISPER_TAIL.test(line.trim())) {
+      flush();
+      continue;
+    }
+    cur.body += "\n" + line;
+  }
+  flush();
+  return out;
+}
+
+/** 桌面会话最近一次「去悄悄话问话」的时间（秒）；没有、或超出 12 小时窗口就返回 0。 */
+function lastWhisperAsk(rows: any[], nowS: number): number {
+  let ask = 0;
+  for (const row of rows) {
+    if (row.role !== "tool" || row.tool_name !== "send_message") continue;
+    const sent = crossSendArgs(row.content);
+    if (sent?.channel !== "discord_whisper") continue;
+    const ts = Number(row.timestamp) || 0;
+    if (!ts || ts > nowS || nowS - ts > CROSS_ASK_WINDOW_S) continue;
+    if (ts > ask) ask = ts;
+  }
+  return ask;
+}
+
+/**
+ * 悄悄话回信段：桌面问过之后、前辈在悄悄话里说的那些行（不受 6 小时回看限制，按问话时间 12 小时窗口）。
+ * 只取前辈说的；指挥官自己说的话不搬。没有可带回的就返回 null。
+ */
+async function whisperReplySection(nowS: number, watermark: number): Promise<{ text: string; ts: number } | null> {
+  const askTs = lastWhisperAsk(await readCrossRows(CROSS_DESKTOP, nowS - CROSS_ASK_WINDOW_S), nowS);
+  if (!askTs) return null;
+  const rows = await readCrossRows(CROSS_DISCORD, Math.max(askTs, watermark));
+  const msgs: { ts: number; line: string }[] = [];
+  for (const row of rows) {
+    if (row.role !== "user") continue;
+    const ts = Number(row.timestamp) || 0;
+    if (ts <= askTs || ts > askTs + CROSS_ASK_WINDOW_S || ts > nowS) continue;
+    for (const m of whisperNotifyMessages(String(row.content ?? ""))) {
+      if (!CROSS_WHISPER_PEER.test(m.who)) continue;
+      const body = crossCleanMulti(m.body);
+      if (!body) continue;
+      msgs.push({ ts, line: `${m.time} [悄悄话] ${m.who}：${body}` });
+    }
+  }
+  if (!msgs.length) return null;
+  msgs.sort((a, b) => a.ts - b.ts);
+  // 整段超 1500 字就留最新的（同一条通知重复出现也只留一次）。
+  const picked: { ts: number; line: string }[] = [];
+  const seen = new Set<string>();
+  let chars = CROSS_TITLE_WHISPER_REPLY.length;
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const e = msgs[i];
+    if (seen.has(e.line)) continue;
+    if (picked.length && chars + e.line.length + 3 > CROSS_WHISPER_MAX_CHARS) break;
+    picked.push(e);
+    seen.add(e.line);
+    chars += e.line.length + 3;
+  }
+  if (!picked.length) return null;
+  picked.reverse();
+  const body = picked.map((e) => `- ${e.line.replace(/\n/g, "\n  ")}`).join("\n");
+  return { text: `${CROSS_TITLE_WHISPER_REPLY}\n${body}`, ts: picked[picked.length - 1].ts };
 }
 
 function rowLines(row: any, toDesktop: boolean): string[] {
@@ -338,16 +446,17 @@ export async function crossChannelBlock(currentSession: string, nowMs = Date.now
   const source = toDesktop ? CROSS_DISCORD : CROSS_DESKTOP;
   const key: "desktop" | "discord" = toDesktop ? "desktop" : "discord";
   const title = toDesktop ? CROSS_TITLE_FROM_GROUP : CROSS_TITLE_FROM_PRIVATE;
-  const since = Math.max(nowMs / 1000 - CROSS_LOOKBACK_S, readCrossState(key));
+  const nowS = nowMs / 1000;
+  const watermark = readCrossState(key);
+  const since = Math.max(nowS - CROSS_LOOKBACK_S, watermark);
   const rows = await readCrossRows(source, since);
-  if (!rows.length) return null;
 
   const flat: { ts: number; line: string }[] = [];
   for (const row of rows) {
     const ts = Number(row.timestamp) || 0;
+    if (ts > nowS) continue; // 还没发生的事不搬（回放/时钟偏了也不把明天的话塞进今天）
     for (const line of rowLines(row, toDesktop)) flat.push({ ts, line });
   }
-  if (!flat.length) return null;
   flat.sort((a, b) => a.ts - b.ts);
 
   // 超量时留最近的 12 行（「近况」先看新近的）；同一句旧通知里的 context 行只留最新一次。
@@ -363,10 +472,25 @@ export async function crossChannelBlock(currentSession: string, nowMs = Date.now
     seen.add(e.line);
     chars += e.line.length + 3;
   }
-  if (!picked.length) return null;
   picked.reverse();
-  markCrossInjected(key, picked[picked.length - 1].ts);
-  return title + "\n" + picked.map((e) => `- ${e.line}`).join("\n");
+
+  // 悄悄话回信段单独一块，接在群近况后面（2026-11-08）；两段共用桌面水位。
+  const sections: string[] = [];
+  let lastTs = 0;
+  if (picked.length) {
+    sections.push(title + "\n" + picked.map((e) => `- ${e.line}`).join("\n"));
+    lastTs = picked[picked.length - 1].ts;
+  }
+  if (toDesktop) {
+    const whisper = await whisperReplySection(nowS, watermark);
+    if (whisper) {
+      sections.push(whisper.text);
+      lastTs = Math.max(lastTs, whisper.ts);
+    }
+  }
+  if (!sections.length) return null;
+  markCrossInjected(key, lastTs);
+  return sections.join("\n\n");
 }
 
 const BASH_DEFAULT_TIMEOUT_S = 120;
@@ -958,5 +1082,5 @@ export default function albionTurn(pi: ExtensionAPI): void {
 }
 
 // 自检钩子：bin/test_guard_ext.ts 直接驱动这些函数。
-export const _albionTest = { MARKER, CONTEXT, turn_guidance, composeTurnContent, tool_row, msg_text, recentAsides, timeLine, slotName, bjParts, agoText, stampsOf, previousUserMs, crossChannelBlock, CROSS_TITLE, CROSS_TITLE_FROM_GROUP, CROSS_TITLE_FROM_PRIVATE,
+export const _albionTest = { MARKER, CONTEXT, turn_guidance, composeTurnContent, tool_row, msg_text, recentAsides, timeLine, slotName, bjParts, agoText, stampsOf, previousUserMs, crossChannelBlock, CROSS_TITLE, CROSS_TITLE_FROM_GROUP, CROSS_TITLE_FROM_PRIVATE, CROSS_TITLE_WHISPER_REPLY,
   compactionDigest, compactionFile, COMPACTION_TITLE, COMPACTION_PROMPT, COMPACTION_SYSTEM, NOW_SEPARATOR };
