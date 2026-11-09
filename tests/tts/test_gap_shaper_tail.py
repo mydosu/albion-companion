@@ -158,5 +158,42 @@ class TailReleaseTest(unittest.TestCase):
         self.assertGreater(GS.FADE_S, 0)
 
 
+class TailProfileTest(unittest.TestCase):
+    """`tail_profile`（2026-11-08 取证）：话说到第几秒 + 后面剩多少静音。
+
+    排查「尾音被截断」时只靠末段电平分不清「模型少念了收尾」和「链路上被掐」，这两个数就是
+    为了把两种情况分开记进日志。造一段「有声 + 数字零」的波形，数值必须对得上。
+    """
+
+    def test_exact_voiced_end_and_silence(self):
+        loud = (0.8 * np.sin(2 * np.pi * 180 * np.arange(SR) / SR) * 32767).astype("<i2")
+        src = wav_bytes(np.concatenate([loud, np.zeros(int(0.5 * SR), dtype="<i2")]))
+        voiced_end, silence = GS.tail_profile(src)
+        self.assertAlmostEqual(voiced_end, 1.0, delta=GS.POINT_FRAME_S)
+        self.assertAlmostEqual(silence, 0.5, delta=GS.POINT_FRAME_S)
+
+    def test_decaying_release_counts_as_voiced(self):
+        """-20→-70dB 的自然衰减：-55dB 以上仍算有声，静音长度只从那里往下算。"""
+        src = wav_bytes(decaying_tail())
+        voiced_end, silence = GS.tail_profile(src)
+        total = 1.18                                   # 0.6 元音 + 0.18 衰减 + 0.4 底噪
+        self.assertGreater(voiced_end, 0.6)
+        self.assertLess(voiced_end, total)
+        self.assertAlmostEqual(voiced_end + silence, total, delta=0.02)
+
+    def test_profile_matches_shaping_contract(self):
+        """整形后尾静音定长成 TAIL_S["sentence"]（容差同 case 里其它断言的口径）。"""
+        voiced_end, silence = GS.tail_profile(GS.shape(wav_bytes(decaying_tail()), "sentence"))
+        self.assertGreater(voiced_end, 0)
+        self.assertGreaterEqual(silence, GS.TAIL_S["sentence"] - 0.05)
+
+    def test_failed_profile_is_minus_one(self):
+        """量不出来（非 WAV / 全零 / 空）一律 (-1, -1)：日志字段绝不能连累出声。"""
+        cases = [b"", b"not a wav", wav_bytes(np.zeros(SR, dtype="<i2")), wav_bytes([0, 0, 0])]
+        for blob in cases:
+            with self.subTest(blob=blob[:12]):
+                self.assertEqual(GS.tail_profile(blob), (GS.POINT_FAILED, GS.POINT_FAILED))
+
+
 if __name__ == "__main__":
     unittest.main()

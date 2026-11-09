@@ -16,6 +16,9 @@
 -25～-28dBFS）。旧实现在这种时候**故意不淡出**，直接把还在响的样本接上数字零，听感是最后一个字
 被掐掉。现在改做 `LOUD_FADE_S`（12ms）短线性淡出：短到不会把响亮的句尾压成渐弱收尾，又足以
 消掉接零的台阶。安静收尾时的 30ms 淡出不变。
+
+2026-11-08 尾部取证：`tail_profile()` 只量、不改音频（最后一个有声帧的位置 + 之后的静音长度），
+生产在整形前后各记一份，用来分清「模型少念了收尾」和「链路上被掐」。
 """
 import io
 import os
@@ -83,6 +86,50 @@ def _fade_out(body, peak, sr):
         return
     ramp = np.linspace(1.0, 0.0, n, dtype="float32")[:, None]
     body[-n:] = np.rint(seg.astype("float32") * ramp).astype("<i2")
+
+
+POINT_FRAME_S = 0.01      # 包络探针的帧长，与 shape() 的 10ms 窗同粒度
+POINT_FAILED = -1.0       # 量不出来就记 -1：日志字段绝不能连累出声
+
+
+def tail_profile(wav: bytes):
+    """(最后一个有声帧离开头的秒数, 之后的静音秒数)；算不出来一律 (-1, -1)。
+
+    2026-11-08：排查「句尾尾音被截断」时发现，只看末段电平（`tail=`）和 `cps` 分不清
+    「模型少念了收尾」和「链路上被掐」——两种情况的 wav 末尾都是静音。这里记下「话说到第
+    几秒 / 后面还剩多少静音」，整形前后各记一份（整形后那行字段名带 `_shaped`），下次一读
+    日志就能判层。判据与 shape() 的有声判据同源（帧 RMS 低于全段峰值 `VOICED_DB` 或低于
+    `FLOOR_DB`dBFS 算没声）；只是这里用帧 **RMS** 而不是窗内峰值——峰值会被单个咔哒声骗过去。
+    """
+    try:
+        if not wav or wav[:4] != b"RIFF":
+            return POINT_FAILED, POINT_FAILED
+        with wave.open(io.BytesIO(wav), "rb") as w:
+            params = w.getparams()
+            raw = w.readframes(w.getnframes())
+        if params.sampwidth != 2 or not raw:
+            return POINT_FAILED, POINT_FAILED
+        ch, sr = params.nchannels, params.framerate
+        if sr <= 0:
+            return POINT_FAILED, POINT_FAILED
+        pcm = np.frombuffer(raw, dtype="<i2").reshape(-1, ch).astype("float32") / 32768.0
+        mono = pcm.mean(axis=1) if ch > 1 else pcm[:, 0]
+        peak = float(np.abs(mono).max())
+        if peak <= 0:
+            return POINT_FAILED, POINT_FAILED
+        win = max(1, int(POINT_FRAME_S * sr))
+        frames = len(mono) // win
+        if frames <= 0:
+            return POINT_FAILED, POINT_FAILED
+        rms = np.sqrt((mono[:frames * win].reshape(frames, win) ** 2).mean(axis=1))
+        thr = max(peak * 10 ** (-VOICED_DB / 20.0), 10 ** (FLOOR_DB / 20.0))
+        loud = np.flatnonzero(rms > thr)
+        if not len(loud):
+            return POINT_FAILED, POINT_FAILED
+        voiced_end = (int(loud[-1]) + 1) * win / float(sr)
+        return voiced_end, max(0.0, len(mono) / float(sr) - voiced_end)
+    except Exception:      # noqa: BLE001 - 量不出来只记 -1
+        return POINT_FAILED, POINT_FAILED
 
 
 def shape(wav: bytes, kind: str) -> bytes:

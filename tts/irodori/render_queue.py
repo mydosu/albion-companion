@@ -189,6 +189,47 @@ def _tail_db(wave, sr):
     return 20.0 * float(np.log10(max(float(np.abs(a[-n:]).max()), 1e-12) / peak))
 
 
+# ---- 尾部包络探针（2026-11-08）-----------------------------------------------------
+# 排查 11-08 的三句「尾音被截断」时发现：只看 final 行的 `tail=` 电平和 `cps` 分不清「模型少
+# 念了收尾」和「链路上被掐」——两种情况的 wav 末尾都是静音。这里记「话说到第几秒」和「后面
+# 还剩多少静音」，和 9885 整形后那份（字段名带 `_shaped`）对着看就能判层。
+TAIL_FRAME_S = 0.01            # 帧长，与 gap_shaper 的 10ms 窗同粒度
+TAIL_VOICED_REL_DB = 40.0      # 帧 RMS 低于全段峰值 40dB ⇒ 这一帧没声
+TAIL_VOICED_FLOOR_DB = -55.0   # 且必须高于 -55dBFS（编码器底噪不算有声）
+TAIL_PROFILE_FAILED = -1.0     # 量不出来记 -1：日志字段绝不能连累出声
+
+
+def _tail_profile(wave, sr):
+    """(最后一个有声帧离开头的秒数, 之后的静音秒数)；算不出来一律 (-1, -1)。
+
+    判据与 gap_shaper 的有声判据同源（低于峰值 `TAIL_VOICED_REL_DB` 或低于
+    `TAIL_VOICED_FLOOR_DB`dBFS 算没声），但用帧 **RMS** 而不是窗内峰值——峰值会被单个咔哒声
+    骗过去。一次 reshape+mean 扫完，几秒的音频不到 1ms。
+    """
+    try:
+        import numpy as np
+        a = _mono(wave)
+        if sr <= 0 or len(a) == 0:
+            return TAIL_PROFILE_FAILED, TAIL_PROFILE_FAILED
+        win = max(1, int(TAIL_FRAME_S * sr))
+        frames = len(a) // win
+        if frames <= 0:
+            return TAIL_PROFILE_FAILED, TAIL_PROFILE_FAILED
+        peak = float(np.abs(a).max())
+        if peak <= 0:
+            return TAIL_PROFILE_FAILED, TAIL_PROFILE_FAILED
+        rms = np.sqrt((a[:frames * win].reshape(frames, win) ** 2).mean(axis=1))
+        thr = max(peak * 10 ** (-TAIL_VOICED_REL_DB / 20.0),
+                  10 ** (TAIL_VOICED_FLOOR_DB / 20.0))
+        loud = np.flatnonzero(rms > thr)
+        if not len(loud):
+            return TAIL_PROFILE_FAILED, TAIL_PROFILE_FAILED
+        voiced_end = (int(loud[-1]) + 1) * win / float(sr)
+        return voiced_end, max(0.0, len(a) / float(sr) - voiced_end)
+    except Exception:          # noqa: BLE001 - 量不出来只记 -1
+        return TAIL_PROFILE_FAILED, TAIL_PROFILE_FAILED
+
+
 def _f0_median(wave, sr, voicing=0.5, lo_hz=70.0, hi_hz=450.0):
     """自相关 F0 中位数（Hz）；无声段不计入，有效帧少于 5 个返回 None。
 
@@ -298,6 +339,9 @@ def _spoken_chars(text):
 def _audio_note(job, res):
     """final 行补音频时长与语速（2026-11-03）：`secs` 比同字数常态短 ⇒ 模型吞字/少念。
 
+    2026-11-08：再加 `tail_voiced_s`（最后有声帧离开头的秒数）与 `tail_sil_s`（之后的静音秒
+    数），量的是**整形前**的原始音频；9885 整形后的那份走自己的日志行（字段带 `_shaped`）。
+
     用已经拿在手里的 `wave`/`sr` 算，不重读文件；失败/取消时拿不到就返回空串，绝不因此报错
     （一段已经渲好的音频不能因为日志字段丢掉）。
     """
@@ -316,6 +360,9 @@ def _audio_note(job, res):
             note += " cps=%.1f" % (chars / secs)
         if res.get("floor"):
             note += " floor=1"          # 这块的时长被字数下限抬过（复测时靠它认）
+        # 2026-11-08：话说到第几秒 / 后面还剩多少静音（-1 = 量不出来）
+        voiced_end, silence = _tail_profile(wave, sr)
+        note += " tail_voiced_s=%.2f tail_sil_s=%.2f" % (voiced_end, silence)
         return note
     except Exception:              # noqa: BLE001 - 日志字段出错不能连累音频
         return ""

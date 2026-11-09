@@ -803,6 +803,12 @@ class Coordinator:
                                 # 统一气口：非末段子段必是句子收尾；末段按单元末尾的标点/切分原因定尾静音
                                 audio = GS.shape(audio, GS.tail_kind(unit.speech_text, unit.reason)
                                                  if sub_index == segments[-1][0] else "sentence")
+                                # 2026-11-08 尾部取证：整形后话说到第几秒 / 后面还剩多少静音。
+                                # 与 9889 final 行的 tail_voiced_s/tail_sil_s（整形前）对照，就能分清
+                                # 「模型少念了收尾」和「链路上被掐」——两者末段电平看起来一样。
+                                _ve, _sil = GS.tail_profile(audio)
+                                log("%s %s 尾部 tail_voiced_s_shaped=%.2f tail_sil_s_shaped=%.2f"
+                                    % (sess.id, uid, _ve, _sil))
                             if len(audio) > MAX_PAYLOAD:
                                 raise RuntimeError("payload 超过 %d 字节上限" % MAX_PAYLOAD)
                             if sess.pending_bytes + len(audio) > MAX_DOWN_BYTES:

@@ -207,6 +207,23 @@ class MetricsTest(unittest.TestCase):
         self.assertIsNone(RQ._f0_median(np.zeros(int(0.5 * SR), dtype="float32"), SR),
                           "无声段不计入，也不许编一个中位数出来")
 
+    def test_tail_profile_counts_voiced_end_and_silence(self):
+        """2026-11-08 取证字段：1.5s 有声 + 0.5s 数字零 ⇒ (1.50, 0.50)。"""
+        self.assertAlmostEqual(RQ._tail_profile(FEMALE, SR)[0], 0.50, delta=RQ.TAIL_FRAME_S)
+        self.assertAlmostEqual(RQ._tail_profile(FEMALE, SR)[1], 0.06, delta=RQ.TAIL_FRAME_S)
+        wave = np.concatenate([tone(320.0, dur_s=1.5, silence_s=0.5)])
+        voiced_end, silence = RQ._tail_profile(wave, SR)
+        self.assertAlmostEqual(voiced_end, 1.50, delta=RQ.TAIL_FRAME_S)
+        self.assertAlmostEqual(silence, 0.50, delta=RQ.TAIL_FRAME_S)
+        self.assertAlmostEqual(voiced_end + silence, len(wave) / SR, delta=0.02)
+
+    def test_tail_profile_failure_is_minus_one(self):
+        """量不出来（全零/空/采样率非法）一律 -1，绝不抛给合成腿。"""
+        bad = RQ._tail_profile(np.zeros(100, dtype="float32"), SR)
+        self.assertEqual(bad, (RQ.TAIL_PROFILE_FAILED, RQ.TAIL_PROFILE_FAILED))
+        self.assertEqual(RQ._tail_profile(np.zeros(10), 0), bad)
+        self.assertEqual(RQ._tail_profile(None, SR), bad)
+
 
 class AudioNoteTest(unittest.TestCase):
     """final 行的音频时长/语速字段（2026-11-03）：secs 用已在手的 wave/sr 算，不重读文件。"""
@@ -216,20 +233,23 @@ class AudioNoteTest(unittest.TestCase):
         return SimpleNamespace(unit={"text": text})
 
     def test_secs_and_cps_from_wave(self):
-        wave = np.zeros(SR * 2, dtype="float32")            # 2.00s
+        wave = np.concatenate([tone(320.0, dur_s=1.5, silence_s=0.5)])   # 2.00s
         note = RQ._audio_note(self._job("あいうえお"), {"sr": SR, "wave": wave})
-        self.assertEqual(note, "secs=2.00 cps=2.5")         # 5 字 / 2s
+        self.assertEqual(note, "secs=2.00 cps=2.5"
+                               " tail_voiced_s=1.50 tail_sil_s=0.50")   # 5 字 / 2s
 
     def test_punct_and_space_not_counted(self):
         note = RQ._audio_note(self._job("あ、い。 う"), {"sr": SR, "wave": np.zeros(SR)})
-        self.assertEqual(note, "secs=1.00 cps=3.0")
+        self.assertEqual(note, "secs=1.00 cps=3.0 tail_voiced_s=-1.00 tail_sil_s=-1.00",
+                         "全零波形量不出有声帧 ⇒ 两个字段都记 -1")
 
     def test_missing_audio_is_silent(self):
         for res in ({"sr": SR}, {"sr": 0, "wave": np.zeros(10)}, {"status": "failed"}, {}):
             with self.subTest(res=res):
                 self.assertEqual(RQ._audio_note(self._job("あ"), res), "", "拿不到就跳过，不报错")
         self.assertEqual(RQ._audio_note(self._job(""), {"sr": SR, "wave": np.zeros(SR)}),
-                         "secs=1.00", "没文本就只报时长")
+                         "secs=1.00 tail_voiced_s=-1.00 tail_sil_s=-1.00",
+                         "没文本就只报时长")
 
 
 if __name__ == "__main__":
