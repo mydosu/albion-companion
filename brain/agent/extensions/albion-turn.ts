@@ -194,7 +194,7 @@ const CROSS_STATE_FILES: Record<"desktop" | "discord", string> = {
 const CROSS_STATE = (key: "desktop" | "discord") => `${STATE_DIR}/${CROSS_STATE_FILES[key]}`;
 const CROSS_LEGACY_STATE = () => `${STATE_DIR}/cross-channel.json`;
 // 和 albion-history.ts 同一口径：宿主塞给她的内部提示不是聊天。
-const CROSS_INTERNAL = /【自主醒来】|【定下次醒来】|【想起来去做】|【接着说完】|【真去做】|（阿尔比恩自己醒来）|（阿尔比恩想起来|（阿尔比恩接着|（宿主提醒|^（这是我自己|^（你要的【|这是一次自主开口/;
+const CROSS_INTERNAL = /【自主醒来】|【定下次醒来】|【想起来去做】|【接着说完】|【真去做】|（阿尔比恩自己醒来）|（阿尔比恩想起来|（阿尔比恩接着|（宿主提醒|^（这是我自己|^（你要的【|^（你刚才那段话只写在了这里|这是一次自主开口/;
 const CROSS_SEED = /^【以下是这次对话此前的记录/;
 const CROSS_STAMP = /^\[(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})\]\s*/;
 
@@ -572,6 +572,19 @@ function brokenExtensionsNote(): string {
   }
 }
 
+// 平台轮（Discord 群/悄悄话/私信、Telegram）：她在这一轮写的正文字对方看不到，要说话只能 send_message。
+// 2026-11-09：群里连着几轮「答在正文里、没调 send_message」，他那边一条都没收到；这里每轮先说清楚。
+// [SILENT] 是给她、宿主（bin/server.py 的 UNSENT_NUDGE）和桥共用的「这一轮不回」写法。
+const PLATFORM_NOTE =
+  "（这一轮是平台消息：你在这里写的字对方看不到。想回就用 send_message 发到对应频道；不想回就只写 [SILENT]。）";
+
+/** 这一轮是不是桥叫醒的平台消息（只看【现在】之后，前面接上的历史里提过不算）。 */
+function isPlatformNotice(text: string): boolean {
+  const body = text.replace(/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]\s*/, "");
+  const now = body.includes("【现在】") ? body.slice(body.lastIndexOf("【现在】")) : body;
+  return now.includes("【平台消息】");
+}
+
 function turn_guidance(text: string, hasToolResult = false, recent: string[] = [], facts = "", nowMs = Date.now(), prevMs: number | null = null): string {
   const body = text.replace(/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]\s*/, "");
   // 她自己定的醒来时间到了（bin/wake.py 换进来的那段，开头是【自主醒来】；醒来时该看到的都写在那段里，这里只认一下）
@@ -591,6 +604,7 @@ function turn_guidance(text: string, hasToolResult = false, recent: string[] = [
     event += "当前输入是这一次需要回应的消息。" + (DO_ASK.test(now) ? DO_IT : "");
   }
   event += brokenExtensionsNote();
+  if (isPlatformNotice(body)) event += "\n" + PLATFORM_NOTE;
   // 上一轮真改了哪些文件（albion-loopguard 的快照账本）：只陈述，她自己对得上就行
   if (facts) event += facts;
   if (!hasToolResult) {

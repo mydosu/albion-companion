@@ -573,6 +573,9 @@ CAPTURE_FILTERS = (
     r"user:d|^【接着说完】|",
     r"user:d|^（阿尔比恩自己醒来）$|",
     r"user:d|^（阿尔比恩接着把刚才的话说完）$|",
+    # 宿主自己追的那句「答了没发」提醒也不是他说的；她的 [SILENT] 同样不进长期记忆（2026-11-09）。
+    r"user:d|^（你刚才那段话只写在了这里|",
+    r"assistant:d|^\[SILENT\]$|",
 )
 
 
@@ -627,6 +630,44 @@ FINISH_FOLLOWUP = ("【接着说完】（这是我自己心里的念头，不是
                    "卡住了就说卡在哪、试过什么、打算怎么换个做法，他想让我接着做我再接着做。"
                    "要是他只是在跟我说话，就像平常一样直接回他那句。不编结果。")
 QUIET_ASK = re.compile(r"(?:别|不要|不用)(?:再)?(?:说话|出声|开口|回复|回我)|静默")
+
+# 平台轮（Discord 群/悄悄话/私信、Telegram，桥叫醒的那一轮）：她在轮里写的正文字对方看不到，要说话只能
+# send_message。2026-11-09 生产：群里连着几轮「答在正文里、没调 send_message」，他那边一条都没收到。
+# 不替她发（发不发是她自己定的事），只把事实再说一遍，让她自己决定：发出去，或者只回 [SILENT]。
+# 同一轮只追一次；追的那轮本身不再追（这里是 run_prompt，不再进 chat()）。
+UNSENT_NUDGE = ("（你刚才那段话只写在了这里，对方看不到。想让他看到就用 send_message 发出去；"
+                "不想发就只回 [SILENT]。）")
+SILENT_RE = re.compile(r"[\[【]\s*SILENT\s*[\]】]", re.I)
+ASIDE_RE = re.compile(r"（[^（）]*）")
+
+
+def spoken_body(reply):
+    """去掉 ACT 标记和（…）心声之后还剩的话。"""
+    return ASIDE_RE.sub("", body_of(reply)).strip()
+
+
+def tools_used_count(session):
+    """这具身子到目前为止记下的工具调用条数（拿不到就当 0，别让日志/提醒影响这一轮）。"""
+    used = getattr(session, "tools_used", None)
+    return len(used) if isinstance(used, (list, tuple)) else 0
+
+
+def sent_in_turn(session, since):
+    """这一轮里有没有调过 send_message（Pi 的 tool_execution_start 账本，bin/pi_client.py:181）。"""
+    used = getattr(session, "tools_used", None)
+    if not isinstance(used, (list, tuple)):
+        return False
+    return any(isinstance(t, dict) and t.get("name") == "send_message" for t in used[since:])
+
+
+def needs_unsent_nudge(user_text, reply, session, since):
+    """桥叫醒的平台轮：写了正文、却一次 send_message 都没发，也没写 [SILENT]。"""
+    if not wake.is_platform(user_text or ""):
+        return False
+    spoken = spoken_body(reply)
+    if not spoken or SILENT_RE.search(spoken):
+        return False
+    return not sent_in_turn(session, since)
 
 
 def session_of(body, headers):
@@ -708,6 +749,7 @@ def chat(session_id, msgs):
         session = get_session(session_id)
         text, images, woke = compose(session, msgs)
         log("prompt", session=session_id, chars=len(text), images=len(images), woke=woke)
+        tool_from = tools_used_count(session)
         reply = run_prompt(session_id, session, text, images=images)
         if woke:
             reply = wake.after_wake(reply)
@@ -719,6 +761,14 @@ def chat(session_id, msgs):
                     reply = again
             except Exception as exc:
                 log("finish followup failed", session=session_id, error=repr(exc)[:120])
+        elif needs_unsent_nudge(text, reply, session, tool_from):
+            # 平台轮：写了正文却没发出去。只提醒一次，发不发她自己定（2026-11-09）。
+            try:
+                again = run_prompt(session_id, session, UNSENT_NUDGE)
+                log("nudge_unsent", session=session_id, chars=len(again or ""),
+                    sent=1 if sent_in_turn(session, tool_from) else 0)
+            except Exception as exc:
+                log("nudge_unsent failed", session=session_id, error=repr(exc)[:120])
         # 上下文占用：只写日志，读不到就算了，不能让日志影响这一轮（2026-11-04）
         try:
             tokens, window = session.context_usage()
@@ -726,7 +776,8 @@ def chat(session_id, msgs):
             tokens, window = None, None
         if tokens is not None:
             log("[ctx] session=%s tokens=%s window=%s" % (session_id, tokens, window))
-    log("turn", session=session_id, ms=round((time.time() - started) * 1000), chars=len(reply))
+    log("turn", session=session_id, ms=round((time.time() - started) * 1000), chars=len(reply),
+        sent=1 if sent_in_turn(session, tool_from) else 0)
     return reply
 
 
@@ -1076,6 +1127,38 @@ def _selftest():
         assert chat("albion-probe-timeout", msgs[-1:]) == "刚才没做完。"
         assert [call.kwargs["timeout"] for call in fake.prompt.call_args_list] == [RUN_TIMEOUT, RUN_TIMEOUT]
         assert fake.prompt.call_args_list[1].args == (FINISH_FOLLOWUP,)
+    # 平台轮写了正文却没发出去：提醒一次，让她自己决定（2026-11-09）
+    plat_ask = wake.PLATFORM_MARKER + "Discord 群「常规」里有新消息：\n（Discord 群）#1 13:16 指挥官：@Albion 在吗"
+    assert needs_unsent_nudge(plat_ask, '<|ACT:{"emotion":"happy"}|>嗯，我在呢。', fake, 0)
+    assert not needs_unsent_nudge(plat_ask, '<|ACT:{"emotion":"happy"}|>[SILENT]', fake, 0)
+    assert not needs_unsent_nudge(plat_ask, '<|ACT:{"emotion":"neutral"}|>', fake, 0), "只有情绪标记不算答了"
+    assert not needs_unsent_nudge(plat_ask, "（想他了呢）[SILENT]", fake, 0), "只有心声 + [SILENT] 不追"
+    sent = Mock()
+    sent.tools_used = [{"name": "send_message", "args": {"channel": "discord_group", "text": "在呢"}}]
+    assert not needs_unsent_nudge(plat_ask, "嗯，我在呢。", sent, 0), "这一轮发过就不追"
+    assert needs_unsent_nudge(plat_ask, "嗯，我在呢。", sent, 1), "只认这一轮：上一轮发过不算"
+    assert not needs_unsent_nudge("在吗", "在呢。", fake, 0), "桌面他自己说的话不追"
+    assert spoken_body('<|ACT:{"emotion":"happy"}|>\n（心里念一句）在呢。') == "在呢。"
+    # chat() 端到端：平台轮没发 → 同一具身子多跑一轮 UNSENT_NUDGE；发过就只跑一轮
+    plat_mock = Mock()
+    plat_mock.tools_used = []
+    plat_mock.prompt.return_value = '<|ACT:{"emotion":"happy"}|>我在呢，指挥官。'
+    with patch.object(module, "get_session", return_value=plat_mock), \
+            patch.object(module, "compose", return_value=(plat_ask, [], False)), patch.object(module, "log"):
+        chat("albion-probe-platform", msgs[-1:])
+        assert plat_mock.prompt.call_count == 2, plat_mock.prompt.call_args_list
+        assert plat_mock.prompt.call_args_list[1].args == (UNSENT_NUDGE,), "追的那句原样"
+        plat_mock.prompt.reset_mock()
+        plat_mock.tools_used = []
+
+        def _prompt_sent(*_a, **_kw):
+            # 这一轮里真的调了 send_message：账本在 tool_execution_start 时记一条
+            plat_mock.tools_used.append({"name": "send_message", "args": {"channel": "discord_group", "text": "在呢"}})
+            return '<|ACT:{"emotion":"happy"}|>发出去啦。'
+
+        plat_mock.prompt.side_effect = _prompt_sent
+        chat("albion-probe-platform", msgs[-1:])
+        assert plat_mock.prompt.call_count == 1, "这一轮发过：不再追"
     # 桌面会话她还在跑时他又说一句：steer 插进正在跑的那一轮；门铃/平台通知/别的会话不插；插不进去退回排队
     desk_bridge = shell_tools.Bridge("albion-desktop")
     release, started = threading.Event(), threading.Event()
@@ -1207,7 +1290,8 @@ def _selftest():
     assert is_ephemeral_session("albion-voice-probe-after4c-05") and is_ephemeral_session("albion-accept")
     desk_env, probe_env = session_env("albion-desktop"), session_env("albion-probe-r44a")
     assert "OPENVIKING_BYPASS_SESSION" not in desk_env and "ALBION_EPHEMERAL" not in desk_env, desk_env
-    assert desk_env["OPENVIKING_CAPTURE_FILTERS"].count("user:") >= len(CAPTURE_FILTERS), desk_env
+    # 规则以逗号拼成一条 env；现在不只 user: 开头的（还有 assistant: 那条 [SILENT]），按条数比
+    assert len(desk_env["OPENVIKING_CAPTURE_FILTERS"].split(",")) >= len(CAPTURE_FILTERS), desk_env
     assert probe_env["OPENVIKING_BYPASS_SESSION"] == "1" and probe_env["ALBION_EPHEMERAL"] == "1", probe_env
     assert probe_env["ALBION_PERSONAL_STATE_DIR"] == ephemeral_state_dir("albion-probe-r44a"), probe_env
     assert probe_env["ALBION_PERSONAL_STATE_DIR"].startswith("/tmp") and "albion-pi-ephemeral" in probe_env["ALBION_PERSONAL_STATE_DIR"]
