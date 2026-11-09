@@ -37,6 +37,7 @@ from fastapi.responses import JSONResponse
 
 import gap_shaper as GS
 import session_text as ST
+import wav_ring as WR
 
 WS_PATHS = ("/api/v1/audio/speech/ws", "/v1/audio/speech/ws")   # 壳用前者；后者兼容旧测试脚本
 MAX_UNITS = 64               # 方案 §3.4：每会话未提交单元上限
@@ -48,6 +49,18 @@ PROTOCOL_VERSION = 2         # 本机 v2：版本不匹配一律**明确失败**
 EMOTION_CTX_CHARS = 400      # 送进规划器的前文上限（≈2 个自然句；够判"这句没信号该继承谁"）
 CAPABILITIES = ["display.span", "unit.no_audio", "unit.failed", "playback.credit",
                 "playback.ack", "session.counts"]
+
+# ---- 尾部现场（2026-11-08）------------------------------------------------------
+# 整形后真正发给壳的那份 wav 留在 logs/tts-recent/，只留最近 40 个。9889 的临时文件渲完就删，
+# 事后重渲出来的不是当时那份（caption 每次不同），「听着断、日志正常」这类问题只能靠原音复现。
+# logs/ 已在 .gitignore 里（不入 Git）。
+RECENT_WAV_DIR = os.environ.get("ALBION_TTS_RECENT_DIR") or os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "logs", "tts-recent")
+try:
+    RECENT_WAV_KEEP = max(1, int(os.environ.get("ALBION_TTS_RECENT_KEEP") or WR.KEEP))
+except ValueError:
+    RECENT_WAV_KEEP = WR.KEEP
 
 
 def log(*a):
@@ -809,6 +822,13 @@ class Coordinator:
                                 _ve, _sil = GS.tail_profile(audio)
                                 log("%s %s 尾部 tail_voiced_s_shaped=%.2f tail_sil_s_shaped=%.2f"
                                     % (sess.id, uid, _ve, _sil))
+                                # 2026-11-08 留现场：这份就是用户真正听到的音频。存不下只记一行，
+                                # 绝不让它连累出声（wav_ring.save 自己吞异常，只回 None）。
+                                _kept = WR.save(RECENT_WAV_DIR, "%s_%s" % (sess.id, uid),
+                                                audio, RECENT_WAV_KEEP)
+                                if _kept is None:
+                                    log("%s %s 尾部现场没存下（不影响出声）：%s"
+                                        % (sess.id, uid, RECENT_WAV_DIR))
                             if len(audio) > MAX_PAYLOAD:
                                 raise RuntimeError("payload 超过 %d 字节上限" % MAX_PAYLOAD)
                             if sess.pending_bytes + len(audio) > MAX_DOWN_BYTES:

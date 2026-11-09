@@ -24,8 +24,12 @@ import render_queue as RQ  # noqa: E402
 SR = 16000
 
 
-def tone(f0_hz, dur_s=0.5, silence_s=0.06):
-    """正弦 + 尾静音（silence_s=0 ⇒ 停在响处，模拟上游截在响）。"""
+def tone(f0_hz, dur_s=0.5, silence_s=0.5):
+    """正弦 + 尾静音（silence_s=0 ⇒ 停在响处，模拟上游截在响）。
+
+    默认尾静音 0.5s（生产正常句尾 0.3~1.1s）：2026-11-08 起「尾静音 < 0.3s」会触发一次拉长
+    重渲（tail_tight），原来的 0.06s 会让所有「干净」样本都变成紧尾巴，测试就没法测别的了。
+    """
     a = 0.5 * np.sin(2 * np.pi * f0_hz * np.arange(int(dur_s * SR)) / SR)
     if silence_s > 0:
         a = np.concatenate([a, np.zeros(int(silence_s * SR))])
@@ -194,6 +198,64 @@ class SynthPassthroughTest(unittest.TestCase):
         self.assertEqual(seen["seed"], 777)
 
 
+class TailTightTest(GuardCase):
+    """尾巴太紧就拉长重渲（2026-11-08）。
+
+    现场：`s642d032b0fb8:1:2` 渲出 12.32s、尾静音只剩 0.10s、cps 4.3 —— 模型一路念到预算末尾，
+    句尾被挤掉，而 cps 没到 5.0，字数下限管不着。判据是**原始音频的尾静音**，重渲一次把目标
+    时长 ×1.25（`min_seconds` 覆盖），最多一次，取消的不重渲。
+    """
+
+    def test_tight_tail_rerenders_with_stretched_target(self):
+        tight = tone(320.0, dur_s=4.0, silence_s=0.10)     # 4.00s 有声 + 0.10s 静音
+        loose = tone(320.0, dur_s=5.0, silence_s=0.50)
+        res, calls = self.render([tight, loose])
+        self.assertEqual(len(calls), 2, "尾静音 0.10s < 0.30s ⇒ 必须重渲一次")
+        self.assertEqual(res["rerender"], "tail_tight")
+        self.assertIsNone(res["rerender_skipped"])
+        # 目标时长 = 上一遍实测时长 × 1.25 = 4.10 × 1.25 = 5.125（不超过 30s、也不低于字数下限）
+        self.assertAlmostEqual(calls[1]["min_seconds"], 4.10 * RQ.TAIL_STRETCH, places=3)
+        self.assertEqual(res["picked"], 2, "重渲那份尾巴更长 ⇒ 用它")
+        self.assertTrue(np.array_equal(res["wave"], loose))
+
+    def test_loose_tail_is_not_rerendered(self):
+        res, calls = self.render([tone(320.0, dur_s=4.0, silence_s=0.50)])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(res["rerender"], "")
+
+    def test_unmeasurable_tail_is_not_rerendered(self):
+        """全零波形量不出尾静音（-1）⇒ 不触发，也不许把它当成 0 秒紧尾巴。"""
+        res, calls = self.render([np.zeros(int(1.0 * SR), dtype="float32")])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(res["rerender"], "")
+
+    def test_both_attempts_tight_picks_longer_tail(self):
+        a = tone(320.0, dur_s=4.0, silence_s=0.10)
+        b = tone(320.0, dur_s=5.0, silence_s=0.20)
+        res, calls = self.render([a, b])
+        self.assertEqual(len(calls), 2, "只重渲一次，不许因为仍紧再渲第三次")
+        self.assertEqual(res["picked"], 2, "两份都紧时取尾巴更长的那份（0.20 > 0.10）")
+
+    def test_cancelled_block_is_not_rerendered(self):
+        res, calls = self.render([tone(320.0, dur_s=4.0, silence_s=0.10)], cancel=True)
+        self.assertEqual(len(calls), 1, "取消过的块重渲也没人要")
+        self.assertEqual(res["picked"], 1)
+        self.assertEqual(res["rerender"], "tail_tight")          # 命中了什么仍记下来
+        self.assertEqual(res["rerender_skipped"], "skipped_cancelled")
+
+    def test_explicit_seed_is_not_rerendered_for_tight_tail(self):
+        """听测配对给了 seed：那条尾巴是别人量过的条件，不许偷偷换一次。"""
+        res, calls = self.render([tone(320.0, dur_s=4.0, silence_s=0.10)], seed=999)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(res["rerender"], "")
+
+    def test_male_or_clip_still_uses_the_old_rerender_budget(self):
+        """男声/截尾那条路径不变：第一遍命中它就不走 tail_tight 分支。"""
+        res, calls = self.render([MALE, FEMALE])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(res["rerender"], "male")
+
+
 class MetricsTest(unittest.TestCase):
     def test_tail_db_marks_loud_cut_only(self):
         self.assertGreater(RQ._tail_db(CLIPPED, SR), -RQ.TAIL_CLIP_DB)
@@ -210,7 +272,7 @@ class MetricsTest(unittest.TestCase):
     def test_tail_profile_counts_voiced_end_and_silence(self):
         """2026-11-08 取证字段：1.5s 有声 + 0.5s 数字零 ⇒ (1.50, 0.50)。"""
         self.assertAlmostEqual(RQ._tail_profile(FEMALE, SR)[0], 0.50, delta=RQ.TAIL_FRAME_S)
-        self.assertAlmostEqual(RQ._tail_profile(FEMALE, SR)[1], 0.06, delta=RQ.TAIL_FRAME_S)
+        self.assertAlmostEqual(RQ._tail_profile(FEMALE, SR)[1], 0.50, delta=RQ.TAIL_FRAME_S)
         wave = np.concatenate([tone(320.0, dur_s=1.5, silence_s=0.5)])
         voiced_end, silence = RQ._tail_profile(wave, SR)
         self.assertAlmostEqual(voiced_end, 1.50, delta=RQ.TAIL_FRAME_S)

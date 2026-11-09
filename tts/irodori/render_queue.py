@@ -79,6 +79,13 @@ TTS_MIN_CPS = 5.0
 TTS_MIN_SECONDS = 0.5
 TTS_MAX_SECONDS = 30.0
 
+# ---- 尾巴太紧就重渲（2026-11-08）----------------------------------------------
+# 11-08 现场：`s642d032b0fb8:1:2` 12.32s、`tail_sil_s=0.10`、cps 4.3 —— 模型一路念到预算末尾，
+# 句尾被挤掉；cps 没到 5.0，字数下限管不着这种「贴着预算收尾」。渲完量一下原始音频的尾静音，
+# 小于 `TAIL_TIGHT_S` 就把目标时长拉长 `TAIL_STRETCH` 倍再渲**一次**（复用同一套重渲/取消纪律）。
+TAIL_TIGHT_S = 0.30        # 尾部静音少于这个就算「贴着预算收尾」（正常句尾 0.3~1.1s）
+TAIL_STRETCH = 1.25        # 重渲时把目标时长拉长的倍数
+
 
 def _min_seconds_for(text):
     """这一块的时长下限（秒）：按「朗读字数 / 5.3」算，封顶 30s；没字数就退回默认 0.5s。"""
@@ -99,15 +106,23 @@ def run_infer_synth(unit, out_wav, run_infer, default_ship):
     2026-11-07：同时按块内朗读字数传 `min_seconds`（时长下限，见 `_min_seconds_for`），
     并让 infer.py 写一份时长报告，返回值第三个元素带上「这块是不是被下限抬过」（floor）。
     老签名（测试桩只收 text/caption/cfg/out_wav/ship/seed）会 TypeError ⇒ 退回旧调用。
+
+    2026-11-08：`unit["min_seconds"]`（可选）**优先**于字数下限 —— 只给「尾巴太紧就拉长重渲」
+    用（见 `_render_one` 的 tail_tight 分支），生产请求里不会带这个字段。
     """
     import json
     import soundfile as sf
     ship = unit.get("voice") or default_ship
     report = out_wav + ".dur.json"
     floor = None
+    min_s = unit.get("min_seconds")
+    if not isinstance(min_s, (int, float)) or isinstance(min_s, bool) or min_s <= 0:
+        min_s = _min_seconds_for(unit.get("text"))
+    else:
+        min_s = min(TTS_MAX_SECONDS, max(TTS_MIN_SECONDS, float(min_s)))
     try:
         run_infer(unit["text"], unit.get("caption") or "", unit.get("cfg") or 3.0, out_wav, ship,
-                  seed=unit.get("seed"), min_seconds=_min_seconds_for(unit.get("text")),
+                  seed=unit.get("seed"), min_seconds=min_s,
                   duration_report=report)
     except TypeError:                                   # 旧签名/测试桩：保持原样，不加下限
         run_infer(unit["text"], unit.get("caption") or "", unit.get("cfg") or 3.0, out_wav, ship,
@@ -274,12 +289,44 @@ def _f0_median(wave, sr, voicing=0.5, lo_hz=70.0, hi_hz=450.0):
 
 
 def _quality(sr, wave, ship):
-    """一段渲染结果的两项自检。`male` 只对 `MALE_GUARD_SHIPS` 里的船成立。"""
+    """一段渲染结果的两项自检。`male` 只对 `MALE_GUARD_SHIPS` 里的船成立。
+
+    2026-11-08：多带一份尾部包络（`tail_voiced_s`/`tail_sil_s`），供「尾巴太紧就重渲」判据用。
+    """
     tail_db = _tail_db(wave, sr)
     f0 = _f0_median(wave, sr)
-    return dict(tail_db=tail_db, f0_hz=f0,
+    voiced_end, tail_sil = _tail_profile(wave, sr)
+    return dict(tail_db=tail_db, f0_hz=f0, tail_voiced_s=voiced_end, tail_sil_s=tail_sil,
                 male=bool(ship in MALE_GUARD_SHIPS and f0 is not None and f0 < MALE_F0_MAX_HZ),
                 clip=bool(tail_db is not None and tail_db > -TAIL_CLIP_DB))
+
+
+def _tail_tight(q):
+    """尾巴紧不紧：整形前原始音频的尾部静音 < `TAIL_TIGHT_S`（`-1` = 量不出来，不算）。
+
+    11-08 现场：`s642d032b0fb8:1:2` 渲出来 12.32s、`tail_sil_s=0.10`、cps 4.3 —— 模型一路念到
+    预算末尾，句尾的「ね」被时长预算挤掉了；cps 没碰到 5.0 的下限，原来的 floor 管不到它。
+    """
+    sil = q.get("tail_sil_s")
+    return isinstance(sil, (int, float)) and 0.0 <= sil < TAIL_TIGHT_S
+
+
+def _tail_rank(q):
+    """重渲后怎么挑：「不男声 > 不截尾 > 尾巴更长」。与 `_rank` 同序，只把 F0 换成了尾静音长度。"""
+    sil = q.get("tail_sil_s")
+    return (0 if q.get("male") else 1, 0 if q.get("clip") else 1,
+            -1.0 if not isinstance(sil, (int, float)) else float(sil))
+
+
+def _stretch_seconds(prev, unit):
+    """把这块的目标时长拉长 `TAIL_STRETCH` 倍（下限：原来那条 floor 与 30s 上限之间取小）。"""
+    sr = float(prev.get("sr") or 0)
+    wave = prev.get("wave")
+    if sr <= 0 or wave is None or not len(wave):
+        return _min_seconds_for(unit.get("text"))
+    secs = len(wave) / sr
+    base = _min_seconds_for(unit.get("text"))
+    return min(TTS_MAX_SECONDS, max(base, secs * TAIL_STRETCH))
 
 
 def _bad_reasons(q):
@@ -312,9 +359,12 @@ def _quality_note(job, res):
     parts = []
     for i, t in enumerate(tries):
         flags = _bad_reasons(t)
-        parts.append("try%d(seed=%s tail=%s f0=%s%s)"
+        sil = t.get("tail_sil_s")
+        parts.append("try%d(seed=%s tail=%s f0=%s sil=%s%s)"
                      % (i + 1, t.get("seed"), _fmt_db(t.get("tail_db")),
-                        _fmt_hz(t.get("f0_hz")), " " + flags if flags else ""))
+                        _fmt_hz(t.get("f0_hz")),
+                        "—" if not isinstance(sil, (int, float)) or sil < 0 else "%.2fs" % sil,
+                        " " + flags if flags else ""))
     note = "caption=%r cfg=%s %s picked=%s" % ((job.unit.get("caption") or "")[:40],
                                               job.unit.get("cfg"), " ".join(parts),
                                               res.get("picked"))
@@ -684,6 +734,11 @@ class RenderQueue:
         渲完先自检（2026-10-30）：原始 wav 截在响处、或 albion 的 F0 中位掉进男声区，就换随机
         seed 再渲，最多重渲**两次**（共 3 次尝试）；哪次既不男声也不截尾就立刻停。三次都不达标
         时按「不男声 > 不截尾 > F0 更高」取最好的那次。
+
+        2026-11-08：另加一条独立判据 —— 第一遍既没截尾也不是男声，但**尾部静音 < 0.3s**（模型念
+        到预算末尾，句尾被挤掉，11-08 现场 `1:2` 只有 0.10s），就把目标时长 ×1.25 再渲**一次**
+        （`min_seconds` 覆盖，见 `_stretch_seconds`），最终行标 `rerender=tail_tight`；重渲后仍紧
+        就按「尾巴更长」挑。这条只加一次尝试，不占用上面男声/截尾那两次重渲的名额。
         单元显式带 seed（听测配对）时原样透传、**不重渲**：那是别人量过的条件，不能偷偷换。
         日志里的 seed 是真正传给 `_run_infer` 的值（见 `_random_seed`）。
         """
@@ -696,9 +751,9 @@ class RenderQueue:
             tries = []
             _t_synth = time.monotonic()
 
-            def attempt(n):
+            def attempt(n, extra=None):
                 seed = fixed if (n == 1 and fixed is not None) else _random_seed()
-                got = self._synth(dict(unit, seed=seed), os.path.join(d, "seg%d.wav" % n))
+                got = self._synth(dict(unit, seed=seed, **(extra or {})), os.path.join(d, "seg%d.wav" % n))
                 # 合成腿可能返回 2 元组（老接口/测试桩）或 3 元组（多了「被时长下限抬过」标记）
                 sr, wave = got[0], got[1]
                 floor = got[2] if len(got) > 2 else None
@@ -727,13 +782,32 @@ class RenderQueue:
                             break
                         if not _bad_reasons(cur):
                             break                   # 不男声也不截尾：立刻停，不再往下渲
-            picked = max(range(len(tries)), key=lambda i: _rank(tries[i]))
+            elif fixed is None and _tail_tight(first):
+                # 2026-11-08：模型贴着预算收尾（尾静音 < 0.3s）⇒ 目标时长 ×1.25 再渲**一次**。
+                # 取消过的块不重渲（结果反正会被丢）；最多一次，重渲后仍紧就按「尾巴更长」挑。
+                sid, gen = getattr(job, "session_id", None), getattr(job, "generation", None)
+                reason = "tail_tight"
+                if sid is not None and self.is_cancelled(sid, gen):
+                    skipped = "skipped_cancelled"
+                else:
+                    try:
+                        attempt(2, {"min_seconds": _stretch_seconds(first, unit)})
+                    except Exception as e:          # noqa: BLE001 - 重渲失败保留第一次的结果
+                        retry_error = "%s: %s" % (type(e).__name__, str(e)[:120])
+                        print("[render_queue] %s unit=%s rerender=tail_tight 失败，保留已拿到的结果: %s"
+                              % (getattr(job, "session_id", "-"),
+                                 job.unit.get("unit_id") or "-", retry_error), flush=True)
+            if reason == "tail_tight":
+                picked = max(range(len(tries)), key=lambda i: _tail_rank(tries[i]))
+            else:
+                picked = max(range(len(tries)), key=lambda i: _rank(tries[i]))
             best = tries[picked]
             return {"status": "ok", "sr": best["sr"], "wave": best["wave"],
                     "floor": best.get("floor"),
                     "synth_ms": int((time.monotonic() - _t_synth) * 1000),
                     "seed": best["seed"],
-                    "quality": [{k: t[k] for k in ("seed", "tail_db", "f0_hz", "male", "clip")}
+                    "quality": [{k: t.get(k) for k in ("seed", "tail_db", "f0_hz", "male", "clip",
+                                                       "tail_sil_s")}
                                 for t in tries],
                     "picked": picked + 1, "rerender": reason,
                     "rerender_skipped": skipped,
