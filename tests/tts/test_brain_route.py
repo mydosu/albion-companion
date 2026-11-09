@@ -202,6 +202,22 @@ class RefusalTest(unittest.TestCase):
         self.assertFalse(bridge._looks_rejected("你好。", "こんにちは。\n元気ですか？"))
         self.assertFalse(bridge._looks_rejected("Hello.", "はい。"))             # 原文没汉字：不按这条判
         self.assertFalse(bridge._looks_rejected("你好。", ""))                   # 空串由调用方换腿
+        # 撞上 Sorry 模板但确实译成了日语：不许误杀（整句会静音）
+        self.assertFalse(bridge._looks_rejected("Sorry啦，我来晚了", "Sorryね、遅くなりました"))
+
+    def test_sorry_greeting_translation_is_kept(self):
+        """「Sorry啦」→「Sorryね」是正常译文：首腿结果直接用，不换腿、不静音。"""
+        with patch.object(bridge, "TRANSLATE_BACKEND", "codex"), \
+                patch.object(bridge, "TRANSLATE_ENABLED", True), \
+                patch.object(bridge.urllib.request, "urlopen",
+                             return_value=health("magpie", "antigravity/gemini-3.8-flash")), \
+                patch.object(bridge, "_ask_magpie", return_value="Sorryね、遅くなりました"), \
+                patch.object(bridge, "_cc_keys", return_value=["offline-placeholder"]), \
+                patch.object(bridge, "_ask") as ask, \
+                patch.object(bridge, "_ask_codex") as codex:
+            self.assertEqual(bridge.to_japanese("Sorry啦，我来晚了"), "Sorryね、遅くなりました")
+        ask.assert_not_called()
+        codex.assert_not_called()
 
     def test_first_leg_refusal_falls_through_to_next_leg(self):
         with patch.object(bridge, "TRANSLATE_BACKEND", "codex"), \

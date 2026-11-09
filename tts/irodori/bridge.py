@@ -298,13 +298,17 @@ _REFUSAL = re.compile(
 
 
 def _looks_rejected(src: str, got: str) -> bool:
-    """这条腿的返回是不是「拒答/根本没翻成日语」：命中拒绝模板，或原文有汉字而译文一个汉字假名都没有。"""
+    """这条腿的返回是不是「拒答/根本没翻成日语」：拒绝模板，或原文有汉字而译文一个汉字假名都没有。
+
+    两种判据都要求**译文里一个汉字/假名都没有**：「Sorry啦，我来晚了」→「Sorryね、遅くなりました」
+    是正常译文，开头撞上 Sorry 模板也不能当拒绝（否则整句静音）。
+    """
     g = (got or "").strip()
     if not g:
         return False                      # 空串＝这条腿没成，调用方本来就会换腿
-    if _REFUSAL.match(g):
-        return True
-    return bool(_HAN.search(src or "")) and not _CJK.search(g)
+    if _CJK.search(g):
+        return False                      # 有日文字符 ⇒ 确实翻成日语了
+    return bool(_REFUSAL.match(g)) or bool(_HAN.search(src or ""))
 
 
 def _leg(src: str, name: str, fn, *args, **kwargs) -> str:
