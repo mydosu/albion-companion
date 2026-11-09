@@ -602,8 +602,10 @@ class Coordinator:
         # 不是一个 `translated_text`——多句单元就该在这里逐子段送下去（复核问题 1）。
         # 2026-09-28：子段上可能带 `emotion`（桥的翻译腿顺带判的情绪，见 bridge.to_japanese_ex），
         # 一起带走送进规划；缺就当没有，绝不因此丢译文。
+        # 2026-11-09：子段还可能带 `intimate`（桥判了亲密码本锚，见 bridge_v2.intimate_codebook_anchor）。
+        # 它只用来选句尾气口（`ALBION_GAP_INTIMATE`），不参与规划/渲染；缺字段 = 非亲密，行为不变。
         segments = [(s.get("sub_index", i), (s.get("text") or "").strip(), s.get("emotion"),
-                     s.get("voice_caption"))
+                     s.get("voice_caption"), bool(s.get("intimate")))
                     for i, s in enumerate(prepared.get("ja_segments") or [])]
         segments = [s for s in segments if s[1]]
         if not segments:
@@ -752,7 +754,7 @@ class Coordinator:
         span_sent = False
         seg = None                       # 当前子段的账：start 发过没、帧数、样本数
         try:
-            for sub_index, ja_text, emotion, voice_caption in segments:
+            for sub_index, ja_text, emotion, voice_caption, intimate in segments:
                 if sess.cancelled:
                     return
                 # 每个子段开跑前也看一眼余额（省一次白烧的 GPU 渲染）；帧级检查仍在发帧前兜底。
@@ -813,9 +815,11 @@ class Coordinator:
                         if name == "audio_chunk":
                             audio = base64.b64decode(payload.get("audio_base64") or "")
                             if sess.fmt == "wav":
-                                # 统一气口：非末段子段必是句子收尾；末段按单元末尾的标点/切分原因定尾静音
-                                audio = GS.shape(audio, GS.tail_kind(unit.speech_text, unit.reason)
-                                                 if sub_index == segments[-1][0] else "sentence")
+                                # 统一气口：亲密子段一律短气口（`ALBION_GAP_INTIMATE`）；
+                                # 非末段子段是句子收尾；末段按单元末尾的标点/切分原因定尾静音。
+                                audio = GS.shape(audio, GS.shape_kind(
+                                    unit.speech_text, unit.reason, intimate=intimate,
+                                    last=(sub_index == segments[-1][0])))
                                 # 2026-11-08 尾部取证：整形后话说到第几秒 / 后面还剩多少静音。
                                 # 与 9889 final 行的 tail_voiced_s/tail_sil_s（整形前）对照，就能分清
                                 # 「模型少念了收尾」和「链路上被掐」——两者末段电平看起来一样。

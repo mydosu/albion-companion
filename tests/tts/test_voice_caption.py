@@ -1140,6 +1140,91 @@ class TestIntimateGoesToCodebook(unittest.TestCase):
         self.assertIsNone(VC.validate_caption(seg["voice_caption"]))
 
 
+class TestIntimateAnchorReachesPlan(unittest.TestCase):
+    """2026-11-09 样张 B:1：桥判了 intimate/strong，规划器却折成 bright/strong cfg=3.2。
+
+    原因在规划器的弱线索闸门（`scene_plan` 里"闸门弃权就作废 hint phonation"那条）：桥抬上去的
+    breathy 被当成"上游自述"剥掉，只剩 arousal/intensity=0.9 ⇒ `family_from_hint` 给出 bright。
+    修法是桥把判定显式带出来（`emotion.intimate_anchor`），闸门见到它就不剥 —— 只对桥真的打过
+    标记的单元例外，别的 hint 逐字不变。
+    """
+
+    ANCHORED = {"arousal": 0.65, "intensity": 0.9, "valence": 0.0,
+                "phonation": "breathy", "intimate_anchor": "strong"}
+
+    def setUp(self):
+        B2._last_intimate_at = None
+
+    def _plan(self, text, emotion, prev=None):
+        units = [{"unit_id": "u0", "text": text, "advance": True, "emotion": emotion}]
+        recs, state = SP.plan_units_v3(units, "", prev=prev, plan_version=4,
+                                       allow_neutral_whisper=True, weak_delivery=True,
+                                       cue_scope=False, refusal_guard=False,
+                                       hint_phonation=False, cross_sentence=False,
+                                       ja_stage_cue=False, level_rebase=False,
+                                       voice_caption=True)
+        return recs[0], state
+
+    def test_anchored_hint_wins_over_weak_delivery_gate(self):
+        rec, _ = self._plan("あっ……", self.ANCHORED)
+        self.assertEqual((rec["family"], rec["tier"]), ("intimate", "strong"))
+        self.assertAlmostEqual(rec["cfg"], 4.5)
+        self.assertEqual(rec["caption"], CB.A_BREATHY)
+        # `/v2/plan` 处理器会再给记录补 codebook_version=V2（v4 渲染必填）——cf. scene_plan.install
+        self.assertEqual(CB.CODEBOOK_VERSION_V2, 2)
+
+    def test_same_hint_without_marker_is_still_bright(self):
+        """对照：没有桥的标记（= 上游自述）就照旧折成 bright —— 非亲密句一点没变。"""
+        plain = {k: v for k, v in self.ANCHORED.items() if k != "intimate_anchor"}
+        rec, _ = self._plan("あっ……", plain)
+        self.assertEqual(rec["family"], "bright")
+        self.assertAlmostEqual(rec["cfg"], 3.2)
+
+    def test_bridge_marks_and_strips_interjection(self):
+        """接线：桥的亲密锚一起带出 `intimate` 段标记 + 提示标记，并去掉非高潮拟声的「！」。"""
+        emo = {"arousal": 0.65, "intensity": 0.6, "valence": 0.0, "phonation": "breathy"}
+        B2.intimate_codebook_anchor(emo, "はぁ……指揮官……", "")        # 让"刚才在亲密"成立
+        s, _ = svc(ja="あっ……！", emo=emo)
+        with mock.patch.dict(os.environ, ON):
+            res = prepare(s, req(unit_id="b1", speech="啊……！", raw="啊……！"))
+        seg = res.ja_segments[0]
+        self.assertTrue(seg.get("intimate"))
+        self.assertEqual(seg["emotion"]["intimate_anchor"], "strong")
+        self.assertEqual(seg["text"], "あっ……")
+        rec, _ = self._plan(seg["text"], seg["emotion"])
+        self.assertEqual((rec["family"], rec["tier"]), ("intimate", "strong"))
+        self.assertAlmostEqual(rec["cfg"], 4.5)
+
+    def test_plain_line_has_no_intimate_marker(self):
+        """非亲密单元：不带 `intimate` 段字段、不带提示标记、文本一字不动。"""
+        s, _ = svc(ja="今日はいい天気ですね。",
+                   emo={"arousal": 0.2, "intensity": 0.3, "valence": 0.0, "phonation": "voiced"})
+        with mock.patch.dict(os.environ, ON):
+            res = prepare(s, req(unit_id="n1", speech="今天天气不错。", raw="今天天气不错。"))
+        seg = res.ja_segments[0]
+        self.assertNotIn("intimate", seg)
+        self.assertNotIn("intimate_anchor", seg.get("emotion") or {})
+        self.assertEqual(seg["text"], "今日はいい天気ですね。")
+
+
+class TestBangStrip(unittest.TestCase):
+    """非高潮纯拟声去「！」（2026-11-09）：只动送去渲染的日文，字幕不受影响。"""
+
+    def test_rules(self):
+        f = B2.strip_nonclimax_bang
+        self.assertEqual(f("はぁ……！"), "はぁ……")
+        self.assertEqual(f("あっ！"), "あっ")
+        self.assertEqual(f("んっ……！ "), "んっ……")
+        # 高潮固定式：那个「！」是表演本身的一部分，保留
+        self.assertEqual(f("んんんっ……！！"), "んんんっ……！！")
+        self.assertEqual(f("はぁ……——っ！"), "はぁ……——っ！")
+        # 不是纯拟声 / 本来没「！」 ⇒ 原样
+        self.assertEqual(f("指揮官……はぁ……！"), "指揮官……はぁ……！")
+        self.assertEqual(f("はぁ……"), "はぁ……")
+        self.assertEqual(f("普通の文です。"), "普通の文です。")
+        self.assertEqual(f(""), "")
+
+
 try:
     import httpx
 except ImportError:              # 生产 venv 有 httpx；缺了就把转发测试标 skip，别让整套挂掉

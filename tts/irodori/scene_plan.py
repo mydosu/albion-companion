@@ -725,8 +725,16 @@ def plan_units_v3(units, extra_ctx="", prev=None, style_override=None,
         # 闸门弃权（没有可信的发声证据）时，hint 的 phonation 一律作废：既不参与选族，也不参与
         # 强度档（否则「小声じゃないよ。」会被念成耳语、「はい。」+breathy 会把弱档推成强档）。
         # —— Sol 第 7/8 轮两条旁路。
+        #
+        # 2026-11-09 例外：桥判过亲密码本锚的单元（`hint["intimate_anchor"]`，见
+        # `bridge_v2.intimate_codebook_anchor`）不走这条。那里的 phonation=breathy 不是"上游自述"，
+        # 是桥按拟声词表+前文/跨轮证据**判出来**的族，闸门再剥一次就把它折成 bright/strong
+        # （样张实测：「あっ……！」桥侧 intimate/strong，最终却按 bright/strong cfg 3.2 念）。
+        # 只有桥真的打了这个标记才例外；没有标记的 hint 逐字不变。
         _h = hint
-        if weak_delivery and not delivery and isinstance(hint, dict) and "phonation" in hint:
+        _anchored = bool(isinstance(hint, dict) and hint.get("intimate_anchor"))
+        if (weak_delivery and not delivery and isinstance(hint, dict) and "phonation" in hint
+                and not _anchored):
             _h = {k: v for k, v in hint.items() if k != "phonation"}
         # ① 的族隔离（v6）：只有 hint 自述这一路证据时，**发声方式不单独选族** —— 低可信的
         # "怎么说"不该把语义族从 neutral 抬成 intimate（Sol 第 13 轮第五条：`はい、わかりました。`

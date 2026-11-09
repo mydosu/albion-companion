@@ -177,8 +177,41 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual((sess.text.later_force, sess.text.soft_units), (80, 2))
 
     def test_gap_defaults(self):
-        self.assertEqual(GS.TAIL_S, {"sentence": 0.7, "comma": 0.3, "ellipsis": 0.8, "cut": 0.15})
+        self.assertEqual(GS.TAIL_S, {"sentence": 0.7, "comma": 0.3, "ellipsis": 0.8,
+                                     "cut": 0.15, "intimate": 0.3})
         self.assertEqual(GS.LEAD_S, 0.06)
+
+    # ---- 亲密句短气口（2026-11-09）--------------------------------------------
+    def test_intimate_tail_is_short_and_wins_over_punctuation(self):
+        """亲密子段：不看末尾标点，「……」也给 0.3s；非亲密照旧 0.8s。"""
+        for text in ("はぁ……", "指揮官……", "んっ。", "はぁ！"):
+            with self.subTest(text=text):
+                got = info(GS.shape(make_wav(0.2, 1.0, 1.2), GS.shape_kind(text, "", intimate=True)))
+                self.assertAlmostEqual(got["tail"], GS.TAIL_S["intimate"], delta=0.05)
+        plain = info(GS.shape(make_wav(0.2, 1.0, 1.2), GS.shape_kind("はぁ……")))
+        self.assertAlmostEqual(plain["tail"], GS.TAIL_S["ellipsis"], delta=0.05)
+
+    def test_intimate_gap_env_override(self):
+        import importlib
+        from unittest.mock import patch
+        with patch.dict("os.environ", {"ALBION_GAP_INTIMATE": "0.45"}):
+            mod = importlib.reload(GS)
+            try:
+                self.assertEqual(mod.TAIL_S["intimate"], 0.45)
+                self.assertEqual(mod.TAIL_S["ellipsis"], 0.8)      # 别的类别不受影响
+            finally:
+                importlib.reload(GS)
+
+    def test_shape_kind_only_changes_flagged_segments(self):
+        k = GS.shape_kind
+        self.assertEqual(k("はぁ……", "", intimate=True, last=True), "intimate")
+        self.assertEqual(k("はぁ……", "", intimate=True, last=False), "intimate")
+        # 没标记：逐字等于加这条之前
+        self.assertEqual(k("はぁ……"), "ellipsis")
+        self.assertEqual(k("はぁ！"), "sentence")
+        self.assertEqual(k("我想想，"), "comma")
+        self.assertEqual(k("说到一半", "idle"), "cut")
+        self.assertEqual(k("长句前半", "hard", last=False), "sentence")
 
 
 class ContinuationTest(unittest.TestCase):

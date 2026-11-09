@@ -33,6 +33,10 @@ TAIL_S = {
     "comma": float(os.environ.get("ALBION_GAP_COMMA", "0.3")),          # ，、；：
     "ellipsis": float(os.environ.get("ALBION_GAP_ELLIPSIS", "0.8")),    # …… …
     "cut": float(os.environ.get("ALBION_GAP_CUT", "0.15")),             # 力断/空闲冲刷（句子没说完）
+    # 亲密句（桥 `/v2/prepare` 判了码本锚、子段带 `intimate`）：不看末尾标点，句尾一律短气口。
+    # 2026-11-09 样张实测：句尾 0.7/0.8s + 壳 0.10s ⇒ 可听间隔 0.9–1.05s，喘息间接不上。
+    # 只有桥明确判过亲密的子段走这一类；别的句子一个字节都不变（`tail_kind` 不会返回它）。
+    "intimate": float(os.environ.get("ALBION_GAP_INTIMATE", "0.3")),
 }
 ENABLED = os.environ.get("ALBION_GAP_SHAPE", "1").lower() not in ("0", "false", "no", "off")
 
@@ -65,6 +69,21 @@ def tail_kind(text: str, reason: str = "") -> str:
     if reason in ("force", "idle"):
         return "cut"
     return "sentence"       # finish/hard 且无标点：一整段的收尾，按句末处理
+
+
+def shape_kind(text: str, reason: str = "", intimate: bool = False, last: bool = True) -> str:
+    """一个子段该用哪一类气口（2026-11-09）。
+
+    * `intimate`（桥判了亲密码本锚的子段）⇒ 一律 `intimate`（默认 0.3s），不看末尾标点：
+      亲密戏里「……」结尾的句子占多数，按 ellipsis 给 0.8s 会让喘息之间空太久；
+    * 非末子段（同一单元被桥再切开的前几片）⇒ `sentence`：那是句子收尾，不是单元收尾；
+    * 末子段 ⇒ 按单元末尾标点/切分原因（与加这条之前逐字相同）。
+    """
+    if intimate:
+        return "intimate"
+    if not last:
+        return "sentence"
+    return tail_kind(text, reason)
 
 
 def _fade_out(body, peak, sr):
