@@ -184,15 +184,23 @@ def seed_notice_text(text):
     return "\n".join(lines)
 
 
-def seed_tool_line(content):
-    """她真发出去的那句话（send_message 的工具行）→「阿尔比恩（群里）：正文」。"""
+def seed_tool_text(content):
+    """send_message 那行里的正文（比对「想了又发了」用）。"""
     try:
-        data = json.loads(content or "{}")
+        return str((json.loads(content or "{}") or {}).get("text") or "").strip()
     except Exception:                       # noqa: BLE001 - 旧行不是 JSON，当没有
         return ""
-    text = str((data or {}).get("text") or "").strip()
+
+
+def seed_tool_line(content):
+    """她真发出去的那句话（send_message 的工具行）→「阿尔比恩（群里）：正文」。"""
+    text = seed_tool_text(content)
     if not text:
         return ""
+    try:
+        data = json.loads(content or "{}")
+    except Exception:                       # noqa: BLE001
+        data = {}
     where = SEED_CHANNEL_NAMES.get(str((data or {}).get("channel") or ""), "平台")
     return "阿尔比恩（%s）：%s" % (where, text[:SEED_TOOL_CHARS])
 
@@ -249,7 +257,7 @@ def activity_history(session_id, now=None):
             # 她真发出去的话：只在群/悄悄话这份里补（桌面播种不变）
             line = seed_tool_line(text) if compact and tool_name == "send_message" else ""
             if line:
-                out.append({"role": "assistant", "content": line, "raw": True})
+                out.append({"role": "assistant", "content": line, "raw": True, "sent": seed_tool_text(text)})
             continue
         if role == "user":
             if "【现在】" in text:
@@ -264,8 +272,27 @@ def activity_history(session_id, now=None):
                 continue
             if text == "（阿尔比恩自己醒来）":
                 text = wake.WAKE_MARKER   # 醒来那一轮：transcript 按门铃处理
+        elif compact and role == "assistant":
+            # 平台轮里她写在正文里的那些，群里根本看不到：不能接成「她说过」（2026-11-09）。
+            body = body_of(text).strip()
+            if not body or SILENT_RE.search(body) or body.startswith("（你刚才那段话只写在了这里"):
+                continue
+            out.append({"role": "assistant", "content": body, "raw": True, "unsent": True})
+            continue
         if text.strip():
             out.append({"role": role, "content": text[:SEED_ROW_CHARS]})
+    if compact:
+        # 「想了又发了」的：紧挨着的那条 send_message 正文和她一样，就不重复接（只留发出去的那条）。
+        kept = []
+        for i, m in enumerate(out):
+            if m.get("unsent"):
+                neighbours = [out[i - 1] if i else None, out[i + 1] if i + 1 < len(out) else None]
+                if any(n and n.get("sent") == m["content"] for n in neighbours):
+                    continue
+                m = {"role": "assistant", "raw": True,
+                     "content": "阿尔比恩（只在心里想，没发出去）：" + m["content"][:SEED_PLATFORM_ROW_CHARS]}
+            kept.append(m)
+        out = kept
     return out
 
 
@@ -1357,6 +1384,12 @@ def _selftest():
          "send_message", now - 289),
         ("albion-discord", "user", "（你刚才那段话只写在了这里，对方看不到。想让他看到就用 send_message 发出去；"
                                    "不想发就只回 [SILENT]。）", None, now - 288),
+        # 只有 ACT、没有正文：丢掉
+        ("albion-discord", "assistant", '<|ACT:{"emotion":"neutral"}|>', None, now - 287),
+        # 想了又发：紧挨着那条 send_message 正文和她一样，丢掉
+        ("albion-discord", "assistant", '<|ACT:{"emotion":"happy"}|>\n在呢，指挥官。', None, now - 286),
+        # 只回 [SILENT]：丢掉
+        ("albion-discord", "assistant", "[SILENT]", None, now - 285),
     ])
     db.commit()
     db.close()
@@ -1368,7 +1401,14 @@ def _selftest():
     assert "指挥官：【平台消息】" not in gt, "通知不能顶着「指挥官：」"
     assert "阿尔比恩（群里）：在呢，指挥官。" in gt, "她自己发出去的话也要接上"
     assert "你刚才那段话只写在了这里" not in gt, "宿主的提醒不是聊天"
+    # 平台轮里写在正文、群里看不到的那些：带前缀接进来，不能当成她说过
+    assert "阿尔比恩（只在心里想，没发出去）：（在群里回了）" in gt, gt[-400:]
+    assert gt.count("在呢，指挥官。") == 1, "想了又发的不要重复（只留发出去那条）"
+    assert "<|ACT" not in gt and "[SILENT]" not in gt, "只有 ACT / [SILENT] 的丢掉"
+    assert "\n阿尔比恩：" not in gt, "平台轮里不要再用「阿尔比恩：」把没发出去的话当成说过了"
+    # 桌面会话：assistant 还是原来的「阿尔比恩：…」，不去 ACT、不加前缀
     assert "指挥官：[2026-10-16 10:00] 今天想吃面" in transcript(activity_history("albion-desktop", now)), "桌面播种不变"
+    assert "阿尔比恩：<|ACT" in transcript(activity_history("albion-desktop", now)), "桌面不去 ACT、不加前缀"
     # compact 之外（桌面）不补 tool 行、不压通知
     assert seed_notice_text(gnotice).startswith("（Discord 群）#292")
     assert seed_tool_line(json.dumps({"channel": "discord_whisper", "text": "悄悄话说一句"})) == "阿尔比恩（悄悄话）：悄悄话说一句"
