@@ -1,7 +1,7 @@
 # 阿尔比恩长期迭代规则
 
 先读 `docs/PROJECT_MAP.md`、`docs/FILE_LAYOUT.md`；重建机器读 `docs/REBUILD.md`。
-这是公开仓库 `mydosu/albion-companion`，唯一 Git 根是本目录。私人配置（`.env.local`、token、人设）只留本机；自训权重在作者的私有仓库 `mydosu/Albion-Companion-Wife` 的 Releases。
+这是公开仓库 `mydosu/albion-companion`，唯一 Git 根是本目录。私人配置（`.env.local`、token、人设）只留本机；自训权重在作者的私有仓库 `mydosu/Albion-Companion-Wife` 的 Releases；不能公开的成人向/人设相关文件（亲密技能、台本、翻译参考、实验脚本）放该私有仓库 `private/`（对照表见其 `private/README.md`，克隆在 `D:\AI\Albion-Companion-Wife`），正常提交推送，不 force。
 `shell/`、`ear/`、`eyes/`、`widget/`、`tts/` 不是独立项目仓库。子目录已有 AGENTS.md 仍适用。
 
 - 执行任务时按同席给的任务目标和项目长期授权放手做：为达成目标需要改的都可以改，顺手发现的问题直接修；但不要借整理重构无关业务、换模型、改身份或同步 Windows 与 WSL skills。
