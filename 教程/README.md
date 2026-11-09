@@ -23,7 +23,7 @@
 | 看屏幕截图 | 主模型能收图就自己看；不收图时交号池里的 grok-4.7 转述 | [09](09-她的眼睛.md) |
 | 看摄像头 | 视觉机上的本地 Qwen3-VL 4B（llama.cpp），照片不出局域网，也不进主模型 | [09](09-她的眼睛.md) |
 | 记忆的向量模型 | BAAI/bge-m3（1024 维） | [07](07-长期记忆.md) |
-| 记忆抽取 | 中转站上几个免费模型轮换（minimax-m3.1-flash、beam、ornith），DeepSeek V4.1 Flash 兜底 | [07](07-长期记忆.md) |
+| 记忆抽取 | Gemini 3.8 Flash | Gemini Pro 订阅，用 Magpie 反代；详见 [07](07-长期记忆.md) |
 | 语音识别 | 本地 paraformer，跑 CPU | [06](06-语音输入.md) |
 | 她的声音 | 本地 Irodori TTS + 自己训的 LoRA | [04](04-训练角色声音.md) |
 
