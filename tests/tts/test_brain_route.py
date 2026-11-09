@@ -170,5 +170,81 @@ class BrainRouteTest(unittest.TestCase):
         self.assertNotIn("reasoning_effort", seen[1])
 
 
+REFUSAL_EN = ("I cannot fulfill this request. I am unable to generate or translate "
+              "sexually explicit content.")
+
+
+class RefusalTest(unittest.TestCase):
+    """拒绝文本不进 TTS（2026-11）：任一条腿交回英文拒绝/非日语都算这条腿失败，换下一腿。
+
+    生产事故：亲密的句子首腿 Gemini 安全拒绝，返回英文模板；老路径 `to_japanese` 原样接收，
+    TTS 就把 `I cannot fulfill this request...` 念了出来（logs/tts_bridge.log 有那条 unit 记录）。
+    """
+
+    def setUp(self):
+        self._env = patch.dict(os.environ, {"TTS_BRAIN_ROUTE": "1"})
+        self._env.start()
+        self.addCleanup(self._env.stop)
+        bridge.reset_brain_route()
+        self._magpie = bridge._magpie_down_until
+        bridge._magpie_down_until = 0.0
+        self.addCleanup(setattr, bridge, "_magpie_down_until", self._magpie)
+
+    def tearDown(self):
+        bridge.reset_brain_route()
+
+    def test_looks_rejected_template_and_non_japanese(self):
+        self.assertTrue(bridge._looks_rejected("你好。", REFUSAL_EN))
+        self.assertTrue(bridge._looks_rejected("你好。", "I'm sorry, but I can't help with that."))
+        self.assertTrue(bridge._looks_rejected("你好。", "I am unable to translate this."))
+        self.assertTrue(bridge._looks_rejected("你好。", "Sure, here you go."))   # 有汉字、译文没汉字假名
+        self.assertFalse(bridge._looks_rejected("你好。", "こんにちは。"))
+        self.assertFalse(bridge._looks_rejected("你好。", "こんにちは。\n元気ですか？"))
+        self.assertFalse(bridge._looks_rejected("Hello.", "はい。"))             # 原文没汉字：不按这条判
+        self.assertFalse(bridge._looks_rejected("你好。", ""))                   # 空串由调用方换腿
+
+    def test_first_leg_refusal_falls_through_to_next_leg(self):
+        with patch.object(bridge, "TRANSLATE_BACKEND", "codex"), \
+                patch.object(bridge, "TRANSLATE_ENABLED", True), \
+                patch.object(bridge.urllib.request, "urlopen",
+                             return_value=health("magpie", "antigravity/gemini-3.8-flash")), \
+                patch.object(bridge, "_ask_magpie", return_value=REFUSAL_EN), \
+                patch.object(bridge, "_cc_keys", return_value=["offline-placeholder"]), \
+                patch.object(bridge, "_ask", return_value="こんにちは。") as ask, \
+                patch.object(bridge, "_ask_codex") as codex, \
+                patch("builtins.print") as printed:
+            self.assertEqual(bridge.to_japanese("你好。"), "こんにちは。")
+        ask.assert_called_once()
+        codex.assert_not_called()
+        logs = [" ".join(str(a) for a in c.args) for c in printed.call_args_list]
+        self.assertTrue(any("首腿被拒（refusal）" in x and "换下一腿" in x for x in logs), logs)
+
+    def test_all_legs_refused_returns_empty_string(self):
+        with patch.object(bridge, "TRANSLATE_BACKEND", "codex"), \
+                patch.object(bridge, "TRANSLATE_ENABLED", True), \
+                patch.object(bridge.urllib.request, "urlopen",
+                             return_value=health("magpie", "antigravity/gemini-3.8-flash")), \
+                patch.object(bridge, "_ask_magpie", return_value=REFUSAL_EN), \
+                patch.object(bridge, "_cc_keys", return_value=["offline-placeholder"]), \
+                patch.object(bridge, "_ask", return_value="I'm sorry, but I can't help with that."), \
+                patch.object(bridge, "_ask_codex", return_value=REFUSAL_EN), \
+                patch("builtins.print") as printed:
+            self.assertEqual(bridge.to_japanese("你好。"), "")
+        logs = [" ".join(str(a) for a in c.args) for c in printed.call_args_list]
+        self.assertTrue(any("这句不念" in x for x in logs), logs)
+
+    def test_emotion_path_fallback_never_voices_refusal(self):
+        """生产那条路的原样复现：to_japanese_ex 首腿被拒 → 退回 to_japanese 也全拒 ⇒ 空串（不念）。"""
+        with patch.object(bridge, "TRANSLATE_BACKEND", "codex"), \
+                patch.object(bridge, "TRANSLATE_ENABLED", True), \
+                patch.object(bridge, "EMOTION_HINT", True), \
+                patch.object(bridge, "ask_brain", return_value=REFUSAL_EN), \
+                patch.object(bridge, "_cc_keys", return_value=["offline-placeholder"]), \
+                patch.object(bridge, "_ask", return_value=REFUSAL_EN), \
+                patch.object(bridge, "_ask_codex", return_value=""), \
+                patch("builtins.print"):
+            self.assertEqual(bridge.to_japanese_ex("这是个测试句子，别念英文。"), ("", None))
+
+
 if __name__ == "__main__":
     unittest.main()

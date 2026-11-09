@@ -282,8 +282,42 @@ def _sent_count(text: str) -> int:
 
 
 _CJK = re.compile(r"[一-鿿぀-ヿ]")
+_HAN = re.compile(r"[一-鿿]")          # 原文是不是中文（只看汉字，不看假名）
 _CLAUSE = re.compile(r"[^，、；：—…,;]+")
 CJK_FLOOR = 0.9           # 译文汉字+假名数 / 原文汉字+假名数 的下限：中→日假名展开，正常 ≥1.2，直通日语/代码约 1.0
+
+# 模型的「安全拒绝」英文模板（Gemini 拒亲密内容时就这么回，2026-11 生产实测）：
+# 首腿把整段英文拒绝当译文交回来，送去 TTS 就是对着用户念英文。判据只看开头，不看语义。
+_REFUSAL = re.compile(
+    r"^\s*(?:"
+    r"i\s*(?:cannot|can\s?not|can['’]?t|['’]?m\s+(?:sorry|unable|not\s+able)"
+    r"|am\s+(?:sorry|unable|not\s+able)|apologize|must\s+decline|won['’]?t)"
+    r"|sorry\b|unable\s+to\b|unfortunately\b|as\s+an\s+ai\b"
+    r")",
+    re.I)
+
+
+def _looks_rejected(src: str, got: str) -> bool:
+    """这条腿的返回是不是「拒答/根本没翻成日语」：命中拒绝模板，或原文有汉字而译文一个汉字假名都没有。"""
+    g = (got or "").strip()
+    if not g:
+        return False                      # 空串＝这条腿没成，调用方本来就会换腿
+    if _REFUSAL.match(g):
+        return True
+    return bool(_HAN.search(src or "")) and not _CJK.search(g)
+
+
+def _leg(src: str, name: str, fn, *args, **kwargs) -> str:
+    """所有翻译腿的唯一出口：调用一条腿，返回不可用的译文（拒绝/非日语）一律当这条腿失败。
+
+    集中在这里判，各腿不各抄一份：只要有一条腿拿回英文拒绝，就立刻换下一条腿；
+    全都不行则由调用方返回空串（这句不念），绝不把英文送进 TTS。
+    """
+    got = fn(*args, **kwargs)
+    if not got or not _looks_rejected(src, got):
+        return got
+    print("[translate] %s被拒（refusal） source=%s → 换下一腿" % (name, text_meta(src)), flush=True)
+    return ""
 
 
 def _complete(zh: str, ja: str) -> bool:
@@ -391,7 +425,7 @@ def to_japanese(text: str, by_clause: bool = False) -> str:
         # codex(GPT) 退为退路。分支名保留 "codex"（历史包袱），语义以本行为准。
         def one(seg: str) -> str:
             # 首腿：脑现在用的模型（2026-10-30 起翻译跟着脑走，见 ask_brain）
-            got = ask_brain(seg)
+            got = _leg(seg, "首腿", ask_brain, seg)
             if got:
                 return got
             # 三重回退（2026-10-02 指挥官定）：HTTP 退路里先 key#1 再 key#2，最后 codex luna。
@@ -399,7 +433,7 @@ def to_japanese(text: str, by_clause: bool = False) -> str:
             # 情绪路径 + 老路径各打两次就把 prepare 的 10s 吃光了（2026-10-14 中文整句哑掉）
             keys = _cc_keys()
             for i, fk in enumerate(keys):
-                got = _ask(fk, seg, FALLBACK_MODEL, FALLBACK_BASE)
+                got = _leg(seg, "Command Code key#%d" % (i + 1), _ask, fk, seg, FALLBACK_MODEL, FALLBACK_BASE)
                 if got:
                     return got
                 if i == len(keys) - 1:
@@ -408,25 +442,28 @@ def to_japanese(text: str, by_clause: bool = False) -> str:
                 print("[translate] 没有可用的 Command Code key（没拿到或额度用完冷却中），直接走 codex", flush=True)
             if not CODEX_API_FALLBACK:
                 return ""
-            return _ask_codex(seg)
+            return _leg(seg, "codex luna", _ask_codex, seg)
 
         segs = parts if len(parts) > 1 else [text]
         with ThreadPoolExecutor(max_workers=2) as ex:
             outs = list(ex.map(one, segs))
         ja = _join_all(outs) if len(segs) > 1 else (outs[0] if outs else "")
     else:
-        ja = ask_brain(text)     # 首腿：脑现在用的模型
+        ja = _leg(text, "首腿", ask_brain, text)     # 首腿：脑现在用的模型
         if not ja and not key:
             print("[translate] 没拿到 API key，跳过翻译", flush=True)
             return ""
         if not ja and len(parts) > 1:      # 逐句译：多句一次送，模型会整句漏掉（朗读就是漏台词）
             with ThreadPoolExecutor(max_workers=4) as ex:
-                outs = list(ex.map(lambda x: _ask(key, x, TRANSLATE_MODEL), parts))
+                outs = list(ex.map(lambda x: _leg(x, "DeepSeek", _ask, key, x, TRANSLATE_MODEL), parts))
             ja = _join_all(outs)
         elif not ja:
-            ja = _ask(key, text, TRANSLATE_MODEL)
+            ja = _leg(text, "DeepSeek", _ask, key, text, TRANSLATE_MODEL)
     if ja:
         print(f"[{time.strftime('%H:%M:%S')}] [translate] {_sent_count(text)}句->{_sent_count(ja)}句 source={text_meta(text)} target={text_meta(ja)}", flush=True)
+    else:
+        # 所有腿都被拒/失败：返回空串让调用方静音，绝不把英文拒绝念出来
+        print("[translate] 所有腿都没拿到可用的日语译文（拒绝或失败），这句不念 source=%s" % text_meta(text), flush=True)
     return ja
 
 
