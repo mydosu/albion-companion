@@ -24,6 +24,16 @@ TERMINAL_TAIL = HARD + WEAK + "）)】]」』”\"'》〉"
 CTRL_OPEN = "<|"
 CTRL_CLOSE = "|>"
 
+# 中文纯拟声字集（2026-11-10）：亲密场景里脑会回一串连续短喘「——唔！嗯！啊！哈啊……！嗯嗯……！」。
+# 每个「！」都当硬边界 ⇒ 每声单独合成、自带尾静音和块间气口，听着成了一惊一乍的惊呼；用户选的样张
+# 是**整串当一个单元**一起渲染（模型自己的节奏就有喘的感觉）。只在硬边界处用，见 _moan_boundary。
+#
+# shortcut（已知局限，故意不修）：只认这份中文拟声字集，不看上下文/力度。所以日常对话里
+# 「啊！嗯！」「哼！哈！」这种连续叹词也会被并成一个单元 —— 换来的是纯逻辑、可离线测试、
+# 不看未来也能逐字流式（分块不变）。要真按台词/亲密场景区分，得把场景信息喂进切句器。
+MOAN_ZH = set("嗯啊哈唔呜呼啾哼")
+MOAN_MERGE_MAX = 24      # 纯拟声累积到超过这么多可说字就在当前硬边界切（别拖首声延迟）
+
 
 def is_word(ch: str) -> bool:
     return ch.isalnum() or "\u4e00" <= ch <= "\u9fff" or "\u3040" <= ch <= "\u30ff"
@@ -211,7 +221,45 @@ class SessionText:
             return False
         return not is_word(self.text[i + 1])
 
-    def _next_candidate(self, limit: int):
+    def _pure_moan(self, lo: int, cut: int) -> bool:
+        """lo..cut 是纯拟声段：所有"字"（is_word）都在 MOAN_ZH 里，且至少有一个字。"""
+        words = [self.text[i] for i in range(lo, cut)
+                 if self.kinds[i] == "speech" and is_word(self.text[i])]
+        return bool(words) and all(c in MOAN_ZH for c in words)
+
+    def _moan_next(self, cut: int, limit: int):
+        """硬边界之后第一个"实字"：True=还是拟声字，False=别的字，None=还没到达。
+
+        跳过收尾标点（TERMINAL_TAIL）和空白 —— 「唔！……！！嗯」中间那些「……！！」不算实字。
+        """
+        j = cut
+        while j < limit:
+            if self.kinds[j] in ("speech", "punct") and (self.text[j] in TERMINAL_TAIL
+                                                        or self.text[j].isspace()):
+                j += 1
+                continue
+            return is_word(self.text[j]) and self.text[j] in MOAN_ZH
+        return None                              # 后面还没来：不猜
+
+    def _moan_boundary(self, lo: int, cut: int, limit: int, speak: int, flush: bool) -> str:
+        """纯拟声串在硬边界处怎么处置：merge=接着累积成一个单元，wait=后面的字还没到先等，cut=照常硬切。
+
+        - 后面还是拟声字 → merge（一串短喘一个单元，交给模型自己的节奏）；
+        - 后面是别的字 → cut（喘的那串自己成一个单元，台词另起，不把喘和台词并一起）；
+        - 后面还没到 → wait（不看未来下判断；收尾窗口/idle 照旧兜底，flush 时照常切）；
+        - 已经超过 MOAN_MERGE_MAX 个可说字 → cut（别把首声拖太久）。
+        不是纯拟声段一律 cut —— 非拟声片段的行为逐字段不变。
+        """
+        if speak > MOAN_MERGE_MAX or not self._pure_moan(lo, cut):
+            return "cut"
+        nxt = self._moan_next(cut, limit)
+        if nxt is True:
+            return "merge"
+        if nxt is None and not flush:
+            return "wait"
+        return "cut"
+
+    def _next_candidate(self, limit: int, flush: bool = False):
         """最早的可提交切点 —— **因果**：只用已到达的文本，绝不看后面还会来什么。
 
         这一点是分块不变性的根：逐字喂和一次性喂必须得到同一结果，所以候选必须按位置从左到右
@@ -234,7 +282,10 @@ class SessionText:
             ch, k = self.text[i], self.kinds[i]
             if k == "speech":
                 if ch in HARD and has_word(self.speech_of_range(lo, cut)):
-                    return (i, "hard")          # 硬边界：交给收尾窗口
+                    how = self._moan_boundary(lo, cut, limit, speak, flush)
+                    if how == "cut":
+                        return (i, "hard")      # 硬边界：交给收尾窗口
+                    continue                    # merge=并进同一单元 / wait=等下一个字到了再判
                 space_ok = ch.isspace() and self._space_soft(i, limit)
                 space_pending = ch.isspace() and i + 1 >= limit   # 右边未到：这格先不判（否则看未来）
                 if first:
@@ -292,7 +343,7 @@ class SessionText:
                     out.append(self._commit(end, "hard"))
                     continue
                 break
-            cand = self._next_candidate(limit)
+            cand = self._next_candidate(limit, flush)
             if cand is None:
                 if flush:
                     break

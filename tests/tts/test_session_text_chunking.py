@@ -86,5 +86,70 @@ class SpaceCutTest(unittest.TestCase):
             self.assertIn(PURE_CN[u[1] - 1], CUT_PUNCT, "切点 %d 不在标点后：%r" % (u[1], u[2]))
 
 
+class MoanRunTest(unittest.TestCase):
+    """亲密场景的连续短喘：一串纯拟声并成一个单元（2026-11-10）。
+
+    之前每个「！」都硬切，每声单独渲染、各自带尾静音和块间气口，听着是一声一声的惊呼；
+    用户选的样张是整串一起渲染（模型自己的节奏有喘的感觉）。
+    """
+
+    PANT = "——唔！嗯！啊！哈啊……！嗯嗯……！"
+    PANT_THEN_LINE = "——唔！嗯！啊……！子、子宫口……好烫……"
+
+    def test_whole_moan_run_is_one_unit(self):
+        units = run([self.PANT])
+        self.assertEqual([u[2] for u in units], [self.PANT])
+        self.assertEqual(units[0][4], "hard")
+
+    def test_moan_run_stops_before_real_line(self):
+        units = run([self.PANT_THEN_LINE])
+        self.assertGreater(len(units), 1)
+        self.assertEqual(units[0][2], "——唔！嗯！啊……！")
+        self.assertTrue(units[1][2].startswith("子、子宫口"), units[1][2])
+        self.assertEqual("".join(u[2] for u in units), self.PANT_THEN_LINE)
+
+    def test_moan_cap_splits_after_24_speech_chars(self):
+        text = "嗯！" * 14
+        units = run([text])
+        self.assertEqual(len(units), 2, [u[2] for u in units])
+        self.assertEqual(units[0][2], "嗯！" * 13)      # 第 13 声 26 个可说字 > 24 → 切
+        self.assertEqual(units[1][2], "嗯！")
+
+    def test_cap_checked_on_speech_chars_not_raw_chars(self):
+        # 「……」等收尾标点不算字数：25 个可说字以内（含标点）仍要并住
+        text = "啊" + "……！" * 11                      # 可说字 12 个
+        self.assertEqual([u[2] for u in run([text])], [text])
+
+    def test_plain_exclamation_still_splits(self):
+        units = run(["好的！明天见！"])
+        self.assertEqual([u[2] for u in units], ["好的！", "明天见！"])
+
+    def test_wait_then_line_arrives_still_cuts(self):
+        s = SessionText("moan")
+        self.assertEqual(s.feed("唔！", 0.0), [], "后面的字没到：不许提前下判断")
+        self.assertEqual(s.feed("嗯！", 0.0), [], "还是拟声：继续累积")
+        out = s.feed("好烫", 0.0)                        # 非拟声字到了 → 在喘串后切
+        self.assertEqual([u.speech_text for u in out], ["唔！嗯！"])
+
+    def test_idle_still_flushes_pending_moan_run(self):
+        s = SessionText("moan")
+        s.feed("唔！嗯！", 0.0)
+        self.assertEqual(s.tick(0.0 + s.idle_window + 0.05)[0].reason, "idle")
+
+    def test_flush_cuts_at_hard_boundary(self):
+        s = SessionText("moan")
+        s.feed("唔！嗯！", 0.0)
+        out = s.finish(0.05)
+        self.assertEqual([(u.speech_text, u.reason) for u in out], [("唔！嗯！", "hard")])
+
+    def test_streaming_and_whole_feed_agree(self):
+        for text in (self.PANT, self.PANT_THEN_LINE, "嗯！" * 14, "啊！嗯！好的！明天见！"):
+            with self.subTest(text=text):
+                whole = run([text])
+                self.assertEqual(run(list(text)), whole)
+                self.assertEqual(run(random_chunks(text, 7)), whole)
+                self.assertEqual("".join(u[2] for u in whole), text)
+
+
 if __name__ == "__main__":
     unittest.main()
