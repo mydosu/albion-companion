@@ -192,6 +192,12 @@ class Config:
                     "later_ramp": float(os.environ.get("ALBION_CUT_RAMP", kw.get("later_ramp", 3.5))),
                     "ramp_floor": int(os.environ.get("ALBION_CUT_RAMP_FLOOR", kw.get("ramp_floor", 24)))}
         self.unit_budget = float(os.environ.get("UNIT_BUDGET") or kw.get("unit_budget", 110.0))
+        # 预取深度（2026-11-10）：原来写死 1，一个慢单元（翻译 10~26s）一旦超过上一句的播放长度
+        # 就是句子中间的静默。深度 = 同时"提前翻译"的单元数（仍**不**提前渲染，顺序不会乱）。
+        # 默认 2；0 = 关掉预取。桥侧每会话窗口要 ≥ 深度+1（`bridge_v2.PrepareService` 跟着同一个
+        # 环境变量算），否则多出来的预取会被桥判 `session_window` 直接失败。
+        self.prefetch_depth = max(0, min(8, int(os.environ.get("ALBION_PREFETCH_DEPTH")
+                                              or kw.get("prefetch_depth", 2))))
         self.render_timeout = float(os.environ.get("RENDER_TIMEOUT") or kw.get("render_timeout", 90.0))  # GPU 软超时
         self.max_units = kw.get("max_units", MAX_UNITS)
         self.max_chars = kw.get("max_chars", MAX_CHARS)
@@ -286,7 +292,7 @@ class Session:
         self.units = asyncio.Queue()             # 已切好的单元（Unit）
         self.pending = deque()                   # 尚未 dispatch 的单元号（算容量）
         # 翻译预取槽：(unit, task)，只提前 prepare，不提前渲染（codex 裁决边界）
-        self.prefetch = None
+        self.prefetch = []
         self.cur_pf = None                       # 正在被处理的预取（dispatcher → _pipeline）
         self.errors = []
         self.audio_bytes = 0
@@ -1260,10 +1266,11 @@ class Coordinator:
         """
         sess.text.cancel()
         if sess.prefetch:                       # 预取也不能漏：取消后它的结果没人取
-            self._T0.pop(sess.prefetch[0].unit_id, None)   # 它的时间账也没人清了（codex 复核）
-            if sess.prefetch[1]:                # 无声单元的预取槽没有 task（codex 复核）
-                sess.prefetch[1].cancel()
-            sess.prefetch = None
+            for _u, _t in sess.prefetch:
+                self._T0.pop(_u.unit_id, None)  # 它的时间账也没人清了（codex 复核）
+                if _t:                          # 无声单元的预取槽没有 task（codex 复核）
+                    _t.cancel()
+            sess.prefetch = []
         # 当前单元若正卡在 `_pipeline()` 里，取消会让它直接抛 CancelledError 出栈，
         # 那条清理路径根本走不到 —— 它的账只能在这里按 pending 清（codex 复核）。
         for uid in sess.pending:
@@ -1288,19 +1295,21 @@ class Coordinator:
         await self.cancel_render(sess)
 
     def _prefetch_next(self, sess):
-        """提前翻译**下一单元**，与当前单元的渲染重叠 —— 修 P7 量到的单元间空档。
+        """提前翻译接下来 `prefetch_depth` 个单元，与当前单元的渲染重叠 —— 修 P7 量到的单元间空档。
 
         codex 裁决的边界：只提前 `prepare`（**不提前渲染**，所以预取段不会越到当前单元前面发声）；
-        一次只预取一个（桥的"每会话 2 单元在途"窗口：当前 + 预取各 1）；
-        预取任务由会话持有，`_pipeline` 取回时才用；失败仍在**它自己的 unit_id** 上记。
+        顺序仍由 `sess.prefetch` 这个 FIFO 保证（`_dispatcher` 永远取队头）。
+        2026-11-10：从写死 1 改成 `ALBION_PREFETCH_DEPTH`（默认 2）—— 一个单元准备 10~26s 时，
+        深度 1 只够盖住一句台词，第二句就露空档。桥侧窗口跟着调（`bridge_v2` 同一个环境变量）。
         """
-        if sess.cancelled or sess.prefetch:
+        if sess.cancelled:
             return
         try:
-            nxt = sess.units.get_nowait()
+            while len(sess.prefetch) < self.cfg.prefetch_depth:
+                nxt = sess.units.get_nowait()
+                sess.prefetch.append(self._prepare_ahead(sess, nxt))
         except asyncio.QueueEmpty:
             return
-        sess.prefetch = self._prepare_ahead(sess, nxt)
 
     def _prepare_ahead(self, sess, nxt):
         if self.cfg.engine == "gsv":
@@ -1347,8 +1356,7 @@ class Coordinator:
         """顺序处理单元：一次一个，让 cancel 有确定的切点。任何异常都必须变成事件，不能静默死。"""
         while True:
             # 预取的单元**就是**下一个要处理的单元（否则预取结果会被丢掉、白翻译一遍）
-            pf = sess.prefetch
-            sess.prefetch = None
+            pf = sess.prefetch.pop(0) if sess.prefetch else None
             if pf is None:
                 unit = await sess.units.get()
             else:

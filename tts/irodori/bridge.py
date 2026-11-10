@@ -15,6 +15,7 @@ import hashlib
 import logging
 from logging.handlers import RotatingFileHandler
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait as _futures_wait, FIRST_COMPLETED as _FIRST_COMPLETED
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
@@ -246,6 +247,13 @@ def _parse_emotion_json(txt: str):
     return ja, (emo or None)
 
 
+# ---- 对冲（2026-11-10）：首腿慢就并行发退路腿，谁先给出合格译文用谁 ----------------------
+# 背景（2026-11-09 亲密场景静默 24s）：9885 的预取只提前 1~2 个单元，一个单元的准备一旦
+# 超过上一句的播放长度就直接变成句中静默。Gemini 带思考时 11~19s、拒绝要 8~11s，都超过一句台词。
+# 对冲把"最坏 = 首腿最慢"压成"最坏 ≈ HEDGE_S + 退路腿耗时"。0 = 关（回到纯串行）。
+HEDGE_S = float(os.environ.get("ALBION_TRANSLATE_HEDGE_S", "5"))
+
+
 def to_japanese_ex(text: str, context: str = ""):
     """中文 → (日语, 情绪提示)。**与 `to_japanese` 同口径、同兜底**，只是多带一个情绪结构。
 
@@ -277,8 +285,14 @@ def to_japanese_ex(text: str, context: str = ""):
         # 但 got 非空 ⇒ 不走下面 DeepSeek 的 JSON 腿，白等一次又退回 to_japanese 再问一次 Gemini（还是拒）。
         # 过 _leg 之后拒绝＝空串，直接落到 DeepSeek，译文和情绪一起拿回来。正常 JSON 里有日文，不会误判。
         prompt, user_text = with_context(TRANSLATE_PROMPT + EMOTION_PROMPT, t, context)
-        got = _leg(t, "首腿", ask_brain, user_text, prompt=prompt)
-        if not got and key:
+        # 对冲：首腿超过 HEDGE_S 还没回来就并行发 DeepSeek 的 JSON 腿（同一次调用顺带情绪），
+        # 谁先给出合格译文用谁。首腿先回但被拒时，已在路上的对冲腿照样等到底。
+        got, _win, fired = _hedge(
+            t,
+            lambda: _leg(t, "首腿", ask_brain, user_text, prompt=prompt),
+            lambda: _leg(t, "DeepSeek", _ask, key, user_text, model, endpoint, prompt=prompt),
+            enabled=bool(key))
+        if not got and key and not fired:
             got = _ask(key, user_text, model, endpoint, prompt=prompt)
         ja, emo = _parse_emotion_json(got) if got else ("", None)
         if ja and _complete(t, ja):
@@ -348,6 +362,60 @@ def _leg(src: str, name: str, fn, *args, **kwargs) -> str:
         return got
     print("[translate] %s被拒（refusal） source=%s → 换下一腿" % (name, text_meta(src)), flush=True)
     return ""
+
+
+def _hedge(src: str, first, hedge, delay=None, enabled=True):
+    """首腿先跑；`delay` 秒还没回来就并行发对冲腿，**谁先给出合格译文用谁**。
+
+    返回 `(译文, winner, fired)`：
+      * 译文已过 `_leg` 的拒绝判定（空串 = 这条腿没成）；
+      * `winner` ∈ {"first", "hedge", "none"}，`fired` = 对冲腿是否真的发出去过。
+    调用方按 `fired` 决定要不要再补发一次退路腿 —— 对冲已经打过的那条腿不重复打
+    （同一台上游连打两次只会白等第二个超时，2026-11-09 事故）。
+
+    被弃掉的那条腿**不取消**（线程里的 urllib 打不断），结果直接丢掉；
+    它自己的超时（magpie 40s / DeepSeek 60s）兜底，不占着调用方。
+
+    `enabled` 可以是布尔，也可以是**零参可调用**（延迟到真要发对冲那一刻才判）：
+    退路腿"有没有 key"这种判断不该在首腿还没回之前就去查（原来那条路只在首腿失败后才查）。
+    """
+    def _on():
+        return bool(enabled() if callable(enabled) else enabled)
+
+    delay = HEDGE_S if delay is None else delay
+    if delay <= 0:
+        txt = first()
+        return txt, ("first" if txt else "none"), False
+    pool = ThreadPoolExecutor(max_workers=2)
+    try:
+        f = pool.submit(first)
+        done, _ = _futures_wait([f], timeout=delay)
+        if done or not _on():                 # 首腿按时回来 / 根本没有退路腿：不打扰
+            try:
+                txt = f.result()
+            except Exception as e:            # noqa: BLE001 - 单腿抛异常等于这条腿没成
+                txt = ""
+                print("[translate] 首腿异常：%s" % type(e).__name__, flush=True)
+            return txt, ("first" if txt else "none"), False
+        h = pool.submit(hedge)
+        print("[translate] hedge fired（首腿 >%.1fs 未回）source=%s" % (delay, text_meta(src)), flush=True)
+        pending = {f, h}
+        while pending:                        # 首腿先回但被拒（空串）→ 继续等已在路上的对冲腿
+            done, pending = _futures_wait(pending, return_when=_FIRST_COMPLETED)
+            for fu in done:
+                try:
+                    txt = fu.result()
+                except Exception as e:        # noqa: BLE001 - 单腿异常等于这条腿没成
+                    txt = ""
+                    print("[translate] hedge 腿异常：%s" % type(e).__name__, flush=True)
+                if txt:
+                    winner = "first" if fu is f else "hedge"
+                    print("[translate] hedge won=%s" % winner, flush=True)
+                    return txt, winner, True
+        print("[translate] hedge 两边都空 source=%s" % text_meta(src), flush=True)
+        return "", "none", True
+    finally:
+        pool.shutdown(wait=False)             # 不 join 被弃的那条腿
 
 
 def _complete(zh: str, ja: str) -> bool:
@@ -454,22 +522,34 @@ def to_japanese(text: str, by_clause: bool = False) -> str:
         # 2026-09-24 指挥官定：主路 = Command Code 直连的 ds-v4.1（关思考，实测 ~2s）；
         # codex(GPT) 退为退路。分支名保留 "codex"（历史包袱），语义以本行为准。
         def one(seg: str) -> str:
-            # 首腿：脑现在用的模型（2026-10-30 起翻译跟着脑走，见 ask_brain）
-            got = _leg(seg, "首腿", ask_brain, seg)
-            if got:
-                return got
             # 三重回退（2026-10-02 指挥官定）：HTTP 退路里先 key#1 再 key#2，最后 codex luna。
             # 额度用完的 key 在冷却期内直接跳过：白打一次 400 要 1~2s，
             # 情绪路径 + 老路径各打两次就把 prepare 的 10s 吃光了（2026-10-14 中文整句哑掉）
-            keys = _cc_keys()
-            for i, fk in enumerate(keys):
-                got = _leg(seg, "Command Code key#%d" % (i + 1), _ask, fk, seg, FALLBACK_MODEL, FALLBACK_BASE)
+            def _chain() -> str:
+                keys = _cc_keys()      # 只在真要打这条链时才查 key（首腿成功就不该碰它）
+                for i, fk in enumerate(keys):
+                    got = _leg(seg, "Command Code key#%d" % (i + 1), _ask, fk, seg,
+                               FALLBACK_MODEL, FALLBACK_BASE)
+                    if got:
+                        return got
+                    if i == len(keys) - 1:
+                        print("[translate] Command Code 的 key 都失败，退 codex luna", flush=True)
+                if not keys:
+                    print("[translate] 没有可用的 Command Code key（没拿到或额度用完冷却中），直接走 codex",
+                          flush=True)
+                return ""
+
+            # 首腿：脑现在用的模型（2026-10-30 起翻译跟着脑走，见 ask_brain）
+            # 对冲（2026-11-10）：首腿超 HEDGE_S 未回就并行跑 Command Code 那条链，谁先给活谁赢。
+            got, _win, fired = _hedge(
+                seg, lambda: _leg(seg, "首腿", ask_brain, seg), _chain,
+                enabled=lambda: bool(_cc_keys()))
+            if got:
+                return got
+            if not fired:               # 对冲没发：照老规矩往下走那条链
+                got = _chain()
                 if got:
                     return got
-                if i == len(keys) - 1:
-                    print("[translate] Command Code 的 key 都失败，退 codex luna", flush=True)
-            if not keys:
-                print("[translate] 没有可用的 Command Code key（没拿到或额度用完冷却中），直接走 codex", flush=True)
             if not CODEX_API_FALLBACK:
                 return ""
             return _leg(seg, "codex luna", _ask_codex, seg)
@@ -479,11 +559,18 @@ def to_japanese(text: str, by_clause: bool = False) -> str:
             outs = list(ex.map(one, segs))
         ja = _join_all(outs) if len(segs) > 1 else (outs[0] if outs else "")
     else:
-        ja = _leg(text, "首腿", ask_brain, text)     # 首腿：脑现在用的模型
+        # 首腿 + 对冲：超 HEDGE_S 未回就并行发 DeepSeek 腿（老链这里只有这一条退路）。
+        ja, _win, fired = _hedge(
+            text,
+            lambda: _leg(text, "首腿", ask_brain, text),
+            lambda: _leg(text, "DeepSeek", _ask, key, text, TRANSLATE_MODEL) if key else "",
+            enabled=bool(key))
         if not ja and not key:
             print("[translate] 没拿到 API key，跳过翻译", flush=True)
             return ""
-        if not ja and len(parts) > 1:      # 逐句译：多句一次送，模型会整句漏掉（朗读就是漏台词）
+        if not ja and fired:
+            pass                            # 对冲腿已经打过且空：不再白打第二次
+        elif not ja and len(parts) > 1:      # 逐句译：多句一次送，模型会整句漏掉（朗读就是漏台词）
             with ThreadPoolExecutor(max_workers=4) as ex:
                 outs = list(ex.map(lambda x: _leg(x, "DeepSeek", _ask, key, x, TRANSLATE_MODEL), parts))
             ja = _join_all(outs)
@@ -538,7 +625,11 @@ MAGPIE_KEY = os.environ.get("TTS_TRANSLATE_MAGPIE_KEY", "magpie")   # 回环口�
 MAGPIE_EFFORT = os.environ.get("TTS_TRANSLATE_MAGPIE_EFFORT", "low").strip()
 MAGPIE_TIMEOUT = float(os.environ.get("TTS_TRANSLATE_MAGPIE_TIMEOUT", "40"))
 MAGPIE_DOWN_SEC = float(os.environ.get("TTS_TRANSLATE_MAGPIE_COOLDOWN", "60"))
+# 压思考失败后的冷却（2026-11-10）：上游不认 `reasoning_effort` 时会次次都白等 7~9s，
+# 而"退回原样"那一跑是**带思考**的 11~19s —— 两者相加就是 2026-11-09 亲密场景那个 26s 的准备窗口。
+MAGPIE_COMPRESS_DOWN_SEC = float(os.environ.get("TTS_TRANSLATE_MAGPIE_COMPRESS_COOLDOWN", "600"))
 _magpie_down_until = 0.0
+_magpie_compress_down_until = 0.0
 _brain_lock = threading.Lock()
 _brain_route: dict = {"at": 0.0, "provider": "", "model": ""}
 
@@ -584,45 +675,56 @@ def _is_timeout_error(exc: BaseException) -> bool:
     return False
 
 
+def _magpie_once(payload) -> tuple:
+    """打一次 magpie（/chat/completions），返回 `(译文, 失败原因)`；空译文也算没成。"""
+    req = urllib.request.Request(MAGPIE_BASE + "/chat/completions",
+                                 data=json.dumps(payload).encode("utf-8"),
+                                 headers={"Content-Type": "application/json",
+                                          "Authorization": "Bearer " + MAGPIE_KEY})
+    try:
+        with urllib.request.urlopen(req, timeout=MAGPIE_TIMEOUT) as resp:
+            out = json.loads(resp.read().decode("utf-8"))
+        msg = ((out.get("choices") or [{}])[0] or {}).get("message") or {}
+        txt = str(msg.get("content") or "").strip()
+        return (txt, "") if txt else ("", "空译文")
+    except Exception as e:                  # noqa: BLE001 - 翻译失败不该让整条链路 500
+        return "", type(e).__name__
+
+
 def _ask_magpie(text: str, model: str, prompt: str | None = None) -> str:
-    """走 magpie 的 OpenAI 口（/chat/completions）。先把思考压到 MAGPIE_EFFORT，失败再不带重试一次。"""
-    global _magpie_down_until
-    if time.time() < _magpie_down_until:
+    """走 magpie 的 OpenAI 口（/chat/completions）。**只打一次**：压思考不成就判这条腿没成。
+
+    2026-11-10 改：压思考那次没成（HTTPError / 空译文）**不再原样重跑同一条腿**。
+    那一跑是不压思考的，实测 11~19s（`MAGPIE_EFFORT` 上面的注释：Gemini 不压是 16s），
+    加上前面白等的 7~9s 就是 26s 的准备窗口 —— 2026-11-09 亲密场景 24s 静默的直接原因。
+    现在直接返回空串让调用方立刻换下一条腿（DeepSeek，~2.6s），并把"压思考"整体冷却
+    `MAGPIE_COMPRESS_DOWN_SEC`（默认 600s）：冷却期内只走不压思考的那一次，
+    而它一定会被对冲（`_hedge`）追过去 —— 慢腿赢了也没关系，它本来就只是兜底。
+    """
+    global _magpie_down_until, _magpie_compress_down_until
+    now = time.time()
+    if now < _magpie_down_until:
         return ""
     base = {"model": model, "stream": False,
             "messages": [{"role": "system", "content": prompt or TRANSLATE_PROMPT},
                          {"role": "user", "content": text}]}
-    variants = []
-    if MAGPIE_EFFORT and MAGPIE_EFFORT.lower() not in ("0", "off", "default"):
-        variants.append(dict(base, reasoning_effort=MAGPIE_EFFORT))
-    variants.append(base)
-    last = ""
-    for payload in variants:
-        req = urllib.request.Request(MAGPIE_BASE + "/chat/completions",
-                                     data=json.dumps(payload).encode("utf-8"),
-                                     headers={"Content-Type": "application/json",
-                                              "Authorization": "Bearer " + MAGPIE_KEY})
-        try:
-            with urllib.request.urlopen(req, timeout=MAGPIE_TIMEOUT) as resp:
-                out = json.loads(resp.read().decode("utf-8"))
-            msg = ((out.get("choices") or [{}])[0] or {}).get("message") or {}
-            txt = str(msg.get("content") or "").strip()
-            if txt:
-                return txt
-            last = "空译文"
-        except Exception as e:              # noqa: BLE001 - 翻译失败不该让整条链路 500
-            last = type(e).__name__
-            _tlog(f"magpie {model} source={text_meta(text)} : {last}")
-            if _is_timeout_error(e):
-                # 超时不是「参数不被接受」，换个 payload 再打同一台上游只会白等第二个
-                # MAGPIE_TIMEOUT（40s）；两次就吃光 9885 每单元 60s 的准备窗口，整轮静音
-                # （2026-11-09 事故）。这里直接放弃，调用方立刻走老腿。
-                break
-        if payload is variants[0] and len(variants) > 1:
-            print("[translate] magpie 压思考那次没成，退回原样重试", flush=True)
+    compress = (bool(MAGPIE_EFFORT) and MAGPIE_EFFORT.lower() not in ("0", "off", "default")
+                and now >= _magpie_compress_down_until)
+    if compress:
+        txt, why = _magpie_once(dict(base, reasoning_effort=MAGPIE_EFFORT))
+        if txt:
+            return txt
+        _magpie_compress_down_until = time.time() + MAGPIE_COMPRESS_DOWN_SEC
+        print("[translate] magpie 压思考没成（%s），%.0fs 内不再压思考，本句直接换下一腿"
+              % (why, MAGPIE_COMPRESS_DOWN_SEC), flush=True)
+        _tlog(f"magpie {model} 压思考失败 source={text_meta(text)} : {why}")
+        return ""
+    txt, why = _magpie_once(base)
+    if txt:
+        return txt
     _magpie_down_until = time.time() + MAGPIE_DOWN_SEC
-    print(f"[translate] magpie {model} 失败（{last}），{MAGPIE_DOWN_SEC:.0f}s 内先走老腿", flush=True)
-    _tlog(f"magpie {model} 最终失败 source={text_meta(text)} : {last}")
+    print(f"[translate] magpie {model} 失败（{why}），{MAGPIE_DOWN_SEC:.0f}s 内先走老腿", flush=True)
+    _tlog(f"magpie {model} 最终失败 source={text_meta(text)} : {why}")
     return ""
 
 

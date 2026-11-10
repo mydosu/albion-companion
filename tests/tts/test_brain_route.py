@@ -99,75 +99,100 @@ class BrainRouteTest(unittest.TestCase):
                              "antigravity/gemini-3.8-flash")
         self.assertEqual(len(calls), 1)
 
-    def test_magpie_request_pins_low_effort_then_retries_plain(self):
+    def test_magpie_compress_rejected_does_not_retry_plain(self):
+        """压思考被拒（HTTP 400）⇒ **不**原样重跑同一条腿，直接让调用方换腿（2026-11-10）。"""
         seen = []
 
         def fake(req, timeout=0):
             seen.append(json.loads(req.data.decode("utf-8")))
-            if len(seen) == 1:
-                raise OSError("boom")
-            return _Resp(json.dumps({"choices": [{"message": {"content": "こんにちは。"}}]}).encode())
+            raise urllib.error.HTTPError("http://magpie/chat/completions", 400, "Bad Request", {}, None)
 
         with patch.dict(os.environ, {"TTS_TRANSLATE_MAGPIE_EFFORT": "low"}), \
-                patch.object(bridge.urllib.request, "urlopen", side_effect=fake), \
-                patch.object(bridge, "_magpie_down_until", 0.0):
-            bridge._magpie_down_until = 0.0          # 上一个用例可能刚把它冷却
-            self.assertEqual(bridge._ask_magpie("你好。", "antigravity/gemini-3.8-flash"), "こんにちは。")
-        self.assertEqual(seen[0].get("reasoning_effort"), "low")
-        self.assertNotIn("reasoning_effort", seen[1])
-        self.assertEqual(seen[0]["model"], "antigravity/gemini-3.8-flash")
-
-    def test_magpie_cooldown_skips_next_calls(self):
-        with patch.object(bridge.urllib.request, "urlopen", side_effect=OSError("down")) as up:
+                patch.object(bridge.urllib.request, "urlopen", side_effect=fake):
             bridge._magpie_down_until = 0.0
-            self.assertEqual(bridge._ask_magpie("你好。", "m"), "")
-            self.assertEqual(bridge._ask_magpie("再见。", "m"), "")
-        self.assertEqual(up.call_count, 2)           # 第一次两条 variant 都打空了才算失败
-        bridge._magpie_down_until = 0.0
+            bridge._magpie_compress_down_until = 0.0
+            try:
+                started = time.time()
+                self.assertEqual(bridge._ask_magpie("你好。", "antigravity/gemini-3.8-flash"), "")
+                self.assertEqual(len(seen), 1, "只打压思考那次，不再原样重跑（那一跑是不压思考的 11~19s）")
+                self.assertEqual(seen[0].get("reasoning_effort"), "low")
+                self.assertEqual(seen[0]["model"], "antigravity/gemini-3.8-flash")
+                self.assertGreater(bridge._magpie_compress_down_until, started)   # 压思考已冷却
+                self.assertLessEqual(bridge._magpie_compress_down_until - started,
+                                     bridge.MAGPIE_COMPRESS_DOWN_SEC + 1)
+                # 压思考冷却 ≠ 整条腿冷却：下一句还能走不压思考那次
+                self.assertEqual(bridge._magpie_down_until, 0.0)
+            finally:
+                bridge._magpie_down_until = 0.0
+                bridge._magpie_compress_down_until = 0.0
+
+    def test_magpie_compress_empty_reply_also_cools_down(self):
+        """空译文跟 HTTPError 同一处理：判这条腿没成、冷却压思考，不原样重跑。"""
+        seen = []
+
+        def fake(req, timeout=0):
+            seen.append(json.loads(req.data.decode("utf-8")))
+            return _Resp(json.dumps({"choices": [{"message": {"content": ""}}]}).encode())
+
+        with patch.dict(os.environ, {"TTS_TRANSLATE_MAGPIE_EFFORT": "low"}), \
+                patch.object(bridge.urllib.request, "urlopen", side_effect=fake):
+            bridge._magpie_down_until = 0.0
+            bridge._magpie_compress_down_until = 0.0
+            try:
+                self.assertEqual(bridge._ask_magpie("你好。", "m"), "")
+                self.assertEqual(len(seen), 1)
+                self.assertGreater(bridge._magpie_compress_down_until, 0.0)
+            finally:
+                bridge._magpie_down_until = 0.0
+                bridge._magpie_compress_down_until = 0.0
+
+    def test_magpie_cooldown_skips_compress_then_plain_then_down(self):
+        """压思考失败 ⇒ 压思考冷却、整腿不冷却；再不压思考那次也失败 ⇒ 整腿冷却 60s。"""
+        with patch.dict(os.environ, {"TTS_TRANSLATE_MAGPIE_EFFORT": "low"}), \
+                patch.object(bridge.urllib.request, "urlopen", side_effect=OSError("down")) as up:
+            bridge._magpie_down_until = 0.0
+            bridge._magpie_compress_down_until = 0.0
+            try:
+                self.assertEqual(bridge._ask_magpie("你好。", "m"), "")      # 压思考那次
+                self.assertEqual(up.call_count, 1)
+                self.assertGreater(bridge._magpie_compress_down_until, 0.0)
+                self.assertEqual(bridge._ask_magpie("再见。", "m"), "")      # 冷却期 → 只走原样
+                self.assertEqual(up.call_count, 2)
+                self.assertGreater(bridge._magpie_down_until, 0.0)          # 整条腿也冷却了
+                self.assertEqual(bridge._ask_magpie("第三句。", "m"), "")   # 整腿冷却 → 一次都不打
+                self.assertEqual(up.call_count, 2)
+            finally:
+                bridge._magpie_down_until = 0.0
+                bridge._magpie_compress_down_until = 0.0
 
     def test_magpie_timeout_skips_second_variant_and_cools_down(self):
-        """超时不再换 payload 重打同一台上游：两次 40s 会吃光 9885 的 60s 准备窗口。"""
-        with patch.object(bridge.urllib.request, "urlopen", side_effect=TimeoutError("timed out")) as up:
+        """超时同样只打一次，且把压思考冷却掉（两次 40s 会吃光 9885 的 60s 准备窗口）。"""
+        with patch.dict(os.environ, {"TTS_TRANSLATE_MAGPIE_EFFORT": "low"}), \
+                patch.object(bridge.urllib.request, "urlopen", side_effect=TimeoutError("timed out")) as up:
             bridge._magpie_down_until = 0.0
+            bridge._magpie_compress_down_until = 0.0
             try:
                 started = time.time()
                 self.assertEqual(bridge._ask_magpie("你好。", "m"), "")
                 self.assertEqual(up.call_count, 1)          # 只打一次，不试「原样」变体
-                self.assertGreater(bridge._magpie_down_until, started)   # 冷却已设置
+                self.assertGreater(bridge._magpie_compress_down_until, started)
             finally:
                 bridge._magpie_down_until = 0.0
+                bridge._magpie_compress_down_until = 0.0
 
     def test_magpie_urlerror_timeout_also_skips_second_variant(self):
         """urllib 把超时包进 URLError.reason 时同样算超时。"""
         err = urllib.error.URLError(TimeoutError("timed out"))
-        with patch.object(bridge.urllib.request, "urlopen", side_effect=err) as up:
+        with patch.dict(os.environ, {"TTS_TRANSLATE_MAGPIE_EFFORT": "low"}), \
+                patch.object(bridge.urllib.request, "urlopen", side_effect=err) as up:
             bridge._magpie_down_until = 0.0
+            bridge._magpie_compress_down_until = 0.0
             try:
                 self.assertEqual(bridge._ask_magpie("你好。", "m"), "")
                 self.assertEqual(up.call_count, 1)
             finally:
                 bridge._magpie_down_until = 0.0
-
-    def test_magpie_http_error_still_retries_plain(self):
-        """压思考参数被拒（HTTP 400）不是超时：照旧退回原样那次。"""
-        seen = []
-
-        def fake(req, timeout=0):
-            seen.append(json.loads(req.data.decode("utf-8")))
-            if len(seen) == 1:
-                raise urllib.error.HTTPError("http://magpie/chat/completions", 400,
-                                             "Bad Request", {}, None)
-            return _Resp(json.dumps({"choices": [{"message": {"content": "こんにちは。"}}]}).encode())
-
-        with patch.object(bridge.urllib.request, "urlopen", side_effect=fake):
-            bridge._magpie_down_until = 0.0
-            try:
-                self.assertEqual(bridge._ask_magpie("你好。", "m"), "こんにちは。")
-            finally:
-                bridge._magpie_down_until = 0.0
-        self.assertEqual(len(seen), 2)
-        self.assertIn("reasoning_effort", seen[0])
-        self.assertNotIn("reasoning_effort", seen[1])
+                bridge._magpie_compress_down_until = 0.0
 
 
 REFUSAL_EN = ("I cannot fulfill this request. I am unable to generate or translate "
@@ -189,6 +214,9 @@ class RefusalTest(unittest.TestCase):
         self._magpie = bridge._magpie_down_until
         bridge._magpie_down_until = 0.0
         self.addCleanup(setattr, bridge, "_magpie_down_until", self._magpie)
+        self._magpie_compress = bridge._magpie_compress_down_until
+        bridge._magpie_compress_down_until = 0.0
+        self.addCleanup(setattr, bridge, "_magpie_compress_down_until", self._magpie_compress)
 
     def tearDown(self):
         bridge.reset_brain_route()
