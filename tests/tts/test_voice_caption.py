@@ -1084,14 +1084,20 @@ class TestIntimateGoesToCodebook(unittest.TestCase):
         self.assertIsNone(B2.intimate_codebook_anchor(emo, "はぁっ……！", "哈啊……！",
                                                       context_before=ctx))
 
-    def test_bright_line_with_dialogue_and_intimate_context_unchanged(self):
-        """带台词的 bright 句即使前面是亲密句也不动（`_is_interjection` 判不过，防误伤）。"""
+    def test_bright_line_with_dialogue_and_intimate_context_now_anchors(self):
+        """2026-11-09 第二次放宽：**前文亲密时**带台词的句子不再要求 `_is_interjection`。
+
+        改动前这里返回 None（防误伤）；用户实听报 02/03 号两轮里「し、子宮口……」这类句子
+        整句落 bright/strong cfg=3.0，所以改成：前文亲密 + 有拟声 ⇒ 直接锚。
+        """
         emo = {"arousal": 0.75, "intensity": 0.75, "valence": 0.0, "phonation": "soft"}
         ctx = "はぁ……指揮官……ふぅ……そんな風に埋もれて、こんなに強く抱きしめられては……"
         ja = "はぁっ……！まだ、平気です。"
         self.assertFalse(SP._is_interjection(ja))
-        self.assertIsNone(B2.intimate_codebook_anchor(emo, ja, "哈啊……！我还撑得住。",
-                                                      context_before=ctx))
+        a = B2.intimate_codebook_anchor(emo, ja, "哈啊……！我还撑得住。", context_before=ctx)
+        self.assertIsNotNone(a)
+        self.assertEqual((a["family"], a["tier"]), ("intimate", "strong"))
+        self.assertTrue(a["why"].startswith("ctx+moan:"), a["why"])
 
     def test_interjection_after_recent_intimate_goes_strong(self):
         """跨轮兜底：刚走过一句亲密锚，紧接着一个**没有前文**的纯「はぁっ……！」→ 强锚。"""
@@ -1108,7 +1114,7 @@ class TestIntimateGoesToCodebook(unittest.TestCase):
         self.assertTrue(a["why"].startswith("recent+moan:"), a["why"])
 
     def test_interjection_after_window_expired_unchanged(self):
-        """窗口过期（拨到 301 秒前）：同样的纯拟声短句回到原样，不写锚。"""
+        """窗口过期（拨到窗口外 1 秒）：同样的纯拟声短句回到原样，不写锚。"""
         emo = {"arousal": 0.75, "intensity": 0.75, "valence": 0.0, "phonation": "soft"}
         B2.intimate_codebook_anchor(
             emo, "はぁ……指揮官……ふぅ……そんな風に埋もれて、こんなに強く抱きしめられては……",
@@ -1116,6 +1122,76 @@ class TestIntimateGoesToCodebook(unittest.TestCase):
         B2._last_intimate_at = time.monotonic() - (B2.INTIMATE_RECENT_S + 1)
         self.assertIsNone(B2.intimate_codebook_anchor(emo, "はぁっ……！", "哈啊……！",
                                                       context_before=""))
+
+    # ---- 2026-11-09 第二次放宽：8 分钟后的那一轮整轮落 bright/strong cfg=3.0 -------------
+
+    def test_window_is_thirty_minutes(self):
+        """窗口 300s → 1800s：用户打字回一轮（实测隔 8 分钟）不会再掉出窗口。"""
+        self.assertAlmostEqual(B2.INTIMATE_RECENT_S, 1800.0)
+        emo = {"arousal": 0.8, "intensity": 0.8, "valence": 0.6, "phonation": "normal"}
+        B2._last_intimate_at = time.monotonic() - 480            # 8 分钟前走过锚
+        a = B2.intimate_codebook_anchor(emo, "はぁぁ……！", "哈啊啊……！")
+        self.assertIsNotNone(a)
+        self.assertEqual((a["family"], a["tier"]), ("intimate", "strong"))
+        self.assertTrue(a["why"].startswith("recent+moan:"), a["why"])
+
+    def test_climax_mark_counts_as_moan_cue(self):
+        """「——っ！」整句没有独立拟声词：`CLIMAX_MARKS` 自己算命中，写标记本身。"""
+        self.assertEqual(B2.moan_cues("——っ！", "——唔！"), ["——っ"])
+        self.assertIn("んんんっ", B2.moan_cues("んんんっ……！！", "嗯嗯嗯……！！"))
+        # 高潮固定式的「！」是表演的一部分，不去掉；非高潮纯拟声照旧去
+        self.assertEqual(B2.strip_nonclimax_bang("——っ！"), "——っ！")
+        self.assertEqual(B2.strip_nonclimax_bang("はぁ……！"), "はぁ……")
+
+    def test_climax_mark_in_recent_window_goes_strong(self):
+        """用户报的第一句：窗口内「——っ！」要走强锚（改动前 why=None → bright/strong cfg=3.0）。"""
+        emo = {"arousal": 0.8, "intensity": 0.8, "valence": 0.6, "phonation": "normal"}
+        B2._last_intimate_at = time.monotonic() - 60
+        a = B2.intimate_codebook_anchor(emo, "——っ！", "——唔！")
+        self.assertIsNotNone(a)
+        self.assertEqual(a["tier"], "strong")
+        self.assertAlmostEqual(a["cfg"], 4.5)
+        self.assertEqual(a["caption"], CB.A_BREATHY)
+        self.assertEqual(a["why"], "recent+moan:——っ")
+
+    def test_dialogue_line_without_cue_in_recent_window_goes_bright_anchor(self):
+        """「し、子宮口……」：没拟声、句面读不出族、规划器会判 bright ⇒ 窗口内也走锚。"""
+        emo = {"arousal": 0.8, "intensity": 0.8, "valence": 0.6, "phonation": "normal"}
+        ja = "し、子宮口……"
+        self.assertIsNone(SP._match(ja))
+        self.assertEqual(B2.planned_family(emo, ja), "bright")
+        B2._last_intimate_at = time.monotonic() - 60
+        a = B2.intimate_codebook_anchor(emo, ja, "子、子宫口……")
+        self.assertIsNotNone(a)
+        self.assertEqual((a["family"], a["tier"]), ("intimate", "strong"))   # 档位按 _hint_tier
+        self.assertIsNone(a["hint"])                  # 没拟声就不动提示
+        self.assertEqual(a["why"], "recent+bright")
+
+    def test_readable_bright_line_in_recent_window_unchanged(self):
+        """窗口内**句面读得出族**的明亮句（「嬉しいです！」）不动 —— style 不是 None 就不认亲。"""
+        emo = {"arousal": 0.8, "intensity": 0.8, "valence": 0.8, "phonation": "normal"}
+        self.assertEqual(SP._match("嬉しいです！"), "happy")
+        B2._last_intimate_at = time.monotonic() - 60
+        self.assertIsNone(B2.intimate_codebook_anchor(emo, "嬉しいです！", "好开心！"))
+
+    def test_dialogue_line_outside_window_unchanged(self):
+        """窗口外同一句回到原样（None）—— 放宽只发生在窗口内。"""
+        emo = {"arousal": 0.8, "intensity": 0.8, "valence": 0.6, "phonation": "normal"}
+        B2._last_intimate_at = time.monotonic() - (B2.INTIMATE_RECENT_S + 1)
+        self.assertIsNone(B2.intimate_codebook_anchor(emo, "し、子宮口……", "子、子宫口……"))
+
+    def test_ctx_branch_also_refreshes_timestamp(self):
+        """只要走了锚就续期：ctx 分支（前文亲密）也要刷新，否则下一句立刻掉出窗口。"""
+        emo = {"arousal": 0.3, "intensity": 0.3, "valence": 0.0, "phonation": "soft"}
+        ctx = "はぁ……指揮官……ふぅ……そんな風に埋もれて、こんなに強く抱きしめられては……"
+        self.assertIsNone(B2._last_intimate_at)
+        a = B2.intimate_codebook_anchor(emo, "はぁっ……！", "哈啊……！", context_before=ctx)
+        self.assertTrue(a["why"].startswith("ctx+moan:"), a["why"])
+        self.assertIsNotNone(B2._last_intimate_at)
+        # 紧接着、没有前文的一句：靠刚才刷新出来的时间戳认亲
+        b = B2.intimate_codebook_anchor(emo, "はぁぁ……！", "哈啊啊……！")
+        self.assertIsNotNone(b)
+        self.assertTrue(b["why"].startswith("recent+moan:"), b["why"])
 
     def test_prepare_writes_no_voice_caption_for_intimate(self):
         """接线：亲密句的准备结果里**没有** voice_caption（规划器因此回码本锚）。"""

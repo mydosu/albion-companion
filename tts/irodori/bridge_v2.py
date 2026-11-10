@@ -298,13 +298,23 @@ _ZH_MOAN = re.compile(
     r"(?:^|[。！？!?…，,、\s])[哈啊嗯唔呜哼嗯](?:啊|呀|…|\.{3}|[！!？?，,、。\s]|$)")
 
 
+# 高潮固定式标记：既给下面的拟声判定（「——っ！」这种整句只有标记、没有独立拟声词）
+# 用，也给 `strip_nonclimax_bang` 用（带标记的「！」是表演本身，不能去掉）。
+CLIMAX_MARKS = ("——っ", "んんんっ")
+
+
 def moan_cues(ja_text, zh_text=""):
     """这句里有没有喘息/娇声拟声。返回命中的拟声词列表（空 = 没有）。
 
     日语侧复用 `scene_plan._ono_hits`（它已经处理了「あったかい」里「あっ」这种假命中）；
     中文侧只有叹词（`_ZH_MOAN`），因为拟声主要出现在译文里。
+
+    高潮固定式（`CLIMAX_MARKS`）单独认（2026-11-09 补）：`scene_plan.ONO` 里没有单独的
+    「っ」，中文侧的「——唔！」前面是破折号、`_ZH_MOAN` 也不认，于是「——っ！」整句
+    一个拟声都命中不了 —— 可它恰恰是高潮那句。命中词就写标记本身。
     """
     hits = list(SP._ono_hits(ja_text or ""))
+    hits.extend(m for m in CLIMAX_MARKS if m in (ja_text or ""))
     if not hits and _ZH_MOAN.search(zh_text or ""):
         hits.append("zh:叹词")
     return hits
@@ -332,14 +342,21 @@ def _ctx_family(context_before):
 
 # 跨轮兜底（2026-11-09，补 02 号那种「本轮第一句、只有拟声」）：9885 现在不发前文，
 # 而本轮第一句连 `source_prefix` 都是空，句面又只能读成 bright —— 只剩「刚才有没有在亲密」
-# 这一条线索可依。所以记下**上一次真的走亲密锚**的时刻（句面族判成 intimate 的那些单元）。
-INTIMATE_RECENT_S = 300.0
+# 这一条线索可依。所以记下**上一次真的走亲密锚**的时刻（不管走的是哪条分支，2026-11-09）。
+#
+# 窗口 300s → 1800s（2026-11-09 用户第二次报）：上一次句面亲密是 20:32:06，下一轮 20:40:03，
+# 隔 8 分钟 —— 用户打字回一轮就把 5 分钟的窗口耗光了，整轮 4 句全被判成 bright/strong cfg=3.0。
+#
+# shortcut（已知局限）：窗口内**日常的高唤醒句**也会被当成亲密句（「（兴奋）太好了！」这种
+# 句面读不出族、只有高 arousal 的句子会被锚到 intimate），30 分钟不再有亲密句后自动恢复。
+# 代价换的是「亲密对话中间隔几分钟打字也不会掉档」；按进程全局记，多会话并发时可能串场，
+# 要分会话再按 session 记。
+INTIMATE_RECENT_S = 1800.0
 _last_intimate_at = None        # time.monotonic() 的时刻；None = 本进程还没走过亲密锚
-# shortcut: 单用户桌宠按进程全局记，多会话并发时可能串场；要分会话再按 session 记
 
 
 def _intimate_recent(now=None):
-    """上一次亲密锚是否还在 `INTIMATE_RECENT_S` 窗口内。"""
+    """上一次走亲密锚是否还在 `INTIMATE_RECENT_S` 窗口内。"""
     if _last_intimate_at is None:
         return False
     now = time.monotonic() if now is None else now
@@ -358,7 +375,14 @@ def intimate_codebook_anchor(emo, ja_text, zh_text="", context_before=""):
     前文的句面族是 intimate ⇒ 按 intimate 强锚处理（`why="ctx+moan:…"`）；
     前文为空（本轮第一句，9885 不发 context_before 时每句都如此）⇒ 再用跨轮兜底
     `_intimate_recent()`（`why="recent+moan:…"`）。
-    带台词的句子不走这条（`scene_plan._is_interjection` 判不过），免得把明亮句误伤成亲密。
+
+    2026-11-09 第二次放宽（用户报「——っ！」「んんんっ……！！」「はぁぁ……！」「し、子宮口……」
+    整轮落 bright/strong cfg=3.0），窗口内（或前文亲密时）再加两条：
+      * 有拟声命中就**不再要求** `_is_interjection` —— 「し、子宮口……」这种带台词的句子
+        句面读不出族、`_is_interjection` 也判不过，可它确实是亲密对话的一部分；
+      * 没有拟声、句面 `SP._match` 读不出（None）、而 `planned_family` 是 bright 的句子，
+        也按 `_hint_tier(emo)` 定档走锚（`why="recent+bright"` / `"ctx+bright"`）。
+    窗口**外**的行为保持不变：句面亲密照旧走锚，其余一律 None（还是自由描述）。
     """
     global _last_intimate_at
     if not isinstance(emo, dict):
@@ -366,20 +390,23 @@ def intimate_codebook_anchor(emo, ja_text, zh_text="", context_before=""):
     # 只认**句面**证据（关键词表判出 intimate）：耳语/气声这种 hint 自述单独成立的句子
     # （普通「（小声）今天好累」）不算——否则会连带改掉日常耳语行的声音描述。
     hits = moan_cues(ja_text, zh_text)
-    if SP.STYLE_FAMILY.get(SP._match(ja_text or "") or "calm") == INTIMATE_FAMILY:
+    style = SP._match(ja_text or "")
+    ctx_intimate = _ctx_family(context_before) == INTIMATE_FAMILY
+    if SP.STYLE_FAMILY.get(style or "calm") == INTIMATE_FAMILY:
         why = ("moan:%s" % "/".join(hits)) if hits else "hint:%s" % _hint_tier(emo)
-        _last_intimate_at = time.monotonic()      # 只有句面判成亲密才刷新时间戳
-    elif hits and SP._is_interjection(ja_text or ""):
-        if _ctx_family(context_before) == INTIMATE_FAMILY:
-            why = "ctx+moan:%s" % "/".join(hits)  # 局限性 1：紧跟亲密句
-        elif _intimate_recent():
-            why = "recent+moan:%s" % "/".join(hits)   # 跨轮兜底：刚才在亲密
+    elif ctx_intimate or _intimate_recent():
+        near = "ctx" if ctx_intimate else "recent"
+        if hits:
+            why = "%s+moan:%s" % (near, "/".join(hits))        # 刚才在亲密：有声就能认亲
+        elif style is None and planned_family(emo, ja_text) == "bright":
+            why = "%s+bright" % near                          # 带台词、句面读不出族的亲密句
         else:
             return None
     else:
-        return None
+        return None                                          # 窗口外：与改动前逐字段一致
     tier = "strong" if hits else _hint_tier(emo)
     ladder = emotion_codebook.ladder(INTIMATE_FAMILY)
+    _last_intimate_at = time.monotonic()      # 走了锚就续期（哪条分支都算，2026-11-09）
     return {
         "family": INTIMATE_FAMILY,
         "caption": ladder[1] if tier == "strong" else ladder[0],
@@ -392,9 +419,8 @@ def intimate_codebook_anchor(emo, ja_text, zh_text="", context_before=""):
 
 # 非高潮纯拟声去「！」（2026-11-09，样张结论）：亲密族里「はぁ……！」这种孤立拟声，末尾的
 # 「！」会让模型把它当一声惊呼念完（并跟着一段 ~0.9s 的收尾静音）；去掉后是拖着的喘息。
-# 高潮固定式（译法里带「——っ」「んんんっ」的）必须保留 —— 那个「！」是表演本身的一部分。
-# 只改**送去渲染**的日文；字幕走中文源账本（`display.span`），一个字都不动。
-CLIMAX_MARKS = ("——っ", "んんんっ")
+# 高潮固定式（`CLIMAX_MARKS`，定义在上面的拟声判定旁边）必须保留 —— 那个「！」是表演本身
+# 的一部分。只改**送去渲染**的日文；字幕走中文源账本（`display.span`），一个字都不动。
 
 
 def strip_nonclimax_bang(text):
