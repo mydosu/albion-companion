@@ -117,14 +117,14 @@ const ACT_CASES: [string, string, string | null][] = [
   ["JSON 坏了不猜", '<ACT:{"emotion":}|> 你好', null],
   ["不是标记", 'ACT:{"emotion":"neutral"} 你好', null],
   // 亲密阶段（2026-11-10）：多一个 `intimate` 键不拦、不改写，值也不校验（桥那边白名单外当没写）
-  ["带亲密阶段", '<|ACT:{"emotion":"shy","intimate":"steady"}|> 你好', null],
-  ["带亲密阶段缺竖线", '<ACT:{"emotion":"shy","intimate":"fast"}|> 你好', '<|ACT:{"emotion":"shy","intimate":"fast"}|> 你好'],
+  ["带亲密阶段", '<|ACT:{"emotion":"awkward","face":"bashful","intimate":"steady"}|> 你好', null],
+  ["带亲密阶段缺竖线", '<ACT:{"emotion":"awkward","intimate":"fast"}|> 你好', '<|ACT:{"emotion":"awkward","intimate":"fast"}|> 你好'],
 ];
 for (const [name, text, want] of ACT_CASES) check(canonicalAct(text) === (want ?? text), `ACT[${name}]：${JSON.stringify(canonicalAct(text))}`);
 
 // 亲密阶段不许被 checkDraft 记成 `act` issue（它只看 emotion 与标记个数；键多一个不算错）
 for (const intimate of ['"steady"', '"climax"', '1']) {
-  const draft = `<|ACT:{"emotion":"shy","intimate":${intimate}}|>指挥官，今天的作业做完了。`;
+  const draft = `<|ACT:{"emotion":"awkward","intimate":${intimate}}|>指挥官，今天的作业做完了。`;
   check(checkDraft(draft, "").length === 0, `intimate=${intimate} 不该触发 issue：${JSON.stringify(checkDraft(draft, ""))}`);
 }
 

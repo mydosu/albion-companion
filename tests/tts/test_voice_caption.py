@@ -1321,7 +1321,7 @@ class TestIntimateActStage(unittest.TestCase):
 
     @staticmethod
     def act(stage):
-        return '<|ACT:{"emotion":"shy","intimate":"%s"}|>' % stage
+        return '<|ACT:{"emotion":"awkward","intimate":"%s"}|>' % stage
 
     def anchor(self, stage=None, ja="はい、わかりました。", zh="好，我知道了。", ctx="", intensity=0.3):
         return B2.intimate_codebook_anchor(

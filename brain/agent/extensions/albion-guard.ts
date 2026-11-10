@@ -31,9 +31,7 @@ const POSTURE_EVERY = () => Math.max(1, Number(process.env.ALBION_POSTURE_EVERY)
 const GESTURE_EVERY = () => Math.max(1, Number(process.env.ALBION_GESTURE_EVERY) || 6);
 const MARKER = "\n\n【阿尔比恩本轮说话约定】";
 export const NEUTRAL_ACT = '<|ACT:{"emotion":"neutral"}|>';
-// "shy" 不在 AIRI 那 9 个里，但脑偶尔会这么写（`voice_caption._ACT_SCENE` 也认它）：
-// 2026-11-10 ACT 例子里带了 shy，不认就会被 checkDraft 记成 act issue、白白重生成一次。
-const EMOTIONS = new Set(["happy", "sad", "angry", "think", "surprised", "awkward", "question", "curious", "neutral", "shy"]);
+const EMOTIONS = new Set(["happy", "sad", "angry", "think", "surprised", "awkward", "question", "curious", "neutral"]);
 
 // ── 口癖语料（2026-10-29）：把「把话/心意当东西」的固定说法换成平常说法 ──────────
 // 语料在 agent/tic-phrases.json（生产 /root/albion-pi/agent/tic-phrases.json），由 Claude 席位写，代码不碰内容。
