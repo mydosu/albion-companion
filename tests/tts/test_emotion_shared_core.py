@@ -138,7 +138,7 @@ class TestSeedPassthrough(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "o.wav")
-            sr, _ = RQ.run_infer_synth(self._unit(seed=99), p, fake, "albion")
+            sr, _, _ = RQ.run_infer_synth(self._unit(seed=99), p, fake, "albion")   # 2026-11-07 起返回 (sr, d, floor)
             self.assertEqual(seen["seed"], 99)
             self.assertEqual(sr, 16000)
             RQ.run_infer_synth(self._unit(), p, fake, "albion")     # 不带 seed ⇒ None（生产行为）
