@@ -151,5 +151,65 @@ class MoanRunTest(unittest.TestCase):
                 self.assertEqual("".join(u[2] for u in whole), text)
 
 
+class PantTiersTest(unittest.TestCase):
+    """三档快喘（2026-11-10）：喘串本身一个单元，台词另起。
+
+    用户定的三档：节奏稳 = 「哈啊……啊……嗯……」整串；越来越快 = 「哈……哈……嗯……」；
+    快到顶 = 「哈、哈、哈、嗯、哈啊……」。这三档都不带「！」，所以既走不到硬边界，
+    以前会一直攒到 finish、和后面的台词挤成一个单元。
+    """
+
+    Z1 = "哈、哈、哈、嗯、哈啊……"
+    Z2 = "哈……哈……嗯……哈啊……"
+    LINE = "指挥官……我快不行了……"
+    LEAD = "今天天气真好呀，我在窗边坐了一会儿。"
+
+    def test_pant_run_is_one_unit_then_line(self):
+        for moan in (self.Z1, self.Z2):
+            with self.subTest(moan=moan):
+                units = run([moan + self.LINE])
+                self.assertEqual([u[2] for u in units], [moan, self.LINE])
+                self.assertEqual(units[0][4], "soft")          # 喘串是「句子没说完」的半句
+                self.assertEqual("".join(u[2] for u in units), moan + self.LINE)
+
+    def test_pant_run_split_after_a_normal_line(self):
+        for moan in (self.Z1, self.Z2):
+            with self.subTest(moan=moan):
+                units = run([self.LEAD + moan + self.LINE])
+                self.assertEqual([u[2] for u in units],
+                                 [self.LEAD, moan, self.LINE])
+
+    def test_long_pant_run_is_not_soft_cut_inside(self):
+        """纯拟声串里不软切：15 声（够首单元 first_min 的 12 字）也还是一整个单元。"""
+        long_run = "哈、" * 14 + "哈啊……"
+        units = run([long_run + self.LINE])
+        self.assertEqual(units[0][2], long_run)
+        self.assertEqual(units[1][2], self.LINE)
+
+    def test_short_interjection_does_not_split(self):
+        """日常的「嗯，」「嗯嗯嗯，」不算喘串（不到 2 组），切分不变。"""
+        for text in ("嗯，我知道了。", "嗯嗯嗯，我知道了。"):
+            with self.subTest(text=text):
+                self.assertEqual([u[2] for u in run([text])], [text])
+
+    def test_pant_split_is_chunking_invariant(self):
+        for text in (self.Z1 + self.LINE, self.Z2 + self.LINE, self.LEAD + self.Z1 + self.LINE):
+            with self.subTest(text=text):
+                whole = run([text])
+                self.assertEqual(run(list(text)), whole)
+                self.assertEqual(run(random_chunks(text, 3)), whole)
+                self.assertEqual("".join(u[2] for u in whole), text)
+
+    def test_streaming_waits_for_the_line(self):
+        """逐字喂：喘串期间不许提前切（后面的字还没到），台词第一个字到了才切。"""
+        s = SessionText("pant")
+        out = []
+        for ch in self.Z1:
+            out += s.feed(ch, 0.0)
+        self.assertEqual(out, [], "喘串里不该切")
+        out = s.feed("指", 0.0)
+        self.assertEqual([u.speech_text for u in out], [self.Z1])
+
+
 if __name__ == "__main__":
     unittest.main()

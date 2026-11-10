@@ -33,6 +33,15 @@ CTRL_CLOSE = "|>"
 # 不看未来也能逐字流式（分块不变）。要真按台词/亲密场景区分，得把场景信息喂进切句器。
 MOAN_ZH = set("嗯啊哈唔呜呼啾哼")
 MOAN_MERGE_MAX = 24      # 纯拟声累积到超过这么多可说字就在当前硬边界切（别拖首声延迟）
+# 纯拟声串→台词的分界（2026-11-10）：喘串后面直接接台词、中间又没有硬边界（「！」）时，
+# 整段会一直攒到 finish 才提交，喘和台词挤在同一个单元里。三档快喘（「哈、哈、哈、嗯、哈啊……」
+# 「哈……哈……嗯……哈啊……」）正是这种写法，所以要在这里认一次「喘完了、下面开始说话」。
+# 判据故意收紧，免得把日常的「嗯，我知道了」也切开：
+#   * 至少 2 组拟声（被「、」「……」这类标点隔开的才算一组，所以「嗯嗯嗯，」不算）；
+#   * 至少 3 个可说字；
+#   * 拟声串里不许夹非拟声字（复用 `_pure_moan`）。
+MOAN_SPLIT_MIN_CHARS = 3
+MOAN_SPLIT_MIN_GROUPS = 2
 
 
 def is_word(ch: str) -> bool:
@@ -227,6 +236,35 @@ class SessionText:
                  if self.kinds[i] == "speech" and is_word(self.text[i])]
         return bool(words) and all(c in MOAN_ZH for c in words)
 
+    def _moan_groups(self, lo: int, cut: int):
+        """[lo, cut) 里拟声字被标点隔成几组、一共几个可说字（不看未来，只数已到达的）。"""
+        chars, groups, in_group = 0, 0, False
+        for i in range(lo, cut):
+            if self.kinds[i] != "speech":
+                in_group = False
+                continue
+            ch = self.text[i]
+            if is_word(ch) and ch in MOAN_ZH:
+                chars += 1
+                if not in_group:
+                    groups += 1
+                    in_group = True
+            else:
+                in_group = False
+        return chars, groups
+
+    def _moan_then_line(self, lo: int, cut: int) -> bool:
+        """喘串到此为止、下面开始说话（2026-11-10 三档快喘）。
+
+        只在「[lo,cut) 是纯拟声串，且已经是一串（≥2 组、≥3 字）」时为真 —— 于是
+        「哈、哈、哈、嗯、哈啊……指挥官……」在「指」前面切成两段：喘自己一个单元，台词另起。
+        日常的「嗯，我知道了」「嗯嗯嗯，」不满足组数，行为不变。
+        """
+        if not self._pure_moan(lo, cut):
+            return False
+        chars, groups = self._moan_groups(lo, cut)
+        return chars >= MOAN_SPLIT_MIN_CHARS and groups >= MOAN_SPLIT_MIN_GROUPS
+
     def _moan_next(self, cut: int, limit: int):
         """硬边界之后第一个"实字"：True=还是拟声字，False=别的字，None=还没到达。
 
@@ -288,10 +326,12 @@ class SessionText:
                     continue                    # merge=并进同一单元 / wait=等下一个字到了再判
                 space_ok = ch.isspace() and self._space_soft(i, limit)
                 space_pending = ch.isspace() and i + 1 >= limit   # 右边未到：这格先不判（否则看未来）
+                if is_word(ch) and ch not in MOAN_ZH and self._moan_then_line(lo, i):
+                    return (i, "soft")      # 喘串到此为止，台词另起（2026-11-10 三档快喘）
                 if first:
-                    if ch in SOFT and speak >= min_len:
+                    if ch in SOFT and speak >= min_len and not self._pure_moan(lo, cut):
                         return (cut, "soft")    # 软边界：够长即切，不等后面的句子
-                    if space_ok and speak > max_len:
+                    if space_ok and speak > max_len and not self._pure_moan(lo, cut):
                         return (cut, "soft")
                 elif (ch in SOFT or space_ok) and speak >= self.later_soft_min:
                     last_soft = cut
