@@ -130,6 +130,24 @@ TRANSLATE_PROMPT = (
     "· 括号里的心声原样保留；只输出译文，不要解释、不要加引号、不要罗马字。"
 )
 TRANSLATE_FALLBACK = os.environ.get("TTS_TRANSLATE_FALLBACK", "deepseek-v4-pro")
+# ---- 翻译前文（2026-11-10）-----------------------------------------------------------
+# 9885 以前发的 `context_before` 恒为空串，翻译只看得到当前这一单元，接不住上一句的称呼/语气。
+# 现在它会发「本单元之前说过的中文」（有界 120 字，见 `stream_server.translate_context`）。
+# 前文**只作参考**：模型很容易顺手把它也译一遍，所以提示里和用户消息里各写一次。
+TRANSLATE_CONTEXT_RULE = (
+    "· 用户消息里可能带「前文」：那是这句之前已经说过的中文，**只供参考、不要翻译、不要复述**，"
+    "只译「当前句」那一段。\n")
+TRANSLATE_CONTEXT_MAX = 400          # 保险丝：桥侧再截一次，别让提示无限长
+
+
+def with_context(prompt: str, text: str, context: str = ""):
+    """把前文塞进翻译请求，返回 `(system prompt, 用户消息)`；没有前文时**逐字段不变**。"""
+    ctx = (context or "").strip()
+    if not ctx:
+        return prompt, text
+    return (prompt + TRANSLATE_CONTEXT_RULE,
+            "【前文，不要翻译】\n%s\n【当前句，只译这一句】\n%s" % (ctx[-TRANSLATE_CONTEXT_MAX:], text))
+
 _SENT = re.compile(r"[^。！？!?\n]+")
 
 # ---- 情绪提示（2026-09-28）：翻译同一次调用顺带判情绪 -------------------------------
@@ -258,9 +276,10 @@ def to_japanese_ex(text: str, context: str = ""):
         # 拒绝闸门同样套在 JSON 这条腿上（2026-11-09）：英文拒绝在 _parse_emotion_json 里抠不出 ja，
         # 但 got 非空 ⇒ 不走下面 DeepSeek 的 JSON 腿，白等一次又退回 to_japanese 再问一次 Gemini（还是拒）。
         # 过 _leg 之后拒绝＝空串，直接落到 DeepSeek，译文和情绪一起拿回来。正常 JSON 里有日文，不会误判。
-        got = _leg(t, "首腿", ask_brain, t, prompt=TRANSLATE_PROMPT + EMOTION_PROMPT)
+        prompt, user_text = with_context(TRANSLATE_PROMPT + EMOTION_PROMPT, t, context)
+        got = _leg(t, "首腿", ask_brain, user_text, prompt=prompt)
         if not got and key:
-            got = _ask(key, t, model, endpoint, prompt=TRANSLATE_PROMPT + EMOTION_PROMPT)
+            got = _ask(key, user_text, model, endpoint, prompt=prompt)
         ja, emo = _parse_emotion_json(got) if got else ("", None)
         if ja and _complete(t, ja):
             # 中文原文里的明示线索由**我们自己的规则**抽（确定性、不依赖模型回抄），

@@ -47,6 +47,11 @@ MAX_PAYLOAD = 8 * 2 ** 20       # 单个 WAV/SSE payload
 TICK_S = 0.20                # 空闲冲刷的检查间隔（切句器自己的 idle_window 是 0.8s）
 PROTOCOL_VERSION = 2         # 本机 v2：版本不匹配一律**明确失败**，不静默跑半新半旧
 EMOTION_CTX_CHARS = 400      # 送进规划器的前文上限（≈2 个自然句；够判"这句没信号该继承谁"）
+# 送进**翻译腿**的前文上限（2026-11-10）：桥那边把 context_before 拼进翻译提示，
+# 太长会拖慢首声。120 字≈一两句话，够模型接住称呼/语气，又不会把请求撑大。
+TRANSLATE_CTX_CHARS = 120
+# 前文从哪断：优先断在这些标点后面（句子/分句边界），找不到就按字数硬截。
+_CTX_BREAKS = "。！？!?…，、,;；"
 CAPABILITIES = ["display.span", "unit.no_audio", "unit.failed", "playback.credit",
                 "playback.ack", "session.counts"]
 
@@ -242,6 +247,26 @@ class Config:
                 "max_down_bytes": MAX_DOWN_BYTES, "max_payload": MAX_PAYLOAD}
 
 
+def translate_context(full: str, start: int, limit: int = TRANSLATE_CTX_CHARS) -> str:
+    """这个单元之前已经说过的中文正文（送翻译腿的「前文」），有界。
+
+    2026-11-10：桥的 `context_before` 一直是空串，翻译只能看到当前这一单元。这里把本单元
+    之前的中文原文截最近 `limit` 字送过去 —— 从标点后起头，免得半句开头（「……我快不行了」
+    的「快不行了」）反而干扰模型。第一个单元没有前文，返回空串（行为与以前一致）。
+    """
+    head = (full or "")[:max(0, start)].rstrip()
+    if not head:
+        return ""
+    if len(head) > limit:
+        cut = len(head) - limit
+        for i in range(cut, min(len(head), cut + 20)):      # 只往后找一小段，别把前文截太短
+            if head[i - 1] in _CTX_BREAKS:
+                cut = i
+                break
+        head = head[cut:]
+    return head.strip()
+
+
 class Session:
     """一个 WS 会话：状态机（方案 §3.3）+ 单 writer 出站队列 + 单元队列。"""
 
@@ -413,7 +438,10 @@ class Coordinator:
         full = getattr(sess.text, "text", "") or ""
         body = {"session_id": sess.id, "generation": sess.generation, "unit_id": unit.unit_id,
                 "voice": sess.voice, "source_range": [unit.start, unit.end],
-                "speech_text": unit.speech_text, "context_before": context_before,
+                "speech_text": unit.speech_text,
+                # 翻译前文（2026-11-10）：本单元之前说过的中文（有界，见 translate_context）。
+                # 桥把它拼进翻译提示，只作参考、不译；空串＝本轮第一句，与改动前逐字段一致。
+                "context_before": context_before or translate_context(full, unit.start),
                 # 切分原因：桥据此判断这一单元是不是「句子没说完」的半句（译文要以「、」收尾）
                 "unit_reason": unit.reason,
                 # 原始切片：`speech_text` 按会话解析把旁白剥了，「（小声）」这类线索只在原文里

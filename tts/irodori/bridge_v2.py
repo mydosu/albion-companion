@@ -335,6 +335,22 @@ def planned_family(emo, ja_text):
     return fam
 
 
+def _prior_text(req):
+    """本单元之前的中文正文：`source_prefix`（本轮全部前缀）+ `context_before`（有界的尾巴）。
+
+    2026-11-10：9885 开始发 `context_before`（`stream_server.translate_context`，本轮前缀的
+    最后 120 字）。两条重叠时只留一份 —— 拼两遍既啰嗦，也会让 `_ctx_family` 把同一句读两次。
+    """
+    ctx = getattr(req, "context_before", "") or ""
+    sp = getattr(req, "source_prefix", "") or ""
+    if ctx and sp:
+        if sp.endswith(ctx):
+            ctx = ""
+        elif ctx.endswith(sp):
+            sp = ""
+    return ctx + sp
+
+
 def _ctx_family(context_before):
     """前文的句面族（与 `planned_family` 同一口径，只看关键词表）。"""
     return SP.STYLE_FAMILY.get(SP._match(context_before or "") or "calm", "neutral")
@@ -805,12 +821,11 @@ class PrepareService:
             # 明示「喘」线索不写自由描述：自由描述里 breath→coq 是「鼻にかけて、柔らかく、
             # 甘える」（撒娇），不是喘；留给规划器用训练过的喘息锚
             # `息を荒くして、甘く喘ぐように、近い距離で`（cfg 4.5）。
-            # 前文：context_before（9885 目前不发，恒为空）+ source_prefix（本单元之前的原文，
-            # 一直都有）。两条拼起来才是"这句之前说过什么"。
+            # 前文：source_prefix（本单元之前的**全部**原文，一直都有）+ context_before
+            # （2026-11-10 起 9885 会发，有界 120 字，是 source_prefix 的尾巴）。
+            # `_prior_text` 去重：两条重叠时只留一份，别把同一段前文拼两遍。
             anchor = intimate_codebook_anchor(
-                emo, ja_text, zh_text,
-                context_before=((getattr(req, "context_before", "") or "")
-                                + (getattr(req, "source_prefix", "") or "")))
+                emo, ja_text, zh_text, context_before=_prior_text(req))
             if anchor:
                 # 亲密句：**不写** `voice_caption`，让规划器的码本锚说了算（见 anchor 的注释）。
                 # 有拟声时同时把提示抬成 breathy + 高强度，规划器才会落到强锚而不是弱锚。
