@@ -198,6 +198,18 @@ class Config:
         # 环境变量算），否则多出来的预取会被桥判 `session_window` 直接失败。
         self.prefetch_depth = max(0, min(8, int(os.environ.get("ALBION_PREFETCH_DEPTH")
                                               or kw.get("prefetch_depth", 2))))
+        # 直出日语的字幕（2026-11-10）：亲密段脑直接说日语，声音不再走中译日；但字幕一直取
+        # 9885 的源账本（`source_of`）⇒ 直出日语后屏幕会显示日语。这里对「主要是日语」的单元
+        # 另发一次 ja→zh 请求，字幕用中文；渲染与这次翻译**并行起跑**，
+        # 渲染出第一帧后最多再等 `caption_wait` 秒（ALBION_CAPTION_WAIT_S，默认 3，0=不等，
+        # 直接把日语原文当字幕）。等待时间与"首声"无关：字幕在 sentence.start 之前发，
+        # 但那时音频已经渲染好了，最多推后这么多。
+        self.caption_zh = (os.environ.get("ALBION_CAPTION_ZH", "1").strip().lower()
+                           not in ("0", "false", "no", "off"))
+        self.caption_wait = float(os.environ.get("ALBION_CAPTION_WAIT_S")
+                                  or kw.get("caption_wait", 3.0))
+        self.caption_timeout = float(os.environ.get("ALBION_CAPTION_TIMEOUT")
+                                     or kw.get("caption_timeout", 20.0))
         self.render_timeout = float(os.environ.get("RENDER_TIMEOUT") or kw.get("render_timeout", 90.0))  # GPU 软超时
         self.max_units = kw.get("max_units", MAX_UNITS)
         self.max_chars = kw.get("max_chars", MAX_CHARS)
@@ -248,9 +260,33 @@ class Config:
                 "max_ahead_s": self.max_ahead_s, "max_ahead_units": self.max_ahead_units,
                 "credit_wait": self.credit_wait, "emotion_mode": self.emotion_mode,
                 "emotion_policy": self.emotion_policy,
+                "caption_zh": self.caption_zh, "caption_wait": self.caption_wait,
                 "plan_version": self.plan_version, "cut": dict(self.cut),
                 "gap": {"enabled": GS.ENABLED, "lead_s": GS.LEAD_S, "tail_s": dict(GS.TAIL_S)},
                 "max_down_bytes": MAX_DOWN_BYTES, "max_payload": MAX_PAYLOAD}
+
+
+# ---- 直出日语的字幕（2026-11-10）---------------------------------------------------
+# 亲密段脑直接写日语，声音不再走中译日；字幕仍取源账本 ⇒ 屏幕上会是日语。这里对日语单元
+# 另发一次 ja→zh（桥 `/v1/caption`，复用生产首腿 + 对冲 + DeepSeek 兜底），字幕显示中文。
+#
+# 「主要是日语」的判据**必须与桥同一条**：桥已经用 `bridge_v2.is_japanese` 判过、
+# 并把结论放进 prepare 结果（`translated=False` = 日语直通），语音单元直接用那个标志；
+# 只有无音频单元（括号心声）不走翻译、拿不到这个标志，才用下面这份**逐字照抄**的判据
+# （`tests/tts/test_ja_caption.py` 有等价性用例守着两处不漂移）。
+_JA_KANA = re.compile(r"[\u3040-\u30ff]")
+_JA_HAN = re.compile(r"[\u4e00-\u9fff]")
+_JA_LATIN = re.compile(r"[A-Za-z0-9]")
+_JA_CN_ONLY = re.compile(r"[的了吗吧呢这]")
+
+
+def looks_japanese(text: str) -> bool:
+    """与 `bridge_v2.is_japanese` 同一判据：假名占比 ≥0.5，且不夹中文虚词。"""
+    if _JA_CN_ONLY.search(text or ""):
+        return False
+    kana = len(_JA_KANA.findall(text or ""))
+    body = kana + len(_JA_HAN.findall(text or "")) + len(_JA_LATIN.findall(text or ""))
+    return body > 0 and kana / body >= 0.5
 
 
 def translate_context(full: str, start: int, limit: int = TRANSLATE_CTX_CHARS) -> str:
@@ -622,6 +658,9 @@ class Coordinator:
             return
         t_prep = time.monotonic()
         status = prepared.get("status")
+        # 直出日语（2026-11-10）：桥把「本来就在说日语」的单元原样放行（`translated=False`），
+        # 声音不再走中译日 —— 那字幕就得另译回中文，见 `_start_caption`。
+        ja_direct = prepared.get("translated") is False
         if status == "no_audio":
             await self._no_audio(sess, unit, reason=prepared.get("reason"))
             return
@@ -645,7 +684,7 @@ class Coordinator:
         if not segments:
             await self._fail_span(sess, unit, "prepare", "empty ja_segments")
             return
-        await self.render_unit(sess, unit, segments, deadline)
+        await self.render_unit(sess, unit, segments, deadline, ja_direct=ja_direct)
         # 阶段耗时（P7 真机取数用；codex 要求冷热分开、别只用一个总数拍预算）：
         # prepare = 翻译腿（含排队）；gpu_send = 各子段 GPU 合成 **+ 发帧 + 限流等待** 的合计（不是纯 GPU）。
         t_end = time.monotonic()
@@ -741,10 +780,14 @@ class Coordinator:
 
         事件是 `display.span(eligible=immediate)` + `unit.no_audio`，**不**发 sentence.* ——
         壳侧对无音频段一个字节都不该 decode（P:188 的零字节 return 不产生字幕回调，只省帧不够）。
+        2026-11-10：括号心声如果是日语，也要先译成中文再显示（没有渲染可以并行，就现等
+        `caption_wait`，超时就先用日语原文）。
         """
         self._T0.pop(unit.unit_id, None)   # 预取留下的时间账要清（codex 复核：no_audio 会漏账）
         sess.counts["no_audio"] += 1
         display = self.source_of(sess, unit)
+        display = await self._caption_text(sess, unit,
+                                          self._start_caption(sess, unit, display, False), display)
         await sess.send_json({"event": "display.span", "payload": {
             "session_id": sess.id, "generation": sess.generation, "unit_id": unit.unit_id,
             "source_unit_id": unit.unit_id, "source_range": [unit.start, unit.end],
@@ -773,7 +816,7 @@ class Coordinator:
             "unit_id": unit.unit_id, "stage": stage, "source_range": [unit.start, unit.end],
             "error": error}})
 
-    async def render_unit(self, sess, unit, segments, deadline):
+    async def render_unit(self, sess, unit, segments, deadline, ja_direct=False):
         """一个单元的**每个子段**各一组 `sentence.start` → N 帧 → `sentence.end`。
 
         为什么句级事件要按音频段分（复核第 3 轮抓到的真 bug）：I 侧每个子段给的是一份
@@ -785,6 +828,10 @@ class Coordinator:
         每个子段一个 `/v2/render` 请求，且**必须**读到 `done` 才算完整（复核问题 3）。
         """
         display = self.source_of(sess, unit)
+        # 直出日语：字幕的中文与渲染**并行**起跑，出第一帧后再最多等 caption_wait 秒
+        # （见 `_caption_text`）。`shown` 是真正发出去的字幕，字幕回来后被换成中文。
+        cap = self._start_caption(sess, unit, display, ja_direct)
+        shown = display
         span_sent = False
         seg = None                       # 当前子段的账：start 发过没、帧数、样本数
         try:
@@ -887,18 +934,22 @@ class Coordinator:
                                 sess, need_s=frame_s, need_units=0 if seg["started"] else 1)
                             if not seg["started"]:
                                 if not span_sent:
+                                    # 直出日语：字幕（中文）在这里才取用 —— 渲染已经出帧了，
+                                    # 最多再等 `caption_wait`；没回来就用日语原文顶上。
+                                    shown = await self._caption_text(sess, unit, cap, display)
+                                    cap = None
                                     # 方案 §4.2：可说 span 在**首个音频真的开始**时获得显示资格；
                                     # 一个源单元只给一次，后面的子段共用这一份原文。
                                     await sess.send_json({"event": "display.span", "payload": {
                                         "session_id": sess.id, "generation": sess.generation,
                                         "unit_id": unit.unit_id, "source_unit_id": unit.unit_id,
-                                        "source_range": [unit.start, unit.end], "text": display,
+                                        "source_range": [unit.start, unit.end], "text": shown,
                                         "eligible": "audio", "source": "audio"}})
                                     span_sent = True
                                 await sess.send_json({"event": "sentence.start", "payload": {
                                     "session_id": sess.id, "generation": sess.generation,
                                     "unit_id": unit.unit_id, "sub_index": sub_index,
-                                    "text": display, "format": sess.fmt}})
+                                    "text": shown, "format": sess.fmt}})
                                 seg["started"] = True
                             if n_samples:
                                 seg["samples"] += n_samples
@@ -919,7 +970,7 @@ class Coordinator:
                                 raise RuntimeError("render 内部失败 %s 段" % payload["failed"])
                 if not saw_done:
                     raise RuntimeError("render 流提前结束（没有 done）")
-                await sess.send_json(self._segment_end(sess, unit, seg, display))  # 这一段收尾；下一段另起一组
+                await sess.send_json(self._segment_end(sess, unit, seg, shown))  # 这一段收尾；下一段另起一组
                 seg = None
                 if pending_state:
                     # 提交交给**唯一真正写 socket 的 writer**（队列 FIFO 就是回执）：
@@ -934,9 +985,10 @@ class Coordinator:
                 % (sess.id, st, unit.unit_id, type(e).__name__, text_meta(e)))
             await self._fail_span(sess, unit, st, "%s: %s" % (type(e).__name__, str(e)[:160]))
         finally:
+            self._drop_caption(cap)          # 没走到取用点（失败/取消）就别留着那次请求
             if seg is not None and seg["started"]:
                 # 非阻塞投递：预算到点/取消时本协程已处于被取消状态，`await` 会立刻抛
-                sess.send_json_nowait(self._segment_end(sess, unit, seg, display))
+                sess.send_json_nowait(self._segment_end(sess, unit, seg, shown))
 
     @staticmethod
     def _segment_end(sess, unit, seg, display):
@@ -990,6 +1042,65 @@ class Coordinator:
                 except json.JSONDecodeError:
                     yield name, {}
                 name, buf = None, []
+
+    # ---------------- 直出日语的字幕（2026-11-10）----------------
+    def _need_caption(self, sess, unit, display, ja_direct):
+        """这个单元要不要 ja→zh 字幕：开关开、是日语单元、而且有字可翻。"""
+        if not self.cfg.caption_zh or self.cfg.engine == "gsv":
+            return False
+        if not (display or "").strip():
+            return False
+        return bool(ja_direct) or looks_japanese(display)
+
+    def _start_caption(self, sess, unit, display, ja_direct):
+        """**并行起跑**字幕翻译；返回 (task, 起始时刻) 或 None。
+
+        起跑点放在渲染之前：渲染那 2~3 秒里字幕大多已经回来了，真正要"等"的通常远小于
+        `caption_wait`。这样直出日语的首声不会因为字幕多等（字幕只在 sentence.start 前取用）。
+        """
+        if not self._need_caption(sess, unit, display, ja_direct):
+            return None
+        task = asyncio.create_task(self._caption_call(sess, display))
+        return (task, time.monotonic())
+
+    async def _caption_call(self, sess, text):
+        r = await self._http().post(self.cfg.bridge_url.rstrip("/") + "/v1/caption",
+                                    json={"text": text}, timeout=self.cfg.caption_timeout)
+        if r.status_code != 200:
+            raise RuntimeError("caption %d: %s" % (r.status_code, (r.text or "")[:120]))
+        data = r.json()
+        return str(data.get("zh") or "").strip()
+
+    async def _caption_text(self, sess, unit, cap, display):
+        """取中文字幕；超时/失败就**用日语原文顶上**并记一行（绝不为了字幕卡住出声）。"""
+        if not cap:
+            return display
+        task, t0 = cap
+        if self.cfg.caption_wait <= 0:
+            task.cancel()
+            log("[caption] ja fallback unit=%s（ALBION_CAPTION_WAIT_S=0，不等字幕）" % unit.unit_id)
+            return display
+        try:
+            zh = await asyncio.wait_for(task, timeout=self.cfg.caption_wait)
+        except asyncio.TimeoutError:
+            log("[caption] ja fallback unit=%s（>%.1fs 没回，先用日语原文）"
+                % (unit.unit_id, self.cfg.caption_wait))
+            return display
+        except Exception as e:                    # noqa: BLE001 - 字幕失败绝不影响出声
+            log("[caption] ja fallback unit=%s（%s）" % (unit.unit_id, type(e).__name__))
+            return display
+        if not zh:
+            log("[caption] ja fallback unit=%s（空译文）" % unit.unit_id)
+            return display
+        log("[caption] unit=%s ja->zh %.0fms len=%d->%d"
+            % (unit.unit_id, (time.monotonic() - t0) * 1000.0, len(display or ""), len(zh)))
+        return zh
+
+    @staticmethod
+    def _drop_caption(cap):
+        """没走到取用点的字幕任务别留着（取消即可，结果没人要）。"""
+        if cap and not cap[0].done():
+            cap[0].cancel()
 
     @staticmethod
     def source_of(sess, unit):

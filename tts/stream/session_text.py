@@ -28,10 +28,18 @@ CTRL_CLOSE = "|>"
 # 每个「！」都当硬边界 ⇒ 每声单独合成、自带尾静音和块间气口，听着成了一惊一乍的惊呼；用户选的样张
 # 是**整串当一个单元**一起渲染（模型自己的节奏就有喘的感觉）。只在硬边界处用，见 _moan_boundary。
 #
-# shortcut（已知局限，故意不修）：只认这份中文拟声字集，不看上下文/力度。所以日常对话里
+# shortcut（已知局限，故意不修）：只认下面这两份字表（中文 + 日语，见 `MOAN_JA`），
+# 不看上下文/力度。所以日常对话里
 # 「啊！嗯！」「哼！哈！」这种连续叹词也会被并成一个单元 —— 换来的是纯逻辑、可离线测试、
 # 不看未来也能逐字流式（分块不变）。要真按台词/亲密场景区分，得把场景信息喂进切句器。
 MOAN_ZH = set("嗯啊哈唔呜呼啾哼")
+# 日语纯喘息字集（2026-11-10 直出日语）：亲密段现在由脑直接写日语，喘息串长这样
+# 「んっ……はぁ、はっ、はっ……」「——っ！んんんっ……！！」。只认中文那套的话，每个「！」
+# 还是硬切一次 ⇒ 又回到"一惊一乍的惊呼"（11-09 修过的那个问题）。
+# 判据故意收紧成**字表**：只有 ん っ ぁ ぃ ぅ ぇ ぉ は あ ふ う ー 〜 组成的一组才算喘息，
+# 「はい」（含 い）「あの」（含 の）「はやく」（含 や く）都不算 ⇒ 日常台词不会被并成一串。
+MOAN_JA = set("んっ ぁぃぅぇぉはあふうー〜")
+MOAN_ALL = MOAN_ZH | MOAN_JA          # 判"这一串是不是喘息"用的并集（中日各一套字表）
 MOAN_MERGE_MAX = 24      # 纯拟声累积到超过这么多可说字就在当前硬边界切（别拖首声延迟）
 # 纯拟声串→台词的分界（2026-11-10）：喘串后面直接接台词、中间又没有硬边界（「！」）时，
 # 整段会一直攒到 finish 才提交，喘和台词挤在同一个单元里。三档快喘（「哈、哈、哈、嗯、哈啊……」
@@ -231,10 +239,10 @@ class SessionText:
         return not is_word(self.text[i + 1])
 
     def _pure_moan(self, lo: int, cut: int) -> bool:
-        """lo..cut 是纯拟声段：所有"字"（is_word）都在 MOAN_ZH 里，且至少有一个字。"""
+        """lo..cut 是纯拟声段：所有"字"（is_word）都在 MOAN_ALL（中日两套字表）里，且至少有一个字。"""
         words = [self.text[i] for i in range(lo, cut)
                  if self.kinds[i] == "speech" and is_word(self.text[i])]
-        return bool(words) and all(c in MOAN_ZH for c in words)
+        return bool(words) and all(c in MOAN_ALL for c in words)
 
     def _moan_groups(self, lo: int, cut: int):
         """[lo, cut) 里拟声字被标点隔成几组、一共几个可说字（不看未来，只数已到达的）。"""
@@ -244,7 +252,7 @@ class SessionText:
                 in_group = False
                 continue
             ch = self.text[i]
-            if is_word(ch) and ch in MOAN_ZH:
+            if is_word(ch) and ch in MOAN_ALL:
                 chars += 1
                 if not in_group:
                     groups += 1
@@ -276,7 +284,7 @@ class SessionText:
                                                         or self.text[j].isspace()):
                 j += 1
                 continue
-            return is_word(self.text[j]) and self.text[j] in MOAN_ZH
+            return is_word(self.text[j]) and self.text[j] in MOAN_ALL
         return None                              # 后面还没来：不猜
 
     def _moan_boundary(self, lo: int, cut: int, limit: int, speak: int, flush: bool) -> str:
@@ -326,7 +334,7 @@ class SessionText:
                     continue                    # merge=并进同一单元 / wait=等下一个字到了再判
                 space_ok = ch.isspace() and self._space_soft(i, limit)
                 space_pending = ch.isspace() and i + 1 >= limit   # 右边未到：这格先不判（否则看未来）
-                if is_word(ch) and ch not in MOAN_ZH and self._moan_then_line(lo, i):
+                if is_word(ch) and ch not in MOAN_ALL and self._moan_then_line(lo, i):
                     return (i, "soft")      # 喘串到此为止，台词另起（2026-11-10 三档快喘）
                 if first:
                     if ch in SOFT and speak >= min_len and not self._pure_moan(lo, cut):

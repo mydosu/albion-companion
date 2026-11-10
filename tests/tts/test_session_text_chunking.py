@@ -151,6 +151,58 @@ class MoanRunTest(unittest.TestCase):
                 self.assertEqual("".join(u[2] for u in whole), text)
 
 
+class JaMoanRunTest(unittest.TestCase):
+    """日语纯喘息（2026-11-10 直出日语）：与中文那套等价。
+
+    亲密段由脑直接写日语，喘息串是「んっ……はぁ、はっ、はっ……」「——っ！んんんっ……！！」。
+    只认中文拟声字的话，每个「！」还是硬切一次 ⇒ 又回到"一声一声的惊呼"（11-09 修过的问题）。
+    字表故意收紧：ん っ ぁ ぃ ぅ ぇ ぉ は あ ふ う ー 〜；「はい」「あの」因为含别的假名不算。
+    """
+
+    CLIMAX = "——っ！んんんっ……！！"
+    MOAN_THEN_LINE = "はぁ……あっ……んっ……指揮官……"
+    PANT = "んっ……はぁ、はっ、はっ……"
+
+    def test_japanese_moan_run_is_one_unit(self):
+        units = run([self.CLIMAX])
+        self.assertEqual([u[2] for u in units], [self.CLIMAX], [u[2] for u in units])
+
+    def test_japanese_pant_run_is_one_unit(self):
+        self.assertEqual([u[2] for u in run([self.PANT])], [self.PANT])
+
+    def test_japanese_moan_run_stops_before_real_line(self):
+        units = run([self.MOAN_THEN_LINE])
+        self.assertEqual(units[0][2], "はぁ……あっ……んっ……", [u[2] for u in units])
+        self.assertTrue(units[1][2].startswith("指揮官"), units[1][2])
+        self.assertEqual("".join(u[2] for u in units), self.MOAN_THEN_LINE)
+
+    def test_japanese_plain_words_are_not_moans(self):
+        """「はい」「あの」「はやく」含 い/の/や/く ⇒ 一个「！」都不并，照常硬切。"""
+        text = "はい！あの！はやく！"
+        self.assertEqual([u[2] for u in run([text])], ["はい！", "あの！", "はやく！"])
+
+    def test_japanese_moan_cap_keeps_merging_but_bounded(self):
+        """长喘串照样受 MOAN_MERGE_MAX / 首单元长度约束：会切，但**只切在「！」后**，
+        绝不把一个喘息组劈成两半（那会被念成半声）。"""
+        text = "はぁ！" * 14                       # 每组 2 个可说字
+        units = run([text])
+        self.assertGreater(len(units), 1, [u[2] for u in units])
+        for u in units:
+            self.assertTrue(u[2].endswith("！"), u[2])
+        self.assertEqual("".join(u[2] for u in units), text)
+        # 每一组都是完整的「はぁ！」：数一下组数不能少
+        self.assertEqual(sum(u[2].count("！") for u in units), 14)
+
+    def test_japanese_streaming_and_whole_feed_agree(self):
+        for text in (self.CLIMAX, self.PANT, self.MOAN_THEN_LINE, "はぁ！" * 14,
+                     "んっ！はぁ……指揮官、ゆっくり……"):
+            with self.subTest(text=text):
+                whole = run([text])
+                self.assertEqual(run(list(text)), whole)
+                self.assertEqual(run(random_chunks(text, 5)), whole)
+                self.assertEqual("".join(u[2] for u in whole), text)
+
+
 class PantTiersTest(unittest.TestCase):
     """三档快喘（2026-11-10）：喘串本身一个单元，台词另起。
 

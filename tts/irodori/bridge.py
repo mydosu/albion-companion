@@ -317,6 +317,43 @@ def to_japanese_ex(text: str, context: str = ""):
     return ja, None
 
 
+# ---- 字幕：日语 → 简体中文（2026-11-10 直出日语）----------------------------------
+# 亲密段脑直接说日语，声音不再走中译日；字幕必须另译回中文（9885 调 `/v1/caption`）。
+# 提示词由用户定稿，原样使用；正文拼在后面。
+CAPTION_PROMPT = (
+    "把下面的日语译成简体中文，只输出译文。说话人是阿尔比恩，对指挥官说话：「指揮官」译成「指挥官」，"
+    "对他一律用「您」，不用「你」；保留原文的语气、停顿和标点（……、——、！、括号）。"
+    "喘息和呻吟按声音对应：んっ/ん→嗯，んんんっ→嗯嗯嗯，はぁ→哈啊，はっ→哈，あっ/あ→啊，"
+    "ふぅ→呼，——っ→——唔。括号里的心声也照样翻译，括号保留。"
+)
+
+
+def to_chinese(ja_text: str) -> str:
+    """日语 → 简体中文，**只给字幕用**（绝不进 TTS）。与翻译腿同一条：首腿 + 对冲 + DeepSeek 兜底。
+
+    返回空串 = 这次没拿到（调用方用日语原文顶上）。铁律：字幕链路的任何失败都不许影响出声。
+    """
+    t = " ".join((ja_text or "").split())
+    if not t or not TRANSLATE_ENABLED:
+        return ""
+    if TRANSLATE_BACKEND == "codex":
+        keys = _cc_keys()             # 与 to_japanese_ex 同口径：codex 后端 = Command Code 那条线路
+        key = keys[0] if keys else ""
+        model, endpoint = FALLBACK_MODEL, FALLBACK_BASE
+    else:
+        key = _translate_key()
+        model, endpoint = TRANSLATE_MODEL, TRANSLATE_BASE
+    prompt = CAPTION_PROMPT
+    zh, _win, fired = _hedge(
+        t,
+        lambda: _leg(t, "首腿", ask_brain, t, prompt=prompt),
+        lambda: _leg(t, "DeepSeek", _ask, key, t, model, endpoint, prompt=prompt),
+        enabled=bool(key))
+    if not zh and key and not fired:      # 对冲没发（首腿很快就空了）才补一次，不重复打
+        zh = _ask(key, t, model, endpoint, prompt=prompt)
+    return (zh or "").strip()
+
+
 def _sent_count(text: str) -> int:
     return len([x for x in _SENT.findall(text or "") if x.strip()])
 
@@ -1357,6 +1394,35 @@ async def models():
     ships = VOICES
     return {"object": "list",
             "data": [{"id": v, "object": "model", "owned_by": "irodori-tts"} for v in ships]}
+
+
+@app.post("/v1/caption")
+async def caption_zh(request: Request):
+    """日语 → 简体中文（**字幕专用**，2026-11-10 直出日语）。
+
+    为什么单开一个端点、而不是塞进 `/v2/prepare`：prepare 在**首声的关键路径**上，多一次
+    网络往返就多等一次；字幕只跟渲染并行、迟到还能降级成日语原文，两边完全解耦。
+    失败不抛错：返回 `{"zh": ""}` 让 9885 用原文顶上。
+    """
+    try:
+        body = await read_json_body(request)
+    except ValueError as e:
+        return Response(status_code=400, content="bad request body: %s" % str(e)[:200])
+    if not isinstance(body, dict):
+        return Response(status_code=400, content="bad request body: 需要 JSON 对象")
+    text = (body.get("text") or "").strip()
+    if not text:
+        return {"zh": ""}
+    t0 = time.monotonic()
+    try:
+        zh = await asyncio.to_thread(to_chinese, text)
+    except Exception as e:          # noqa: BLE001 - 字幕失败绝不该让 9885 收到 5xx
+        print("[caption] 没成：%s: %s" % (type(e).__name__, str(e)[:120]), flush=True)
+        return {"zh": ""}
+    took = (time.monotonic() - t0) * 1000.0
+    print("[caption] ja->zh %.0fms %s -> %s"
+          % (took, text_meta(text), text_meta(zh) if zh else "空（用日语原文）"), flush=True)
+    return {"zh": zh}
 
 
 @app.post("/v1/audio/speech")

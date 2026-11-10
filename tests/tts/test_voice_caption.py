@@ -1028,6 +1028,38 @@ class TestIntimateGoesToCodebook(unittest.TestCase):
         # 跨轮兜底按进程记时间戳，用例之间必须清掉，否则互相串
         B2._last_intimate_at = None
 
+    def test_japanese_direct_still_goes_to_intimate_anchor(self):
+        """直出日语（2026-11-10）：日语直通单元**也要**走亲密码本锚。
+
+        亲密段由脑直接写日语 ⇒ 单元走日语直通（`translated=False`），没有翻译腿的情绪。
+        原来 `caption_on = translated and …` 把整块（含 `intimate_codebook_anchor`）关掉，
+        直通的亲密句只能吃自由描述/规划器自己的判断。锚只看 ACT/句面证据，与情绪无关。
+        """
+        with mock.patch.dict(os.environ, ON, clear=False):
+            service, calls = svc()           # 翻译腿是替身，日语根本不会走到它
+            body = {"session_id": "s1", "generation": 1, "unit_id": "u9", "voice": "albion",
+                    "source_range": [0, 7], "speech_text": "はぁ……んっ……",
+                    "raw_text": "はぁ……んっ……",
+                    "context_before": '<|ACT:{"emotion":"awkward","face":"bashful",'
+                                      '"intimate":"steady"}|>'}
+            res = prepare(service, B2.parse_request(body))
+        seg = res.ja_segments[0]
+        self.assertFalse(res.translated, "日语直通：没走翻译腿")
+        self.assertEqual(calls, [])
+        self.assertTrue(seg.get("intimate"), "段级 intimate 要带上（9885 用它选亲密气口）")
+        self.assertEqual(seg["emotion"]["intimate_anchor"], "strong")   # 有拟声 ⇒ 强锚
+        self.assertNotIn("voice_caption", seg, "直通没有情绪依据：仍然不许写自由描述")
+
+    def test_japanese_direct_without_intimate_stage_keeps_no_emotion(self):
+        """直通但 ACT 没标亲密 ⇒ 一个字都不许多：没有 emotion 字段、没有 intimate。"""
+        with mock.patch.dict(os.environ, ON, clear=False):
+            service, _ = svc()
+            res = prepare(service, req(speech="今日は、少し疲れました。"))
+        seg = res.ja_segments[0]
+        self.assertFalse(res.translated)
+        self.assertNotIn("emotion", seg)
+        self.assertNotIn("intimate", seg)
+
     def test_intimate_with_moan_goes_to_strong_anchor(self):
         emo = {"arousal": 0.3, "intensity": 0.3, "valence": 0.0, "phonation": "soft"}
         a = B2.intimate_codebook_anchor(emo, "はぁ……！", "哈啊……！")

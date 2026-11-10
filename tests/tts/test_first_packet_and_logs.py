@@ -90,7 +90,7 @@ class FirstPacket(unittest.IsolatedAsyncioTestCase):
             if len(calls) == 1:
                 self.assertEqual(calls, ["first"])
             return 0
-        async def render(s, unit, segments, deadline):
+        async def render(s, unit, segments, deadline, **kw):   # 新参数（ja_direct=）照收，2026-11-10
             if unit is first:
                 await asyncio.wait_for(next_started.wait(), 1)
         co.prepare, co._wait_credit, co.render_unit = prepare, credit, render

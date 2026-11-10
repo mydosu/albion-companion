@@ -802,6 +802,11 @@ class PrepareService:
         for i, t in enumerate(lines):
             seg = {"sub_index": i, "text": t}
             emo = (emotions[i] if (not passthrough and emotions and i < len(emotions)) else None)
+            if emo is None and passthrough and voice_caption.voice_caption_on():
+                # 直通单元没有翻译腿的情绪，但亲密码本锚仍要能落 `hint`/`intimate_anchor`
+                # （2026-11-10 直出日语）。空 dict 的语义仍然是"没有情绪"（`if emo:` 为假），
+                # 锚真命中时 `_voice_fields` 往里写，下面的 `if emo:` 才把字段挂到段上。
+                emo = {}
             if scoped:
                 mine = rows[i] if i < len(rows) else []
                 emo = dict(emo or {})
@@ -822,10 +827,12 @@ class PrepareService:
             elif cues and i > 0:
                 emo = dict(emo or {})
                 emo["src_scope"] = "unknown_after_first_segment"
-            if emo:
-                seg["emotion"] = emo            # 可缺字段：缺了规划器就只用关键词表，不影响译文
             text, extra = self._voice_fields(req, t, emo, translated=not passthrough)
             seg["text"] = text
+            # 情绪字段在 `_voice_fields` **之后**才挂：亲密码本锚可能在那一层刚写进 `emo`
+            # （2026-11-10 直通路径，`emo` 进来时是空的）。空 dict 仍然不挂（= 没有情绪依据）。
+            if emo:
+                seg["emotion"] = emo            # 可缺字段：缺了规划器就只用关键词表，不影响译文
             if extra:
                 seg.update(extra)
             segs.append(seg)
@@ -855,8 +862,16 @@ class PrepareService:
         """
         caption_on = translated and voice_caption.voice_caption_on()
         emoji_on = voice_caption.voice_emoji_on()
-        if not caption_on and not emoji_on:
+        # 亲密码本锚**不依赖翻译腿的情绪**（2026-11-10 直出日语）：亲密段由脑直接写日语，
+        # 单元走的是日语直通（`translated=False`）。原来 `caption_on` 把整块都关了 ⇒ 直通时
+        # 连 `intimate_codebook_anchor` 都不跑，亲密句只能拿自由描述/规划器自己的判断。
+        # 这里把两件事拆开：锚看 `ALBION_VOICE_CAPTION` 开关，**自由描述**仍只在真翻译过时写
+        # （直通没有情绪标量，写出来几乎全是 neutral 档，会把族/档整片盖掉）。
+        anchor_on = voice_caption.voice_caption_on()
+        if not anchor_on and not emoji_on:
             return ja_text, None
+        if not isinstance(emo, dict):
+            emo = {}            # 锚要写 hint/intimate_anchor：没有情绪依据时也得有个落点
         zh_text = req.raw_text or req.speech_text
         sob = voice_caption.sob_of(zh_text, ja_text)
         extra = {}
@@ -870,7 +885,7 @@ class PrepareService:
             key = (req.session_id, req.generation)
             if pick and self._emoji_budget.take(key):
                 text = text.rstrip() + pick
-        if caption_on:
+        if anchor_on:
             # 哭腔延续：把本单元之前的中文原文交给 caption（同一段落最后 2 句里有哭就延续）；
             # `ALBION_VOICE_CARRY=0` 或没有前文时与以前逐字段一致。😭 仍只判本句。
             # 明示「喘」线索不写自由描述：自由描述里 breath→coq 是「鼻にかけて、柔らかく、
@@ -896,7 +911,7 @@ class PrepareService:
                 text = strip_nonclimax_bang(text)
                 print("[voice] unit=%s 亲密句走码本锚 %s/%s（%s）"
                       % (req.unit_id, anchor["family"], anchor["tier"], anchor["why"]), flush=True)
-            elif not voice_caption.breath_cue_prefers_codebook(emo, ja_text, zh_text):
+            elif caption_on and not voice_caption.breath_cue_prefers_codebook(emo, ja_text, zh_text):
                 caption = voice_caption.caption_for(
                     emo, ja_text, zh_text, prefix=getattr(req, "source_prefix", "") or "")
                 if caption:
