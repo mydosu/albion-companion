@@ -292,6 +292,10 @@ _JA_TRAIL = "」』）)】〕】\"'”’"      # 句末标点后面这些跟着
 # 是把"这句确实在喘"写进提示里。
 INTIMATE_FAMILY = "intimate"
 INTIMATE_STRONG_HINT = {"phonation": "breathy", "intensity": 0.9}
+# 脑在 ACT 里标的阶段（人设约定见 `brain/agent/APPEND_SYSTEM.md`）：steady/fast/peak 一律
+# 强锚，slow/after 有拟声才算强锚。2026-11-10 起这是语音侧第一手依据，句面词表退成后备。
+INTIMATE_STAGES = ("slow", "steady", "fast", "peak", "after")
+INTIMATE_STAGE_STRONG = frozenset(("steady", "fast", "peak"))
 # 中文叹词：只在**句首或标点/空白之后**，且后面紧跟语气延长（啊/…/标点）才算——
 # 「是啊，我也觉得」里的「啊」、句中的「好舒服啊」都不算。
 _ZH_MOAN = re.compile(
@@ -379,6 +383,21 @@ def _intimate_recent(now=None):
     return (now - _last_intimate_at) <= INTIMATE_RECENT_S
 
 
+def act_intimate_stage(text):
+    """源文本里**最后一条** ACT 的 `intimate` 阶段；没有 / 不在白名单 → None。
+
+    非法值当没写（脑写错了不该让这句凭空变亲密，也不该 500），照旧走句面猜测。
+    """
+    payload = voice_caption.last_act_payload(text)
+    if not payload:
+        return None
+    v = payload.get("intimate")
+    if not isinstance(v, str):
+        return None
+    v = v.strip().lower()
+    return v if v in INTIMATE_STAGES else None
+
+
 def intimate_codebook_anchor(emo, ja_text, zh_text="", context_before=""):
     """族=intimate 时的码本锚决定。返回 dict 或 None（None = 照旧走自由描述）。
 
@@ -401,6 +420,24 @@ def intimate_codebook_anchor(emo, ja_text, zh_text="", context_before=""):
     窗口**外**的行为保持不变：句面亲密照旧走锚，其余一律 None（还是自由描述）。
     """
     global _last_intimate_at
+    # 脑自己标的阶段排在最前（2026-11-10）：句面可能只有台词、读不出族，可「现在进行到哪一步」
+    # 只有她本人知道。`context_before` 是本单元之前的本轮原文、`zh_text` 是 raw_text —— 两者
+    # 拼起来才覆盖「ACT 在首单元、后面几个单元只剩前缀」那种情况。没有这个键就一路照旧。
+    stage = act_intimate_stage((context_before or "") + (zh_text or ""))
+    if stage:
+        hits = moan_cues(ja_text, zh_text)
+        tier = "strong" if (stage in INTIMATE_STAGE_STRONG or hits) else _hint_tier(
+            emo if isinstance(emo, dict) else {})
+        ladder = emotion_codebook.ladder(INTIMATE_FAMILY)
+        _last_intimate_at = time.monotonic()      # 标记亲密同样续期（跨轮兜底照旧）
+        return {
+            "family": INTIMATE_FAMILY,
+            "caption": ladder[1] if tier == "strong" else ladder[0],
+            "cfg": emotion_codebook.cfg_of(INTIMATE_FAMILY),
+            "tier": tier,
+            "hint": dict(INTIMATE_STRONG_HINT) if hits else None,
+            "why": "act:%s" % stage,
+        }
     if not isinstance(emo, dict):
         return None                          # 没有情绪依据：桥侧判不出族，照旧（规划器自己走码本）
     # 只认**句面**证据（关键词表判出 intimate）：耳语/气声这种 hint 自述单独成立的句子

@@ -1308,5 +1308,96 @@ except ImportError:              # 生产 venv 有 httpx；缺了就把转发测
     TestGatewayForwarding = unittest.skip("没有 httpx")(TestGatewayForwarding)
 
 
+class TestIntimateActStage(unittest.TestCase):
+    """脑在 ACT 里标亲密阶段（2026-11-10）。
+
+    任务 #4 的结论：亲密与否现在由她本人写在 ACT 里（"slow"/"steady"/"fast"/"peak"/"after"），
+    桥的句面词表 + 30 分钟窗口退成后备。这里锁四件事：各阶段档位、有拟声抬提示、
+    没有标记照旧走猜测、非法值当没写。
+    """
+
+    def setUp(self):
+        B2._last_intimate_at = None
+
+    @staticmethod
+    def act(stage):
+        return '<|ACT:{"emotion":"shy","intimate":"%s"}|>' % stage
+
+    def anchor(self, stage=None, ja="はい、わかりました。", zh="好，我知道了。", ctx="", intensity=0.3):
+        return B2.intimate_codebook_anchor(
+            {"arousal": intensity, "intensity": intensity, "valence": 0.0},
+            ja, (self.act(stage) + zh) if stage else zh, context_before=ctx)
+
+    def test_stages_map_to_tiers(self):
+        """steady/fast/peak 一律强锚；slow/after 没拟声按提示强度（0.3 ⇒ 弱锚）。"""
+        for stage in ("steady", "fast", "peak"):
+            a = self.anchor(stage)
+            self.assertIsNotNone(a, stage)
+            self.assertEqual((a["family"], a["tier"]), ("intimate", "strong"), stage)
+            self.assertEqual(a["caption"], CB.A_BREATHY, stage)
+            self.assertAlmostEqual(a["cfg"], 4.5, msg=stage)
+            self.assertEqual(a["why"], "act:" + stage)
+            self.assertIsNone(a["hint"], stage)          # 没拟声不动提示
+        for stage in ("slow", "after"):
+            a = self.anchor(stage)
+            self.assertIsNotNone(a, stage)
+            self.assertEqual((a["family"], a["tier"]), ("intimate", "weak"), stage)
+            self.assertEqual(a["caption"], CB.A_WHISPER, stage)
+            self.assertEqual(a["why"], "act:" + stage)
+
+    def test_strong_hint_follows_intensity_for_slow(self):
+        """slow 没拟声时还是看强度：0.8 ⇒ 强锚。"""
+        a = self.anchor("slow", intensity=0.8)
+        self.assertEqual((a["family"], a["tier"]), ("intimate", "strong"))
+        self.assertEqual(a["caption"], CB.A_BREATHY)
+
+    def test_moan_makes_slow_and_after_strong(self):
+        """有拟声命中 ⇒ 强锚，并把提示抬成 breathy + 高强度（照旧 INTIMATE_STRONG_HINT）。"""
+        for stage in ("slow", "after", "steady"):
+            a = self.anchor(stage, ja="はぁ……！", zh="哈啊……！")
+            self.assertEqual((a["family"], a["tier"]), ("intimate", "strong"), stage)
+            self.assertEqual(a["hint"]["phonation"], "breathy", stage)
+            self.assertGreaterEqual(a["hint"]["intensity"], 0.9, stage)
+            self.assertEqual(a["why"], "act:" + stage)
+
+    def test_survives_without_emotion_hint(self):
+        """emotion 提示缺失（emo=None）时标记照样成立，慢档按默认强度定档。"""
+        a = B2.intimate_codebook_anchor(None, "はい。", self.act("steady") + "好。")
+        self.assertEqual((a["family"], a["tier"]), ("intimate", "strong"))
+
+    def test_no_key_keeps_old_guess(self):
+        """不写这个键 ⇒ 逐字段走改动前的规则：这句句面读不出亲密、窗口是空的，照旧 None。"""
+        self.assertIsNone(self.anchor(None))
+        self.assertIsNone(self.anchor(None, ja="はぁっ……！", zh="哈啊……！"))
+
+    def test_illegal_value_is_ignored(self):
+        """白名单外 / 非字符串 ⇒ 当没写（不报错、也不凭空变亲密）。"""
+        for bad in ("climax", "sloww", "", None):
+            zh = '好。<|ACT:{"emotion":"shy","intimate":%s}|>' % (
+                json.dumps(bad) if bad is not None else "null")
+            self.assertIsNone(B2.act_intimate_stage(zh), bad)
+            self.assertIsNone(B2.intimate_codebook_anchor(
+                {"intensity": 0.3}, "はい。", zh), bad)
+
+    def test_stage_can_come_from_source_prefix(self):
+        """ACT 只在首单元的 raw_text 里：后面几个单元的 raw_text 没有它，靠 context_before 读到。"""
+        stage = B2.act_intimate_stage(_PREFIX_ONLY := self.act("peak") + "第一句。")
+        self.assertEqual(stage, "peak")
+        a = self.anchor(None, ctx=_PREFIX_ONLY)
+        self.assertIsNotNone(a)
+        self.assertEqual((a["family"], a["tier"], a["why"]), ("intimate", "strong", "act:peak"))
+
+    def test_last_act_wins_and_case_insensitive(self):
+        """大小写/前后空白都不挑；两条 ACT 时以最后一条为准。"""
+        self.assertEqual(B2.act_intimate_stage(self.act(" Slow ")), "slow")
+        text = self.act("slow") + "嗯……" + '<|ACT:{"emotion":"shy","intimate":"Peak"}|>后面。'
+        self.assertEqual(B2.act_intimate_stage(text), "peak")
+
+    def test_mark_refreshes_recent_window(self):
+        """标了亲密就续期：下一轮纯拟声句还能靠跨轮兜底（与原句面路径一致）。"""
+        self.anchor("steady")
+        self.assertIsNotNone(B2._last_intimate_at)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -595,12 +595,11 @@ _ACT_SCENE = {
 _ACT_STRONG = 0.7
 
 
-def last_act_emotion(text):
-    """源文本里**最后一条** ACT 的 `(emotion, intensity)`；没有 / JSON 坏 → None。
+def last_act_payload(text):
+    """源文本里**最后一条** ACT 的 JSON 对象；没有 / JSON 坏 / 不是对象 → None。
 
-    emotion 两种写法都认：字符串 `"sad"`、或 `{"name":"sad","intensity":0.8}`（壳侧解析
-    也是这么处理的，见 albion-pet.ts）。**最后一条**才算：一条回复里她可能先笑后哭，
-    后面那句的 ACT 才是现在的语气。
+    2026-11-10：脑开始往 ACT 里写 `intimate` 阶段，桥要读它 —— 「取最后一条再 json.loads」
+    只留一份，读 ACT 其它字段的地方都从这里走。
     """
     if not isinstance(text, str) or not text:
         return None
@@ -613,7 +612,18 @@ def last_act_emotion(text):
         payload = json.loads(last.group(1))
     except (ValueError, TypeError):
         return None                       # JSON 坏 = 当没有（不退回更早那条，口径是"最后一条"）
-    if not isinstance(payload, dict):
+    return payload if isinstance(payload, dict) else None
+
+
+def last_act_emotion(text):
+    """源文本里**最后一条** ACT 的 `(emotion, intensity)`；没有 / JSON 坏 → None。
+
+    emotion 两种写法都认：字符串 `"sad"`、或 `{"name":"sad","intensity":0.8}`（壳侧解析
+    也是这么处理的，见 albion-pet.ts）。**最后一条**才算：一条回复里她可能先笑后哭，
+    后面那句的 ACT 才是现在的语气。
+    """
+    payload = last_act_payload(text)
+    if payload is None:
         return None
     emo, intensity = payload.get("emotion"), None
     if isinstance(emo, dict):
