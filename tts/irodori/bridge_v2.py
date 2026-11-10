@@ -568,10 +568,28 @@ def parse_request(body: dict) -> PrepareRequest:
 
 
 # ---------------- 服务 ----------------
+# 预取深度与窗口（2026-11-10）：9885 的预取深度从写死 1 改成 `ALBION_PREFETCH_DEPTH`（默认 2），
+# 桥这边的每会话窗口必须 ≥ 深度+1（"正在处理的那个" + 提前翻译的那几个），否则多出来的预取
+# 会被判 `session_window` 直接失败、整句不念。两个环境变量都读同一份，谁也没配就跟默认走。
+def _env_int(name, default):
+    try:
+        return int((os.environ.get(name) or "").strip() or default)
+    except ValueError:
+        return default
+
+
+PREFETCH_DEPTH = max(0, _env_int("ALBION_PREFETCH_DEPTH", 2))
+# 每会话窗口 = 深度 + 1（当前单元 + 预取的几个）；显式 `ALBION_SESSION_WINDOW` 可覆盖。
+DEFAULT_SESSION_WINDOW = max(2, _env_int("ALBION_SESSION_WINDOW", PREFETCH_DEPTH + 1))
+# 全局在途翻译数：深度 2 时正好让两个预取并排跑（与改前一样是 2，不给上游加压力）。
+DEFAULT_MAX_IN_FLIGHT = max(2, _env_int("ALBION_TRANSLATE_IN_FLIGHT", PREFETCH_DEPTH))
+
+
 class PrepareService:
     """全局最多 `max_in_flight` 个源句翻译在途；每会话最多 `session_window` 个单元有人等待。"""
 
-    def __init__(self, translate, translate_ex=None, cues=None, *, max_in_flight=2, session_window=2,
+    def __init__(self, translate, translate_ex=None, cues=None, *,
+                 max_in_flight=DEFAULT_MAX_IN_FLIGHT, session_window=DEFAULT_SESSION_WINDOW,
                  cue_scope=None, cross_sentence=None):
         self._translate = translate                       # 同步可调用 str->str（旧桥 to_japanese 即可）
         # 可选：str -> [中文源线索]，从**原始切片**抽（旁白/括号在 speech_text 里已被剥离）
