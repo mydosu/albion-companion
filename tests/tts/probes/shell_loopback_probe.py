@@ -8,6 +8,7 @@
   python shell_loopback_probe.py baseline <outdir>
   python shell_loopback_probe.py shell <outdir> [--cdp 9335]   # 渲染进程里新建 AudioContext
   python shell_loopback_probe.py live <outdir> [--cdp 9335]    # 壳正在用的那个 AudioContext
+  python shell_loopback_probe.py livebed <outdir> [--cdp 9335] # 同上 + 句尾噪声底（与壳修复一致）
 """
 from __future__ import annotations
 
@@ -87,7 +88,7 @@ def serve_wavs(port: int) -> ThreadingHTTPServer:
 
 
 JS = r"""
-(async (urls, gap, live) => {
+(async (urls, gap, live, bed) => {
   // live=true：用壳里那个长期存活的 AudioContext（pinia 'audio-context'，Stage.vue 播 TTS 用的就是它）
   const ctx = live
     ? document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('audio-context').audioContext
@@ -116,6 +117,14 @@ JS = r"""
     src.buffer = b;
     src.connect(g).connect(ctx.destination);
     src.start(t);
+    if (bed) {
+      // 与壳修复一致：段 [起点-50ms, 终点+250ms] 垫 -84dBFS 循环噪声
+      const nb = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = nb.getChannelData(0); const peak = 10 ** (-84 / 20) * Math.sqrt(3);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * peak;
+      const n = ctx.createBufferSource(); n.buffer = nb; n.loop = true; n.connect(ctx.destination);
+      n.start(Math.max(ctx.currentTime, t - 0.05)); n.stop(t + b.duration + 0.25);
+    }
     spans.push({ dur: b.duration, sr: b.sampleRate, start: t });
     t += b.duration + gap;
   }
@@ -196,8 +205,10 @@ def main() -> None:
     else:
         serve_wavs(HTTP_PORT)
         urls = [f"http://127.0.0.1:{HTTP_PORT}/{Path(p).name}" for p in WAVS]
-        live = mode == "live"
-        info = cdp_eval(cdp_port, f"({JS})({json.dumps(urls)}, {GAP}, {str(live).lower()})", int((total + 8) * 1000))
+        live = mode in ("live", "livebed")
+        bed = mode == "livebed"
+        info = cdp_eval(cdp_port, f"({JS})({json.dumps(urls)}, {GAP}, {str(live).lower()}, {str(bed).lower()})",
+                        int((total + 8) * 1000))
         info["mode"] = mode
 
     time.sleep(0.8)
