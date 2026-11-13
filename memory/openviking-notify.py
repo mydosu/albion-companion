@@ -43,8 +43,11 @@ def post_webhook(url, message):
     # 异常文本可能带 URL/token，所以只记异常类型和 HTTP 状态码，不记 exc 内容。
     body = json.dumps({'content': message, 'username': DISCORD_USERNAME,
                        'allowed_mentions': {'parse': []}}).encode('utf-8')
+    # urllib 默认 UA 是 Python-urllib/x.y，Discord 前面的 Cloudflare 对它直接 403（error 1010），
+    # 所以固定一个自己的 UA。
     request = urllib.request.Request(url, data=body, method='POST',
-                                     headers={'Content-Type': 'application/json'})
+                                     headers={'Content-Type': 'application/json',
+                                              'User-Agent': 'OpenViking-notify/1.0'})
     with urllib.request.urlopen(request, timeout=SEND_TIMEOUT) as response:
         return response.status
 

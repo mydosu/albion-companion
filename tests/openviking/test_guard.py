@@ -282,6 +282,7 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(captured['body'], {'content': 'synthetic message', 'username': 'OpenViking 运维',
                                             'allowed_mentions': {'parse': []}})
         self.assertEqual(captured['headers']['content-type'], 'application/json')
+        self.assertEqual(captured['headers']['user-agent'], 'OpenViking-notify/1.0')
         self.assertEqual(captured['timeout'], notify.SEND_TIMEOUT)
 
     def test_discord_failure_is_recorded_and_retried_next_round(self):
