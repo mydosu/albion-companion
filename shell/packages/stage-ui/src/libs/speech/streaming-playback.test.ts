@@ -781,3 +781,79 @@ describe('播放记录（[albion-playback] 落盘行）', () => {
     }
   })
 })
+
+describe('句尾噪声底（端点 APO 遇全零吞掉句尾，2026-11-13）', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { vi.useRealTimers() })
+
+  /** 在假上下文上补 `createBuffer` / `destination`：只有支持它们的上下文才垫噪声底。 */
+  function withBuffers() {
+    const fake = makeFakeContext()
+    const destination = { name: 'destination' }
+    const created: Float32Array[] = []
+    Object.assign(fake.clock, {
+      destination,
+      createBuffer(_channels: number, length: number) {
+        const data = new Float32Array(length)
+        created.push(data)
+        return { duration: length / fake.clock.sampleRate, getChannelData: () => data }
+      },
+    })
+    return { ...fake, destination, created }
+  }
+
+  it('每段在 [起点-50ms, 终点+250ms] 垫一层 -84dBFS 循环噪声，直连 destination', () => {
+    const { ctx, sources, created } = withBuffers()
+    const connected: unknown[] = []
+    const origCreate = ctx.createBufferSource.bind(ctx)
+    ;(ctx as unknown as { createBufferSource: () => unknown }).createBufferSource = () => {
+      const node = origCreate() as unknown as { connect: (n?: unknown) => void, connects: number }
+      node.connect = (n?: unknown) => {
+        node.connects += 1
+        connected.push(n)
+      }
+      return node
+    }
+    const playback = createArmed({ audioContext: ctx })
+    playback.push(span('u1', 1.0))
+
+    expect(sources).toHaveLength(2) // 语音段 + 噪声底
+    const [voice, bed] = sources
+    expect(voice.starts).toEqual([0.05])
+    expect(bed.buffer).not.toBeNull()
+    expect((bed as unknown as { loop: boolean }).loop).toBe(true)
+    expect(bed.starts).toEqual([0]) // max(now, 0.05 - 0.05)
+    expect(bed.stopArgs[0]).toBeCloseTo(1.05 + 0.25)
+    expect(connected).toContain((ctx as unknown as { destination: unknown }).destination)
+
+    const rms = Math.sqrt(created[0].reduce((s, v) => s + v * v, 0) / created[0].length)
+    expect(20 * Math.log10(rms)).toBeGreaterThan(-86)
+    expect(20 * Math.log10(rms)).toBeLessThan(-82)
+  })
+
+  it('噪声底缓存在上下文上，多段共用一份 buffer', () => {
+    const { ctx, clock, sources, created } = withBuffers()
+    const playback = createArmed({ audioContext: ctx })
+    playback.push(span('u1', 0.5))
+    playback.push(span('u2', 0.5))
+    expect(created).toHaveLength(1)
+    finish(sources[0], clock, 0.55)
+    expect(sources.filter(s => (s as unknown as { loop?: boolean }).loop)).toHaveLength(2)
+  })
+
+  it('硬停（静音等）时噪声底立即停，不留尾巴', () => {
+    const { ctx, sources } = withBuffers()
+    const playback = createArmed({ audioContext: ctx })
+    playback.push(span('u1', 1.0))
+    const bed = sources[1]
+    playback.stop('muted')
+    expect(bed.stopArgs.at(-1)).toBeUndefined()
+  })
+
+  it('上下文没有 createBuffer 时不建噪声底（旧行为不变）', () => {
+    const { ctx, sources } = makeFakeContext()
+    const playback = createArmed({ audioContext: ctx })
+    playback.push(span('u1', 1.0))
+    expect(sources).toHaveLength(1)
+  })
+})

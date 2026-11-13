@@ -152,6 +152,33 @@ const FADE_REASON = 'new-message'
  */
 const PLAYBACK_LOG_PREFIX = '[albion-playback]'
 
+/**
+ * 句尾噪声底（2026-11-13 实测根因）：Realtek/荣耀扬声器端点的 APO 链带前瞻延迟，输出流一进入
+ * **数字全零**，Windows 引擎按 silent 包处理、不再冲刷 APO 延迟线 ⇒ 每句最后 ~60ms 语音整块丢掉
+ * （loopback 里是 −150dB 的真零）。TTS wav 句尾正好是 0.7s 精确零。同一段语音后面换成 −90dBFS
+ * 噪声，尾巴就完整（tests/output/shell-realpath-20261113）。所以每段播放期间在 destination 上
+ * 垫一层听不见的噪声，流在句尾就不是全零；只在段前后开，不挡 Chromium 静默时挂起声卡。
+ */
+const NOISE_BED_DBFS = -84
+const NOISE_BED_LEAD = 0.05
+const NOISE_BED_HOLD = 0.25
+const noiseBedBuffers = new WeakMap<BaseAudioContext, AudioBuffer>()
+
+function noiseBedBuffer(ctx: BaseAudioContext): AudioBuffer | null {
+  if (typeof ctx.createBuffer !== 'function')
+    return null
+  let buffer = noiseBedBuffers.get(ctx)
+  if (!buffer) {
+    buffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate) // 1s，循环播放
+    const data = buffer.getChannelData(0)
+    const peak = 10 ** (NOISE_BED_DBFS / 20) * Math.sqrt(3) // 均匀分布：RMS = peak/√3
+    for (let i = 0; i < data.length; i++)
+      data[i] = (Math.random() * 2 - 1) * peak
+    noiseBedBuffers.set(ctx, buffer)
+  }
+  return buffer
+}
+
 /** 日志里的秒数统一到毫秒，别让浮点尾巴把一行撑长。 */
 function round3(value: number) {
   return Math.round(value * 1000) / 1000
@@ -183,6 +210,40 @@ export function createStreamingPlayback(options: StreamingPlaybackOptions): Stre
     released: boolean
     /** 本段起点 - 上一段终点（首次排程为 null）—— 只进播放记录，用来分辨"气口"和"断档"。 */
     gapFromPrev: number | null
+    /** 句尾噪声底节点（见 NOISE_BED_DBFS）；自带排程停止，正常结束不用管它。 */
+    bed: AudioBufferSourceNode | null
+  }
+
+  /** 在 [from, until] 垫一层噪声底，直连 destination（不进分析器/口型）。上下文不支持就跳过。 */
+  function startNoiseBed(from: number, until: number): AudioBufferSourceNode | null {
+    const buffer = noiseBedBuffer(ctx)
+    if (!buffer)
+      return null
+    try {
+      const bed = ctx.createBufferSource()
+      bed.buffer = buffer
+      bed.loop = true
+      bed.connect(ctx.destination)
+      bed.onended = () => {
+        try {
+          bed.disconnect()
+        }
+        catch {}
+      }
+      bed.start(from)
+      bed.stop(until)
+      return bed
+    }
+    catch {
+      return null
+    }
+  }
+
+  function stopNoiseBed(entry: Scheduled, when?: number) {
+    try {
+      entry.bed?.stop(when)
+    }
+    catch {}
   }
 
   let nextStart: number | null = null
@@ -291,6 +352,7 @@ export function createStreamingPlayback(options: StreamingPlaybackOptions): Stre
       startNotified: false,
       released: false,
       gapFromPrev: lastScheduledEndAt == null ? null : startAt - lastScheduledEndAt,
+      bed: null,
     }
     lastScheduledEndAt = entry.endAt
     scheduled.push(entry)
@@ -309,6 +371,7 @@ export function createStreamingPlayback(options: StreamingPlaybackOptions): Stre
       onEnded(entry)
       return
     }
+    entry.bed = startNoiseBed(Math.max(ctx.currentTime, startAt - NOISE_BED_LEAD), entry.endAt + NOISE_BED_HOLD)
     nextStart = entry.endAt + pauseAfter
     lastEndWithPause = nextStart
   }
@@ -493,6 +556,7 @@ export function createStreamingPlayback(options: StreamingPlaybackOptions): Stre
       entry.source.stop()
     }
     catch {}
+    stopNoiseBed(entry)
     releaseNodes(entry)
   }
 
@@ -596,6 +660,7 @@ export function createStreamingPlayback(options: StreamingPlaybackOptions): Stre
         entry.gain.gain.linearRampToValueAtTime(0, end)
         entry.source.onended = () => onCancelledEnded(entry)
         entry.source.stop(end)                      // 排程停止：淡出走完才真停
+        stopNoiseBed(entry, end + NOISE_BED_HOLD) // 淡出尾巴同样要冲出 APO 再归零
       }
       catch {
         entry.source.onended = null
