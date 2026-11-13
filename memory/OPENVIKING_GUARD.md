@@ -5,7 +5,7 @@
 - `tailscale-guard.cmd`：先 Ensure，再采样；8082 分支显式停用。保留原 CMD 编码和 CRLF。
 - `tailscale-guard-conpty.pyw`：文件锁覆盖实际 CMD 生命周期；观察器与通知器用无继承管道的隐藏进程启动。CMD 超过 600 秒时记录并继续持锁等待，不杀可能持有 1933 的进程树。
 - `openviking-memory-health.py`：查询任务并更新三个固定事件槽，不调用 Hermes。请求共享8秒预算，独立采样子进程再受10秒硬上限约束，防止缓慢响应绕过socket超时。复用现有私有 ov.conf 凭据，不嵌入凭据。
-- `openviking-notify.py`：单消费者、尝试前节流、30 秒硬超时。发送前复核可达性和最新状态；用观察时间表述消息，避免把发送中的竞态描述为当前故障。2026-11-02 起只投 **assistant profile 的微信**（`TARGETS = ('weixin',)`，命令带 `-p assistant`）：运维告警不再进可畏的 Telegram，也不占默认 profile 的额度；不经模型、退出码即平台回执。旧的 `hermes chat --resume` 路径把消息写进只有 Hermes 桌面端渲染的历史会话，同席与壳都看不到，等于没送达。
+- `openviking-notify.py`：单消费者、尝试前节流、30 秒硬超时。发送前复核可达性和最新状态；用观察时间表述消息，避免把发送中的竞态描述为当前故障。2026-11-13 起唯一通道是 **Discord webhook**（`TARGETS = ('discord',)`）：不经模型、不经 `hermes send`，直接 POST JSON（`content`/`username`/`allowed_mentions.parse=[]`，Content-Type application/json），2xx 记 delivered（exit=0），HTTP 错误记 failed 并记状态码；webhook 文件缺失或为空时记 `skipped ... reason=no_webhook` 跳过、不记送达，下一轮过节流期仍会重试。旧的 `hermes chat --resume` 路径把消息写进只有 Hermes 桌面端渲染的历史会话，同席与壳都看不到，等于没送达。
 - `openviking_runtime.py`：原子状态、文件锁、日志轮转、Windows Job 包含子进程。通知 CLI 在挂入 kill-on-close Job 后才恢复运行；超时或 worker 退出只清理这个 Job 的子树。pywin32 不可用或无法分配 Job 时拒绝发送并节流，不降级为失控后台进程。
 - `openviking-recover.ps1`：原恢复语义，补 run/Mode/Caller/父PID/阶段/耗时和启动早退退出码。
 - `openviking-observe.ps1`：独立命名互斥锁；持有已验证服务进程句柄，记录启动身份和退出码。每 10 秒重扫、每秒观察退出、每 5 分钟心跳，日志按 5MB 轮转。短于扫描周期的进程可能漏记，观察器停机期间的退出无法补录。退出码可缩小故障类型，不能单独判定是谁结束进程。
@@ -25,3 +25,5 @@
 2026-10-21 结论（用户确认，不再深挖）：OV 提取失败（extraction failures=12）归因为两个 key 额度不足，不再排查 VLM 账号；历史进程退出的根因同样不再深挖。
 
 同批还修正了真实恢复时暴露的输出管道继承：runner改用临时磁盘句柄接收CMD输出，并只等待CMD进程本身，最多读取1MiB诊断。不再用communicate等待全部继承者关闭stdout，避免OV已健康而guard仍持锁、后续每轮永久skip。测试让自有后台子进程保持stdout句柄，验证父轮次结束时子进程仍存活；生产部署只结束了CMD已退出的旧卡住runner，没有再次结束恢复后的OV。
+
+2026-11-13：微信那路撤掉，告警只走 Discord webhook。微信 iLink 令牌只随用户入站消息续期，从 11-03 起长期报 `session not ready` / `prepare failed`（每次 exit=1），机器到国内微信网络的连通也不稳，两路并投等于天天一条死日志。webhook URL（含 token）不进仓库，只放本机 `D:/AI/scripts/.ov-alert-discord-webhook`（一行，读时 strip；文件缺失或为空就跳过该路）；日志、状态 JSON 和异常信息里都不出现 URL，只记异常类型与 HTTP 状态码。代理：Hermes 侧没有 proxy 配置键（`%LOCALAPPDATA%/hermes/.env` 与 `config.yaml` 都没有），本机 Clash/mihomo 的 HTTP 代理是 `127.0.0.1:7897`、Windows 系统代理关闭，实际出网由 Clash TUN 接管（实测直连 discord.com API 与 CDN 均 200）。脚本不写死代理地址，用 urllib 默认解析：`HTTPS_PROXY`/`ALL_PROXY` 等同名环境变量优先，其次 Windows 系统代理，都没有就直连；本地 `/health` 探测仍用空 `ProxyHandler({})` 走 loopback。

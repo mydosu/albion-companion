@@ -1,19 +1,23 @@
 """Single consumer for three bounded OpenViking incident slots (no raw errors)."""
 import datetime
+import json
 from pathlib import Path
 import time
+import urllib.error
 import urllib.request
 
-from openviking_runtime import Busy, file_lock, log, maintenance_active, read_state, run_bounded, save_state
+from openviking_runtime import Busy, file_lock, log, maintenance_active, read_state, save_state
 
 LOG_ROOT = Path(r'D:\AI\scripts\logs')
-HERMES = str(Path.home() / 'AppData' / 'Local' / 'hermes' / 'bin' / 'hermes.exe')
 STATE_NAME = '.openviking-notify-state.json'
 THROTTLE = 1800
 SEND_TIMEOUT = 30
-# 告警直接发到用户本人的 Telegram 私信和微信私信（两个 home channel）。`hermes send`
-# 不调模型，退出码即平台回执。两路各自独立发送、独立记日志：一路失败或超时不影响另一路。
-TARGETS = ('weixin',)   # 2026-11-02: 运维告警只走 assistant profile 的微信
+# 2026-11-13: 微信撤掉（iLink 令牌只随用户入站消息续期，长期 session not ready / prepare failed），
+# 告警只走 Discord webhook：不走 hermes，直接 POST，2xx 即送达，HTTP 状态码即失败码。
+TARGETS = ('discord',)
+# webhook URL（含 token）只放本机，不进仓库、不进日志、不进状态。
+WEBHOOK = Path(r'D:\AI\scripts\.ov-alert-discord-webhook')
+DISCORD_USERNAME = 'OpenViking 运维'
 
 
 def healthy():
@@ -25,8 +29,24 @@ def healthy():
         return False
 
 
-def command(message, target):
-    return [HERMES, '-p', 'assistant', 'send', '--to', target, '--quiet', message]
+def webhook_url():
+    """Webhook 只从本机文件读：文件缺失或为空返回空串，这一路跳过。"""
+    try:
+        return WEBHOOK.read_text(encoding='utf-8').strip()
+    except OSError:
+        return ''
+
+
+def post_webhook(url, message):
+    # 代理沿用 urllib 默认解析：HTTPS_PROXY/ALL_PROXY 等环境变量优先，其次 Windows 系统代理，
+    # 都没有就直连。Hermes 网关自身没有 proxy 配置键，本机靠 Clash 分流，两边走同一套 socket 路径。
+    # 异常文本可能带 URL/token，所以只记异常类型和 HTTP 状态码，不记 exc 内容。
+    body = json.dumps({'content': message, 'username': DISCORD_USERNAME,
+                       'allowed_mentions': {'parse': []}}).encode('utf-8')
+    request = urllib.request.Request(url, data=body, method='POST',
+                                     headers={'Content-Type': 'application/json'})
+    with urllib.request.urlopen(request, timeout=SEND_TIMEOUT) as response:
+        return response.status
 
 
 def delivered_targets(item):
@@ -38,7 +58,7 @@ def delivered_targets(item):
     return {}
 
 
-def deliver(root=LOG_ROOT, check=healthy, send=run_bounded, clock=time.time):
+def deliver(root=LOG_ROOT, check=healthy, post=post_webhook, clock=time.time):
     logfile = root / 'openviking-notify.log'
     try:
         with file_lock(root / '.openviking-notify.lock'):
@@ -65,7 +85,7 @@ def deliver(root=LOG_ROOT, check=healthy, send=run_bounded, clock=time.time):
                         continue  # stale sampler data must not be sent as current
                     if item.get('attempt_at') and now - item['attempt_at'] < THROTTLE:
                         continue
-                    # 批次级去重按路进行：已送达的一路不重发，只补发仍未送达的那路。
+                    # 批次级去重按目标进行：已送达的批次不重发，只补发还没送达的。
                     done = delivered_targets(item)
                     newest = item.get('newest', 0)
                     if kind in ('extraction', 'process'):
@@ -86,13 +106,20 @@ def deliver(root=LOG_ROOT, check=healthy, send=run_bounded, clock=time.time):
                                'This is the status at the observation time; recovery may have occurred.')
                     save_state(path, state)
                 results = []
-                for target in pending:
+                for target in pending:   # TARGETS 只剩 discord
+                    url = webhook_url()
+                    if not url:
+                        # 没配 webhook 就跳过，不记送达。
+                        results.append((target, 'skipped', 0))
+                        continue
                     try:
-                        code, timed_out = send(command(message, target), r'D:\AI\scripts', SEND_TIMEOUT)
-                        result = 'timeout' if timed_out else ('delivered' if code == 0 else 'failed')
+                        status = post(url, message)
+                        ok = 200 <= status < 300
+                        results.append((target, 'delivered' if ok else 'failed', 0 if ok else status))
+                    except urllib.error.HTTPError as exc:
+                        results.append((target, 'failed', exc.code))
                     except Exception as exc:
-                        code, result = -1, 'failed_' + type(exc).__name__
-                    results.append((target, result, code))
+                        results.append((target, 'failed_' + type(exc).__name__, -1))
                 with file_lock(root / '.openviking-state.lock', timeout=1):
                     state = read_state(path)
                     current = state['incidents'].get(kind, {})
@@ -106,7 +133,10 @@ def deliver(root=LOG_ROOT, check=healthy, send=run_bounded, clock=time.time):
                         save_state(path, state)
                     suffix = '_resolved_during_send' if matched and not current.get('active', False) else ''
                 for target, result, code in results:
-                    log(logfile, f'{result}{suffix} incident={incident} target={target} exit={code}')
+                    if result == 'skipped':
+                        log(logfile, f'skipped{suffix} incident={incident} target={target} reason=no_webhook')
+                    else:
+                        log(logfile, f'{result}{suffix} incident={incident} target={target} exit={code}')
             return 0
     except Busy:
         # Do not write here: another consumer owns the notification log too.

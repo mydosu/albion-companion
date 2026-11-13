@@ -39,6 +39,10 @@ class GuardTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(dir=output)
         self.root = Path(self.temp.name)
         self.now = 2000000000
+        # 真实 webhook 路径固定在 D:/AI/scripts，测试一律指向自己的临时目录。
+        patcher = patch.object(notify, 'WEBHOOK', self.root / '.ov-alert-discord-webhook')
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def tearDown(self):
         self.temp.cleanup()
@@ -54,8 +58,11 @@ class GuardTests(unittest.TestCase):
             raise exc or urllib.error.URLError('synthetic secret must not be logged')
         return health.sample(self.root, fetch, self.clock)
 
-    def deliver(self, send, check=lambda: False):
-        return notify.deliver(self.root, check, send, self.clock)
+    def deliver(self, post, check=lambda: False, webhook=True):
+        # 只走 webhook：post(url, message) 返回状态码，测试里绝不打真网络。
+        if webhook:
+            self.webhook_file()
+        return notify.deliver(self.root, check, post, self.clock)
 
     def test_sampler_never_starts_hermes(self):
         with patch.object(subprocess, 'Popen', side_effect=AssertionError('external process')):
@@ -76,7 +83,7 @@ class GuardTests(unittest.TestCase):
         self.sample_fail(urllib.error.HTTPError('unused', 401, 'private', {}, None))
         self.assertEqual(self.state()['incidents']['service']['error'], 'auth')
         sent = []
-        self.deliver(lambda *args: (sent.append(args) or (0, False)), check=lambda: True)
+        self.deliver(lambda url, message: (sent.append(message) or 204), check=lambda: True)
         self.assertEqual(len(sent), len(notify.TARGETS))  # unauthenticated /health is not auth proof
 
     def test_recovered_pending_service_is_cancelled(self):
@@ -98,18 +105,17 @@ class GuardTests(unittest.TestCase):
         self.observer_exit(private_payload='synthetic secret')
         health.sample(self.root, lambda *_: [], self.clock)
         calls = []
-        self.deliver(lambda *args: (calls.append(args[0]) or (0, False)), check=lambda: True)
+        self.deliver(lambda url, message: (calls.append(message) or 204), check=lambda: True)
         self.assertEqual(len(calls), len(notify.TARGETS))
-        self.assertEqual({c[c.index('--to') + 1] for c in calls}, set(notify.TARGETS))
-        self.assertIn('observed process exits=1', calls[0][-1])
-        self.assertIn('health_now=True', calls[0][-1])
+        self.assertIn('observed process exits=1', calls[0])
+        self.assertIn('health_now=True', calls[0])
         self.assertNotIn('synthetic secret', json.dumps(self.state()))
         self.assertGreater(self.state()['incidents']['process']['delivered_at'], 0)
 
     def test_delivered_process_exit_is_not_repeated(self):
         self.observer_exit()
         health.sample(self.root, lambda *_: [], self.clock)
-        self.deliver(lambda *_: (0, False), check=lambda: True)
+        self.deliver(lambda *_: 204, check=lambda: True)
         self.now += 1
         health.sample(self.root, lambda *_: [], self.clock)
         self.deliver(lambda *_: self.fail('exit already delivered'), check=lambda: True)
@@ -142,69 +148,70 @@ class GuardTests(unittest.TestCase):
         self.sample_fail()
         self.assertEqual(set(self.state()['incidents']), {'process', 'service'})
         calls = []
-        self.deliver(lambda *args: (calls.append(args[0]) or (1, False)))
+        self.deliver(lambda *_: (calls.append(1) or 500))
         self.assertEqual(len(calls), 2 * len(notify.TARGETS))
         self.deliver(lambda *_: self.fail('failed process alert repeated'))
 
     def test_nonzero_delivery_is_failed_and_throttled(self):
         self.sample_fail()
         sent = []
-        send = lambda *_: (sent.append(1) or (7, False))
-        self.deliver(send)
-        self.deliver(send)
+        post = lambda *_: (sent.append(1) or 500)
+        self.deliver(post)
+        self.deliver(post)
         item = self.state()['incidents']['service']
-        self.assertEqual(item['last_result'], 'weixin=failed')
+        self.assertEqual(item['last_result'], 'discord=failed')
         self.assertEqual(item['delivered_at'], 0)
         self.assertEqual(len(sent), len(notify.TARGETS))
 
     def test_timeout_and_exception_are_throttled(self):
         self.sample_fail()
-        self.deliver(lambda *_: (124, True))
-        self.assertEqual(self.state()['incidents']['service']['last_result'], 'weixin=timeout')
+        def timeout(*_):
+            raise TimeoutError('synthetic secret')
+        self.deliver(timeout)
+        self.assertEqual(self.state()['incidents']['service']['last_result'], 'discord=failed_TimeoutError')
         self.deliver(lambda *_: self.fail('timeout repeated'))
         self.now += 1801
         self.sample_fail()
         def fail(*_):
             raise RuntimeError('synthetic secret')
         self.deliver(fail)
-        self.assertEqual(self.state()['incidents']['service']['last_result'],
-                         'weixin=failed_RuntimeError')
+        self.assertEqual(self.state()['incidents']['service']['last_result'], 'discord=failed_RuntimeError')
 
     def test_success_does_not_repeat_same_extraction_batch(self):
         task = {'task_type': 'session_commit', 'status': 'failed', 'created_at': self.now}
         health.sample(self.root, lambda status, *_: [task] if status == 'failed' else [], self.clock)
         calls = []
-        self.deliver(lambda *_: (calls.append(1) or (0, False)), check=lambda: True)
+        self.deliver(lambda *_: (calls.append(1) or 204), check=lambda: True)
         self.now += 1801
         health.sample(self.root, lambda status, *_: [task] if status == 'failed' else [], self.clock)
-        self.deliver(lambda *_: (calls.append(1) or (0, False)), check=lambda: True)
+        self.deliver(lambda *_: (calls.append(1) or 204), check=lambda: True)
         self.assertEqual(len(calls), len(notify.TARGETS))
 
     def test_new_extraction_failure_after_throttle_can_send(self):
         for _ in range(2):
             task = {'task_type': 'session_commit', 'status': 'failed', 'created_at': self.now}
             health.sample(self.root, lambda status, *_: [task] if status == 'failed' else [], self.clock)
-            self.deliver(lambda *_: (0, False), check=lambda: True)
+            self.deliver(lambda *_: 204, check=lambda: True)
             self.assertEqual(self.state()['incidents']['extraction']['delivered_fail_ts'], self.now)
             self.now += 1801
 
     def test_resolved_during_send_keeps_resolution(self):
         self.sample_fail()
-        def send(*_):
+        def post(*_):
             health.sample(self.root, lambda *_: [], self.clock)
-            return 0, False
-        self.deliver(send)
+            return 204
+        self.deliver(post)
         self.assertFalse(self.state()['incidents']['service']['active'])
         self.assertIn('resolved_during_send', (self.root / 'openviking-notify.log').read_text())
 
     def test_new_incident_during_send_does_not_receive_old_success(self):
         self.sample_fail()
         first = self.state()['incidents']['service']['id']
-        def send(*_):
+        def post(*_):
             health.sample(self.root, lambda *_: [], self.clock)
             self.sample_fail()
-            return 0, False
-        self.deliver(send)
+            return 204
+        self.deliver(post)
         item = self.state()['incidents']['service']
         self.assertNotEqual(item['id'], first)
         self.assertEqual(item['delivered_at'], 0)
@@ -219,9 +226,9 @@ class GuardTests(unittest.TestCase):
         health.sample(self.root, lambda *_: [task], self.clock)
         self.sample_fail()
         calls = []
-        self.deliver(lambda *args: (calls.append(args[0]) or (0, False)))
+        self.deliver(lambda url, message: (calls.append(message) or 204))
         self.assertEqual(len(calls), len(notify.TARGETS))
-        self.assertIn('task-probe', calls[0][-1])
+        self.assertIn('task-probe', calls[0])
 
     def test_maintenance_stops_sampling_and_notification(self):
         self.sample_fail()
@@ -256,59 +263,124 @@ class GuardTests(unittest.TestCase):
                  {'task_type': 'session_commit', 'status': 'completed', 'created_at': self.now}]
         self.assertEqual(health.task_summary(tasks, self.now), (0, 0))
 
-    def test_notification_command_pushes_directly_without_a_model(self):
-        # The alert must reach channels the user actually reads, and must not
-        # burn a model call: an exhausted provider must not silence the guard.
-        # 2026-11-02: 运维告警只走 assistant profile 的微信，不再进可畏的 Telegram
-        self.assertEqual(set(notify.TARGETS), {'weixin'})
-        for target in notify.TARGETS:
-            argv = notify.command('synthetic message', target)
-            self.assertEqual(argv[1:4], ['-p', 'assistant', 'send'])
-            self.assertEqual(argv[argv.index('--to')+1], target)
-            self.assertNotIn('--model', argv)
-            self.assertNotIn('--resume', argv)
-            self.assertEqual(argv[-1], 'synthetic message')
+    def test_discord_payload_is_plain_webhook_json(self):
+        # 不走模型、不走 hermes：一条 JSON 就是全部契约。
+        captured = {}
+        class Response:
+            status = 204
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                return False
+        def urlopen(request, timeout=None):
+            captured.update(url=request.full_url, body=json.loads(request.data),
+                            headers={k.lower(): v for k, v in request.header_items()}, timeout=timeout)
+            return Response()
+        with patch.object(notify.urllib.request, 'urlopen', urlopen):
+            self.assertEqual(notify.post_webhook('https://discord.example/api/webhooks/1/T',
+                                                 'synthetic message'), 204)
+        self.assertEqual(captured['body'], {'content': 'synthetic message', 'username': 'OpenViking 运维',
+                                            'allowed_mentions': {'parse': []}})
+        self.assertEqual(captured['headers']['content-type'], 'application/json')
+        self.assertEqual(captured['timeout'], notify.SEND_TIMEOUT)
 
-    def test_weixin_failure_is_recorded_and_retried_next_round(self):
-        # 只剩微信一路：失败要记进日志、不泄漏异常文本，下一轮重试这一路。
+    def test_discord_failure_is_recorded_and_retried_next_round(self):
+        # 失败要记进日志、不泄漏异常文本，下一轮过了节流期再重试。
         task = {'task_type': 'session_commit', 'status': 'failed', 'created_at': self.now}
         extraction = lambda status, *_: [task] if status == 'failed' else []
         health.sample(self.root, extraction, self.clock)
         sent = []
-        def send(argv, *_):
-            sent.append(argv[argv.index('--to')+1])
+        def post(url, message):
+            sent.append(message)
             raise RuntimeError('synthetic secret')
-        self.deliver(send, check=lambda: True)
-        self.assertEqual(sent, ['weixin'])
+        self.deliver(post, check=lambda: True)
+        self.assertEqual(len(sent), 1)
         log = (self.root / 'openviking-notify.log').read_text()
         self.assertIn('failed_RuntimeError incident=', log)
-        self.assertIn('target=weixin exit=-1', log)
+        self.assertIn('target=discord exit=-1', log)
         self.assertNotIn('synthetic secret', log)
         self.now += 1801
         health.sample(self.root, extraction, self.clock)
-        self.deliver(lambda argv, *_: (sent.append(argv[argv.index('--to')+1]) or (0, False)), check=lambda: True)
-        self.assertEqual(sent[1:], ['weixin'])
+        self.deliver(lambda *_: 204, check=lambda: True)
+        self.assertEqual(self.state()['incidents']['extraction']['delivered_at'], self.now)
 
-    def test_legacy_telegram_only_state_does_not_resend_telegram(self):
+    def test_legacy_state_without_delivered_to_still_migrates(self):
+        # 旧状态只有 telegram 的 delivered_fail_ts；迁移逻辑保留，但 discord 没送达就照样发。
+        self.assertEqual(notify.delivered_targets({'delivered_at': 5, 'delivered_fail_ts': 5}),
+                         {'telegram': 5})
         task = {'task_type': 'session_commit', 'status': 'failed', 'created_at': self.now}
         health.sample(self.root, lambda status, *_: [task] if status == 'failed' else [], self.clock)
         state = self.state()
         state['incidents']['extraction'].update(delivered_at=self.now, delivered_fail_ts=self.now)
         runtime.save_state(self.root / health.STATE_NAME, state)
         sent = []
-        self.deliver(lambda argv, *_: (sent.append(argv[argv.index('--to')+1]) or (0, False)), check=lambda: True)
-        self.assertEqual(sent, ['weixin'])
+        self.deliver(lambda url, message: (sent.append(message) or 204), check=lambda: True)
+        self.assertEqual(len(sent), 1)
+
+
+    def webhook_file(self, url='https://discord.example/api/webhooks/1/TOKENVALUE'):
+        (self.root / '.ov-alert-discord-webhook').write_text(url + chr(10), encoding='utf-8')
+
+    def test_discord_webhook_success_is_delivered(self):
+        self.sample_fail()
+        posted = []
+        self.deliver(lambda url, message: (posted.append((url, message)) or 204))
+        self.assertEqual(len(posted), 1)
+        self.assertIn('incident=', posted[0][1])
+        item = self.state()['incidents']['service']
+        self.assertEqual(item['last_result'], 'discord=delivered')
+        self.assertEqual(item['delivered_to'], {'discord': 0})
+        log = (self.root / 'openviking-notify.log').read_text()
+        self.assertIn('delivered incident=', log)
+        self.assertIn('target=discord exit=0', log)
+        self.assertNotIn('TOKENVALUE', log + json.dumps(self.state()))
+
+    def test_discord_http_failure_is_failed_and_retried_next_round(self):
+        self.sample_fail()
+        def post(url, message):
+            raise urllib.error.HTTPError(url, 429, 'rate limited ' + url, {}, None)
+        self.deliver(post)
+        item = self.state()['incidents']['service']
+        self.assertEqual(item['last_result'], 'discord=failed')
+        self.assertEqual(item['delivered_at'], 0)
+        self.assertEqual(item.get('delivered_to', {}), {})
+        log = (self.root / 'openviking-notify.log').read_text()
+        self.assertIn('failed incident=', log)
+        self.assertIn('target=discord exit=429', log)
+        self.assertNotIn('TOKENVALUE', log)
+        self.assertNotIn('discord.example', log + json.dumps(self.state()))
+        # 节流期内不重试，过了节流期再发一次。
+        self.deliver(lambda *_: self.fail('retried inside throttle'))
+        self.now += 1801
+        self.sample_fail()
+        sent = []
+        self.deliver(lambda url, message: (sent.append(message) or 204))
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(self.state()['incidents']['service']['last_result'], 'discord=delivered')
+
+    def test_missing_webhook_file_is_skipped_without_url(self):
+        self.sample_fail()
+        posted = []
+        self.deliver(lambda *_: posted.append(1) or 204, webhook=False)
+        self.assertEqual(posted, [])
+        item = self.state()['incidents']['service']
+        self.assertEqual(item['last_result'], 'discord=skipped')
+        self.assertEqual(item['delivered_at'], 0)
+        log = (self.root / 'openviking-notify.log').read_text()
+        self.assertIn('skipped incident=', log)
+        self.assertIn('target=discord reason=no_webhook', log)
+        self.assertNotIn('http', log)
 
     def test_worker_concurrency_only_one_send(self):
         self.sample_fail()
         entered, release = threading.Event(), threading.Event()
         errors, calls = [], []
-        def send(*_):
+        def post(*_):
             calls.append(1); entered.set(); release.wait(3)
-            return 0, False
+            return 204
         def first():
             try:
-                self.deliver(send)
+                self.deliver(post)
             except Exception as exc:
                 errors.append(exc)
         thread = threading.Thread(target=first)
@@ -370,10 +442,10 @@ class GuardTests(unittest.TestCase):
     def test_blocked_notifier_does_not_hold_guard_or_sampler_lock(self):
         self.sample_fail()
         entered, release = threading.Event(), threading.Event()
-        def send(*_):
+        def post(*_):
             entered.set(); release.wait(3)
-            return 0, False
-        thread = threading.Thread(target=lambda: self.deliver(send))
+            return 204
+        thread = threading.Thread(target=lambda: self.deliver(post))
         thread.start()
         self.assertTrue(entered.wait(3))
         try:
