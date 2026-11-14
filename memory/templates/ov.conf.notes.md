@@ -46,10 +46,15 @@
 | `vlm.max_retries` | `3` | 默认值 | `vlm_config.py:110` |
 | `vlm.credentials[]` | 一条 `backup-1` | 备用凭据，按数组顺序失败后往后跳（0 优先级最高）。**失效的凭据要删掉**，否则每次抽取都白跳 | `vlm_config.py:176` |
 
-- 2026-11-08 生产实配：`vlm` 段改指本机 Magpie 网关（`api_base` = `http://127.0.0.1:3425/v1`，
+- 2026-11-08 生产实配（已被 11-14 取代）：`vlm` 段改指本机 Magpie 网关（`api_base` = `http://127.0.0.1:3425/v1`，
   `model` = `antigravity/gemini-3.8-flash`）。Magpie 对本机回环不校验 key，`api_key` 填占位串即可；
   `credentials` 留空数组时 OpenViking 会把主配置镜像成一条 `default` 凭据（`_normalize_credentials`），
   不会引入别的上游。这一段只动 `vlm`，`embedding`（SiliconFlow bge-m3，dimension 1024）保持原样。
+- 2026-11-14 生产实配：Magpie 上的 Antigravity 账号被停用（403「违反服务条款」，Magpie 随后下架 `antigravity/gemini-3.8-flash`），
+  抽取回退 Command Code 的 DeepSeek V4.1 Flash。`credentials` 按顺序写两条：`magpie-ds`（`http://127.0.0.1:3425/v1`，
+  `model` = `commandcode/deepseek/deepseek-v4.1-flash`，key 填占位串）在前，`cc-ds-1`（`https://api.commandcode.ai/provider/v1`，
+  `model` = `deepseek/deepseek-v4.1-flash`，填 Command Code 的 key）兜底。除 400、超长、内容安全这类请求级错误外，
+  连不上、401/403、额度用尽都会跳到下一条，所以 Magpie 没开时抽取照样能走直连。
 
 ## server
 
