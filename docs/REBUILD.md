@@ -107,6 +107,18 @@ WSL 里她的技能与 Windows 主 Hermes 的技能树独立，不导入 Windows
 `openai-completions`：整理器的钩子与「重说」只发 OpenAI 形状的 payload（`albion-guard.ts` 的 `providerFor` 也只认这种）。
 生产 `agent/models.json` 与仓库示例不同（私密 provider 与明文 key），部署时只追加/替换 magpie 这一个键。
 
+**换模型清单（2026-11-15）**：每个部件在哪改、改完要不要重启。
+
+| 部件 | 在哪改 | 要不要重启 |
+|---|---|---|
+| 脑 | magpie 的「Pi · WSL Ubuntu」 | 不用，下一轮跟上 |
+| 可畏 | magpie + 可畏的 Hermes 配置 | 要重启她的网关 |
+| TTS 翻译 / 字幕 | 默认跟着脑；要单独指定就在 `config/local.env` 填 `TTS_TRANSLATE_ROUTE_PROVIDER`/`TTS_TRANSLATE_ROUTE_MODEL`（两个都填才生效） | 要重启 9881 |
+| OV 记忆抽取 | `ov.conf` 的对话模型 | 要重启 OpenViking |
+
+翻译和字幕默认串行：首腿报错/空回/超过 `TTS_TRANSLATE_MAGPIE_TIMEOUT` 秒才换 Command Code 退路；
+`ALBION_TRANSLATE_HEDGE_S`/`ALBION_CAPTION_HEDGE_S` 大于 0 才会在首腿慢时并行多发一条（多一份 token）。
+
 **Hermes 退路已删除（2026-10-16）**：`integrations/hermes/`（gateway 补丁与 `albion-voice` 插件）、
 `tests/hermes/`、`config/rebuild/hermes-environment.json`、根目录 `_启动脑WSL.ps1` 都从仓库撤掉了。
 真要回到 Hermes，从 git 历史取：`git show 5f755e83:integrations/hermes/README.md`（引擎基线

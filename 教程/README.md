@@ -14,22 +14,22 @@
 
 | 功能 | 用的模型 | 怎么接的 / 详见 |
 |---|---|---|
-| 脑：她说话、决定调哪个工具 | Gemini 3.8 Flash | Gemini Pro 订阅，用 Magpie 反代；配置见 [00](00-复现向导.md) 阶段 3 |
+| 脑：她说话、决定调哪个工具 | Gemini 3.8 Flash | Gemini Pro 订阅，Magpie 里走 Antigravity 官方 CLI（agy-cli）；配置见 [00](00-复现向导.md) 阶段 3 |
 | 脑的兜底 | DeepSeek V4 Flash | Command Code 中转 |
 | 人设改写 | Gemini | [03](03-口癖和人设.md) |
-| TTS 翻译（中文转日语，她说日语） | 跟着脑当前用的模型走，关掉思考；退路是 Command Code | [04](04-训练角色声音.md) |
+| TTS 翻译（中文转日语，她说日语）和日语字幕 | 跟着脑当前用的模型走；它报错或超时才换 Command Code（不并行打两家） | [04](04-训练角色声音.md) |
 | 联网搜索 | grok-chat-fast | grok 号池（本机代理） |
 | 画图 | grok-imagine-image-2.0，改图用 grok-imagine-image-edit | grok 号池 |
 | 看屏幕截图 | 主模型能收图就自己看；不收图时交号池里的 grok-4.7 转述 | [09](09-她的眼睛.md) |
 | 看摄像头 | 视觉机上的本地 Qwen3-VL 4B（llama.cpp），照片不出局域网，也不进主模型 | [09](09-她的眼睛.md) |
 | 记忆的向量模型 | BAAI/bge-m3（1024 维） | [07](07-长期记忆.md) |
-| 记忆抽取 | Gemini 3.8 Flash | Gemini Pro 订阅，用 Magpie 反代；详见 [07](07-长期记忆.md) |
+| 记忆抽取 | DeepSeek V4.1 Flash | 经本机 Magpie 转 Command Code；详见 [07](07-长期记忆.md) |
 | 语音识别 | 本地 paraformer，跑 CPU | [06](06-语音输入.md) |
 | 她的声音 | 本地 Irodori TTS + 自己训的 LoRA | [04](04-训练角色声音.md) |
 
 看摄像头、语音识别和她的声音都在本地跑，不花 token。
 
-每个功能的模型都能单独换，各篇有写怎么配。
+每个功能的模型都能单独换，各篇有写怎么配；在哪改、要不要重启的速查表在 [REBUILD](../docs/REBUILD.md) 的「换模型清单」。
 
 每篇解决一个问题，可以只看你卡住的那篇：遇到什么问题 → 为什么会这样 → 我怎么解决的 → 你可以怎么做。
 
