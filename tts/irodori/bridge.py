@@ -252,6 +252,9 @@ def _parse_emotion_json(txt: str):
 # 超过上一句的播放长度就直接变成句中静默。Gemini 带思考时 11~19s、拒绝要 8~11s，都超过一句台词。
 # 对冲把"最坏 = 首腿最慢"压成"最坏 ≈ HEDGE_S + 退路腿耗时"。0 = 关（回到纯串行）。
 HEDGE_S = float(os.environ.get("ALBION_TRANSLATE_HEDGE_S", "5"))
+# 字幕（日→中，`to_chinese`）单独一个对冲阈值：9885 取字幕的窗口只有「渲染出第一帧 +
+# ALBION_CAPTION_WAIT_S(3s)」≈5s，等不起 Gemini 那 10~13s；语音翻译有预取、可以等，仍用 HEDGE_S。
+CAPTION_HEDGE_S = float(os.environ.get("ALBION_CAPTION_HEDGE_S", "1.5"))
 
 
 def to_japanese_ex(text: str, context: str = ""):
@@ -348,6 +351,7 @@ def to_chinese(ja_text: str) -> str:
         t,
         lambda: _leg(t, "首腿", ask_brain, t, prompt=prompt),
         lambda: _leg(t, "DeepSeek", _ask, key, t, model, endpoint, prompt=prompt),
+        delay=CAPTION_HEDGE_S,        # 字幕窗口约 5s，等不起 Gemini；语音翻译那边仍用 HEDGE_S
         enabled=bool(key))
     if not zh and key and not fired:      # 对冲没发（首腿很快就空了）才补一次，不重复打
         zh = _ask(key, t, model, endpoint, prompt=prompt)

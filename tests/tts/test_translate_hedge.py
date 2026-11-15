@@ -185,5 +185,58 @@ class HedgeWiringTest(unittest.TestCase):
         self.assertAlmostEqual(emo["arousal"], 0.4)
 
 
+class CaptionHedgeTest(unittest.TestCase):
+    """字幕（`to_chinese`）走自己的短对冲阈值（2026-11-15）。
+
+    9885 取字幕的窗口只有「渲染出第一帧 + ALBION_CAPTION_WAIT_S(3s)」≈5s，等不起 Gemini 那 10~13s；
+    ALBION_TRANSLATE_HEDGE_S 被放大到 20s（Gemini 没断就用 Gemini）以后，字幕全掉回日语。
+    """
+
+    def setUp(self):
+        self._h = bridge.HEDGE_S
+        self._c = bridge.CAPTION_HEDGE_S
+        self.addCleanup(setattr, bridge, "HEDGE_S", self._h)
+        self.addCleanup(setattr, bridge, "CAPTION_HEDGE_S", self._c)
+        self.addCleanup(setattr, bridge, "TRANSLATE_BACKEND", bridge.TRANSLATE_BACKEND)
+
+    def test_字幕首腿慢就按短阈值发对冲(self):
+        bridge.HEDGE_S = 20.0            # 语音翻译那条：继续等 Gemini
+        bridge.CAPTION_HEDGE_S = 0.2     # 字幕：等不起，1.5s 量级
+        seen = []
+
+        def slow_first(text, prompt=None):
+            seen.append("first")
+            time.sleep(6.0)
+            return "おそい。"
+
+        def fast_deep(key, text, model, *a, **kw):
+            seen.append("deep")
+            return "早い。"
+
+        with patch.object(bridge, "TRANSLATE_BACKEND", "codex"),                 patch.object(bridge, "ask_brain", side_effect=slow_first),                 patch.object(bridge, "_cc_keys", return_value=["k"]),                 patch.object(bridge, "_ask", side_effect=fast_deep):
+            t0 = time.monotonic()
+            got = bridge.to_chinese("こんにちは。")
+            took = time.monotonic() - t0
+        self.assertEqual(got, "早い。")
+        self.assertLess(took, 5.0, "字幕不许等到 HEDGE_S=20 才拿到译文")
+        self.assertEqual(seen, ["first", "deep"])
+
+    def test_语音翻译仍按HEDGE_S等首腿(self):
+        """同一个进程里 HEDGE_S=20、CAPTION_HEDGE_S=0.2：语音那条不许被字幕的短阈值带走。"""
+        bridge.HEDGE_S = 20.0
+        bridge.CAPTION_HEDGE_S = 0.2
+        seen = []
+
+        def slow_first(text):
+            seen.append("first")
+            time.sleep(1.0)
+            return "おそい。"
+
+        with patch.object(bridge, "TRANSLATE_BACKEND", "codex"),                 patch.object(bridge, "ask_brain", side_effect=slow_first),                 patch.object(bridge, "_cc_keys", return_value=["k"]),                 patch.object(bridge, "_ask", side_effect=lambda *a, **kw: "はやい。"):
+            got = bridge.to_japanese("你好。")
+        self.assertEqual(got, "おそい。")
+        self.assertEqual(seen, ["first"], "语音翻译不该在 0.2s 就发对冲")
+
+
 if __name__ == "__main__":
     unittest.main()
