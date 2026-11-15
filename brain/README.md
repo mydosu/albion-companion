@@ -36,7 +36,7 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
 | `agent/shell-tools-bridge.ts` + `agent/extensions/albion-shell-tools.ts` | 每轮开跑前取清单：新插件注册成代理工具、卸载的改成 hidden（Pi 工具不能注销），不用换身子。和她自己的工具重名时插件那件改叫 `shell_<名>`，她的永远优先；插件规则按壳提供的 owner/id 各放一个系统提示区块，不再混入工具描述；取不到清单就全部撤下。自定义 SYSTEM.md 下额外补入当前可见工具的 promptGuidelines 与全局规则，不改人格正文 |
 | `bin/voice_tidy.ts` | 整理器的命令行壳（给 Python 探针 `tests/pi-brain/check_speech.py` 用；规则直接 import 扩展，不另写一份） |
 | `bin/memory.py` | OpenViking 回忆 / 写入 / 检索（格式与 Hermes 时代逐字一致） |
-| `bin/brain_alert.py` | 脑哑了喊人（2026-11-15）：连续 2 轮没回出来就往 Discord 发一条告警，还坏着就隔 3 小时再喊；告警过之后第一次成功补一条恢复（哑了多久、失败几轮）。只告警、不换线路，换线路由人定。webhook 从本机文件读（`ALBION_ALERT_WEBHOOK_FILE` > `/mnt/d/AI/scripts/.ov-alert-discord-webhook` > `agent/.alert-discord-webhook`，都是空就记 `brain alert skipped` 不发送），错误正文脱敏到 200 字；计数只在内存，宿主重启清零。自检 `tests/pi-brain/check_brain_alert.py` |
+| `bin/brain_alert.py` | 脑哑了喊人（2026-11-15）：连续 2 轮没回出来就往 Discord 发一条告警，还坏着就隔 3 小时再喊；告警过之后第一次成功补一条恢复（哑了多久、失败几轮）。只告警、不换线路，换线路由人定。webhook 从本机文件读（`ALBION_ALERT_WEBHOOK_FILE` > `/mnt/d/AI/scripts/.ov-alert-discord-webhook` > `agent/.alert-discord-webhook`，都是空就记 `brain alert skipped` 不发送），出外网走 `ALBION_CHAT_PROXY`（默认 `127.0.0.1:7897`，WSL 直连 DNS 超时），错误正文脱敏到 200 字；计数只在内存，宿主重启清零。自检 `tests/pi-brain/check_brain_alert.py` |
 | `bin/wake.py` | 她自己醒来：一条门铃计时（她定的时间夹在 30 分钟～3 小时，没定过 60 分钟）+ 三条底线（夜里安静、他刚说过话不打断、两次醒来至少隔 10 分钟）+ `can_speak` 决定这一轮能不能开口；门铃问的就是它 |
 | `bin/test_guard_ext.ts` | 整理器与每轮约定自检（钩子接线、r35 多轮姿态序列、英文拒绝、表态小句删除与误删面、0 次网络请求、约定拼装；Windows/WSL 都能跑） |
 | `bin/test_cross_channel.ts` | 跨渠道近况自检（桌面只收 Discord 群、悄悄话不进桌面、Discord 收桌面近况、水位不重复、内部提示/播种块过滤、send_message 正文落库、6 小时窗口与 12 行/1500 字上限；Windows/WSL 都能跑） |

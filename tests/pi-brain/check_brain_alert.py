@@ -11,6 +11,7 @@
   5) post 抛异常不往外抛，这一轮照常算过
   6) webhook 文件缺失：记 brain alert skipped reason=no_webhook，不算发过
   7) 20 个线程同时记失败：计数不漏，同一秒只喊一条
+  8) 外网走代理：默认 127.0.0.1:7897（和 chat_bridge 的 ALBION_CHAT_PROXY 同一个变量），空串则直连
 
 跑：python3 tests/pi-brain/check_brain_alert.py
 """
@@ -20,6 +21,7 @@ import os
 import sys
 import tempfile
 import threading
+import urllib.request
 import time
 from pathlib import Path
 
@@ -212,6 +214,26 @@ def check_threads_safe(tmp):
     print("7) 20 线程并发计数正确（fails=20，只喊 1 条）OK")
 
 
+
+def proxy_handler(opener):
+    for handler in opener.handlers:
+        if isinstance(handler, urllib.request.ProxyHandler):
+            return handler
+    raise AssertionError("opener 里没有 ProxyHandler：%r" % (opener.handlers,))
+
+
+def check_proxy(tmp):
+    """只构造 opener、不发请求：WSL 直连 DNS 超时，必须显式挂代理。"""
+    if not os.environ.get("ALBION_CHAT_PROXY"):
+        assert brain_alert.PROXY == "http://127.0.0.1:7897", brain_alert.PROXY
+    assert proxy_handler(brain_alert.proxy_opener()).proxies == {
+        "http": brain_alert.PROXY, "https": brain_alert.PROXY}, "http/https 都要挂"
+    # 空 proxies 的 ProxyHandler 会被 build_opener 直接省掉：总之不能留下任何代理
+    assert not [h for h in brain_alert.proxy_opener("").handlers
+                if isinstance(h, urllib.request.ProxyHandler) and h.proxies], "空串要直连，不挂代理"
+    print("8) 走代理（默认 127.0.0.1:7897，空串直连）OK：%s" % brain_alert.PROXY)
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="brain-alert-") as tmp:
         check_two_failures(tmp)
@@ -221,6 +243,7 @@ def main():
         check_post_raises(tmp)
         check_no_webhook(tmp)
         check_threads_safe(tmp)
+        check_proxy(tmp)
     print("BRAIN ALERT SELFTEST OK")
 
 

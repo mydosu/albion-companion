@@ -24,6 +24,8 @@ SEND_TIMEOUT = 10
 FAIL_ALERT_AT = 2                          # 连续第 2 轮失败就喊
 REPEAT_AFTER_S = 3 * 3600                  # 还一直坏着，隔 3 小时再喊一次
 ERROR_MAX_CHARS = 200
+# 出外网只能走代理（WSL 直连 DNS 超时），变量和默认值跟 chat_bridge 的 ALBION_CHAT_PROXY 一致；空串则直连。
+PROXY = os.environ.get("ALBION_CHAT_PROXY", "http://127.0.0.1:7897").strip()
 LOGS = Path(os.environ.get("ALBION_LOGS", str(Path(__file__).resolve().parent.parent / "logs")))
 
 _lock = threading.Lock()
@@ -63,15 +65,24 @@ def webhook_url(path=None):
     return ""
 
 
+def proxy_opener(proxy=None):
+    """外网请求用的 opener：显式挂 ProxyHandler，空地址就是直连（不建 opener 默认那套）。"""
+    proxy = PROXY if proxy is None else proxy
+    if not proxy:
+        return urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    return urllib.request.build_opener(urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+
+
 def post_webhook(url, message):
-    # 代理沿用 urllib 默认解析（环境变量 > 系统代理 > 直连），和 openviking-notify 走同一套 socket 路径。
+    # 不能靠 urllib 默认代理解析：WSL 直连 DNS 超时，宿主进程环境里又没有 HTTPS_PROXY/HTTP_PROXY，
+    # 默认解析等于直连，生产上必然是 status=0。这里显式走 ALBION_CHAT_PROXY（默认 127.0.0.1:7897）。
     # 异常文本可能带 URL/token，所以只记异常类型和 HTTP 状态码，不记 exc 内容。
     body = json.dumps({"content": message, "username": DISCORD_USERNAME,
                        "allowed_mentions": {"parse": []}}).encode("utf-8")
     request = urllib.request.Request(url, data=body, method="POST",
                                      headers={"Content-Type": "application/json",
                                               "User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=SEND_TIMEOUT) as response:
+    with proxy_opener().open(request, timeout=SEND_TIMEOUT) as response:
         return response.status
 
 
