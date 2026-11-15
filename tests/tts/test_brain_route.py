@@ -39,7 +39,9 @@ def health(provider, model):
 
 class BrainRouteTest(unittest.TestCase):
     def setUp(self):
-        self._env = patch.dict(os.environ, {"TTS_BRAIN_ROUTE": "1"})
+        self._env = patch.dict(os.environ, {"TTS_BRAIN_ROUTE": "1",
+                                            "TTS_TRANSLATE_ROUTE_PROVIDER": "",
+                                            "TTS_TRANSLATE_ROUTE_MODEL": ""})
         self._env.start()
         self.addCleanup(self._env.stop)
         bridge.reset_brain_route()
@@ -193,6 +195,74 @@ class BrainRouteTest(unittest.TestCase):
             finally:
                 bridge._magpie_down_until = 0.0
                 bridge._magpie_compress_down_until = 0.0
+
+
+class RouteOverrideTest(unittest.TestCase):
+    """翻译首腿单独指定（2026-11-15）：两个变量都设就不问脑；只设一个 / 都没设照旧。
+
+    需求来自 2026-11-15：脑换成 agy-cli/gemini-3.8-flash 后翻译跟着它一句 10~13s，
+    指挥官定翻译单独走 DS v4.1 Flash（provider=magpie、model=commandcode/deepseek/deepseek-v4.1-flash）。
+    两个变量是**一对**：只设一个不进覆盖，避免半套配置把人带进猜不到的路由。
+    """
+
+    PIN = {"TTS_TRANSLATE_ROUTE_PROVIDER": "magpie",
+           "TTS_TRANSLATE_ROUTE_MODEL": "commandcode/deepseek/deepseek-v4.1-flash"}
+
+    def setUp(self):
+        self._env = patch.dict(os.environ, {"TTS_BRAIN_ROUTE": "1",
+                                            "TTS_TRANSLATE_ROUTE_PROVIDER": "",
+                                            "TTS_TRANSLATE_ROUTE_MODEL": ""})
+        self._env.start()
+        self.addCleanup(self._env.stop)
+        bridge.reset_brain_route()
+
+    def tearDown(self):
+        bridge.reset_brain_route()
+
+    def test_both_vars_pin_route_without_asking_brain(self):
+        up = patch.object(bridge.urllib.request, "urlopen", side_effect=AssertionError("不该问脑"))
+        with patch.dict(os.environ, self.PIN), up as asked:
+            route = bridge.brain_route()
+        asked.assert_not_called()
+        self.assertEqual((route["provider"], route["model"]),
+                         ("magpie", "commandcode/deepseek/deepseek-v4.1-flash"))
+
+    def test_both_vars_drive_the_first_leg(self):
+        """钉住以后首腿就打 magpie 那个模型，不再跟着脑的 agy-cli 走。"""
+        with patch.dict(os.environ, self.PIN),                 patch.object(bridge.urllib.request, "urlopen",
+                             side_effect=AssertionError("不该问脑")),                 patch.object(bridge, "_ask_magpie", return_value="こんにちは。") as magpie:
+            self.assertEqual(bridge.to_japanese("你好。"), "こんにちは。")
+        self.assertEqual(magpie.call_args.args[1], "commandcode/deepseek/deepseek-v4.1-flash")
+
+    def test_only_provider_falls_back_to_brain(self):
+        """只设 provider（model 空）⇒ 不进覆盖，照旧问脑。"""
+        with patch.dict(os.environ, {"TTS_TRANSLATE_ROUTE_PROVIDER": "magpie"}),                 patch.object(bridge.urllib.request, "urlopen",
+                             return_value=health("magpie", "agy-cli/gemini-3.8-flash")) as asked:
+            route = bridge.brain_route()
+        asked.assert_called_once()
+        self.assertEqual(route["model"], "agy-cli/gemini-3.8-flash")
+
+    def test_only_model_falls_back_to_brain(self):
+        with patch.dict(os.environ, {"TTS_TRANSLATE_ROUTE_MODEL": "commandcode/deepseek/deepseek-v4.1-flash"}),                 patch.object(bridge.urllib.request, "urlopen",
+                             return_value=health("magpie", "agy-cli/gemini-3.8-flash")) as asked:
+            route = bridge.brain_route()
+        asked.assert_called_once()
+        self.assertEqual(route["model"], "agy-cli/gemini-3.8-flash")
+
+    def test_command_code_leg_sends_user_agent(self):
+        """对冲腿（Command Code /responses）必须带 UA：不带会回 Cloudflare 1010（2026-11-14 踩过）。"""
+        seen = []
+
+        def fake(req, timeout=0):
+            seen.append(req)
+            body = {"output": [{"type": "message",
+                                "content": [{"type": "output_text", "text": "おはよう。"}]}]}
+            return _Resp(json.dumps(body).encode())
+
+        with patch.object(bridge.urllib.request, "urlopen", side_effect=fake):
+            got = bridge._ask("k", "早上好。", "deepseek/deepseek-v4.1-flash", bridge.FALLBACK_BASE)
+        self.assertEqual(got, "おはよう。")
+        self.assertTrue(seen[0].get_header("User-agent"))
 
 
 REFUSAL_EN = ("I cannot fulfill this request. I am unable to generate or translate "

@@ -653,6 +653,14 @@ _FALLBACK_KEY: list[str] = []
 # 缓存 BRAIN_TTL 秒：一轮对话里十几句翻译不必每句都问一次；问不到就沿用上一次（一次都没问到就退回老链）。
 # provider=magpie → 打本机 magpie 的 OpenAI 口；provider=commandcode → 走现有 Command Code 腿 + 该模型；
 # 其它 provider（grokpool 等）不猜，直接退回老链。DeepSeek 官方 / Command Code / codex 三条退路顺序不变。
+#
+# ---- 翻译首腿脱离脑（2026-11-15）：TTS_TRANSLATE_ROUTE_PROVIDER + _MODEL ----------------------
+# 为什么：2026-11-15 脑换到 agy-cli/gemini-3.8-flash（Antigravity 官方 CLI 线路），翻译跟过去以后
+# 一句 10~13s（跟着 magpie+Gemini 压思考时是 2.4~2.8s），每句开口都晚十几秒。指挥官定：翻译单独
+# 走 DS v4.1 Flash，脑不动。**两个都设**就直接用这对值、不问脑；只设一个 / 都没设就完全照旧。
+# 目标配置：provider=magpie、model=commandcode/deepseek/deepseek-v4.1-flash（magpie 里余量大那个
+# Command Code 账号），不用直连的 daily-1 key。
+# 回滚：把这两个变量删掉，就恢复跟着脑走。
 BRAIN_HEALTH = os.environ.get("TTS_BRAIN_HEALTH_URL", "http://127.0.0.1:8650/health")
 BRAIN_TTL = float(os.environ.get("TTS_BRAIN_ROUTE_TTL", "60"))
 MAGPIE_BASE = os.environ.get("TTS_TRANSLATE_MAGPIE_BASE", "http://127.0.0.1:3425/v1").rstrip("/")
@@ -674,11 +682,20 @@ _brain_route: dict = {"at": 0.0, "provider": "", "model": ""}
 def brain_route(now: float | None = None) -> dict:
     """脑现在在用的 {"provider", "model"}；缓存 BRAIN_TTL 秒，问不到就用上一次的结果。
 
+    覆盖（2026-11-15）：`TTS_TRANSLATE_ROUTE_PROVIDER` 与 `TTS_TRANSLATE_ROUTE_MODEL` **两个都设**时
+    直接返回这对值、不问脑 —— 脑换成 agy-cli/gemini-3.8-flash 后翻译跟着它一句要 10~13s，
+    指挥官定翻译单独走 DS v4.1 Flash。只设一个 / 都没设 ⇒ 行为和原来完全一样。
+    回滚：删掉这两个变量，就恢复跟着脑走。
+
     TTS_BRAIN_ROUTE=0 可整条关掉（离线测试、或不想让翻译依赖脑的时候）。
     """
+    now = time.time() if now is None else now
+    pin_provider = (os.environ.get("TTS_TRANSLATE_ROUTE_PROVIDER") or "").strip()
+    pin_model = (os.environ.get("TTS_TRANSLATE_ROUTE_MODEL") or "").strip()
+    if pin_provider and pin_model:
+        return {"at": now, "provider": pin_provider, "model": pin_model}
     if os.environ.get("TTS_BRAIN_ROUTE", "1").strip().lower() in ("0", "false", "no", "off"):
         return {"at": 0.0, "provider": "", "model": ""}
-    now = time.time() if now is None else now
     with _brain_lock:
         cached = dict(_brain_route)
     if cached["model"] and now - cached["at"] < BRAIN_TTL:
