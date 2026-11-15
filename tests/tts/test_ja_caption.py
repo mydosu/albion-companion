@@ -240,6 +240,15 @@ class CaptionEarlyTest(unittest.IsolatedAsyncioTestCase):
         self.co._client = httpx.AsyncClient(transport=httpx.MockTransport(b))
         return b
 
+    def _take_all(self):
+        """取空出站队列（一次读完，别分几趟 —— 队列读走就没了）。"""
+        out = []
+        while not self.sess.out.empty():
+            kind, payload = self.sess.out.get_nowait()
+            if kind == "text":
+                out.append(json.loads(payload))
+        return out
+
     def _events(self, event=None):
         out = []
         while not self.sess.out.empty():
@@ -341,6 +350,44 @@ class CaptionEarlyTest(unittest.IsolatedAsyncioTestCase):
         self.co._begin_caption(self.sess, self.unit)
         await asyncio.gather(*self.sess.caption_senders.values())
         self.assertEqual(self._events("display.caption"), [], "空译文不发，壳保持日语")
+
+    async def test_caption_after_finish_still_sent(self):
+        """音频全部发完（session.finished）之后中文才回来，也要送到壳（2026-11-15 修复）。"""
+        await self._render(delay=0.3)
+        with mock.patch.object(SS.WR, "save", return_value=None):
+            await self.co.render_unit(self.sess, self.unit,
+                                      [(0, "はぁ……あっ……んっ……", None, None, False)],
+                                      asyncio.get_running_loop().time() + 30)
+            self.assertEqual(len(self.sess.caption_senders), 1)
+            fin = asyncio.create_task(self.co._finish(self.sess))
+            await asyncio.sleep(0.05)             # 收尾已开始，字幕还没回来
+            self.assertFalse(fin.done(), "字幕还在路上时不许把会话收掉")
+            await fin
+        events = self._take_all()                  # 一次取完（队列只能读一次）
+        finished = [e for e in events if e.get("event") == "session.finished"]
+        self.assertEqual(finished[0]["captions_pending"], 1)
+        caps = [e["payload"] for e in events if e.get("event") == "display.caption"]
+        self.assertEqual(len(caps), 1, "收尾之后回来的字幕也要发出去")
+        self.assertEqual(caps[0]["zh"], "哈啊……啊……")
+
+    async def test_captions_pending_is_zero_without_caption(self):
+        """中文单元没有字幕任务 ⇒ captions_pending=0，收尾立刻返回（不多留会话）。"""
+        self.unit = self._feed("指挥官，今天也辛苦了。")
+        loop = asyncio.get_running_loop()
+        t0 = loop.time()
+        await self.co._finish(self.sess)
+        self.assertLess(loop.time() - t0, 0.2)
+        finished = [e for e in self._take_all() if e.get("event") == "session.finished"]
+        self.assertEqual(finished[0]["captions_pending"], 0)
+
+    async def test_cancel_while_waiting_drops_caption(self):
+        """收尾还在等字幕时被打断（cancel）⇒ 字幕任务撤掉、一条都不发。"""
+        self._bridge(delay=5.0)
+        self.co._begin_caption(self.sess, self.unit)
+        await self.co._cancel(self.sess)
+        await asyncio.sleep(0.05)
+        self.assertEqual(self.sess.caption_senders, {})
+        self.assertEqual(self._events("display.caption"), [])
 
     async def test_failed_render_drops_caption_tasks(self):
         """渲染失败，这个单元的字幕没人要了，任务撤掉（不许攒着打上游）。"""

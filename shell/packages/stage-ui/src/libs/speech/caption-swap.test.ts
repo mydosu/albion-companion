@@ -3,17 +3,16 @@ import { describe, expect, it } from 'vitest'
 import { admitCaption } from './caption-swap'
 
 describe('admitCaption', () => {
-  it('还没落账的单元先存着（先到中文 ⇒ 起播时直接中文）', () => {
-    expect(admitCaption(false, false)).toBe('pending')
-    // 防御：未知单元即使被当成"最近一个"，也仍然是 pending
-    expect(admitCaption(false, true)).toBe('pending')
-  })
-
-  it('就是屏幕上这一句 ⇒ 立刻替换', () => {
+  it('这一轮还在、单元已落账 ⇒ 换进整段累计字幕（早几句的也换）', () => {
     expect(admitCaption(true, true)).toBe('apply')
   })
 
-  it('已经翻篇（落过账但后面又有单元）⇒ 丢掉', () => {
-    expect(admitCaption(true, false)).toBe('drop')
+  it('这一轮还在、单元还没落账 ⇒ 先存着，span 来了直接用', () => {
+    expect(admitCaption(true, false)).toBe('pending')
+  })
+
+  it('这一轮已经不在屏幕上（新一轮 / 被打断）⇒ 丢掉', () => {
+    expect(admitCaption(false, true)).toBe('drop')
+    expect(admitCaption(false, false)).toBe('drop')
   })
 })

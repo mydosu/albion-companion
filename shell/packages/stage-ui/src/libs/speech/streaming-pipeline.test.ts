@@ -516,6 +516,54 @@ describe('createStreamingTtsPipeline', () => {
     expect(onCaption.mock.calls[0][0]).toMatchObject({ unitId: 'u1', zh: '哈啊……', generation: 1 })
   })
 
+  it('session.finished 之后的中文字幕照样送达，且 onDone 不等它（2026-11-15）', async () => {
+    server = await startMockServer((ws) => {
+      ws.on('message', (data, isBinary) => {
+        if (isBinary)
+          return
+        const ev = JSON.parse(data.toString()) as { event?: string }
+        if (ev.event !== 'finish')
+          return
+        ws.send(JSON.stringify({
+          event: 'display.span',
+          payload: { unit_id: 'u1', source_unit_id: 'u1', source_range: [0, 4], text: 'はぁ……', eligible: 'audio' },
+        }))
+        // 音频说完了，但字幕还在路上：服务端报 captions_pending=1
+        ws.send(JSON.stringify({ event: 'session.finished', payload: { captions_pending: 1 } }))
+        // 中文 200ms 后才到 —— 收尾早就发生了，也得送到壳
+        setTimeout(() => {
+          ws.send(JSON.stringify({
+            event: 'display.caption',
+            payload: { session_id: 's', unit_id: 'u1', source_unit_id: 'u1', zh: '哈啊……' },
+          }))
+        }, 200)
+      })
+    })
+
+    const order: string[] = []
+    const onCaption = vi.fn(() => order.push('caption'))
+    const onDone = vi.fn(() => order.push('done'))
+    const handle = createStreamingTtsPipeline({
+      serverUrl: server.url,
+      model: 'albion-stream/v2',
+      voice: 'albion',
+      responseFormat: 'wav',
+      audioContext: makeStubAudioContext(),
+      onCaption,
+      onDone,
+    })
+
+    handle.appendText('はぁ……')
+    handle.finish()
+
+    // onDone 不许等字幕：先发生
+    await vi.waitFor(() => expect(onDone).toHaveBeenCalledTimes(1), { interval: 10, timeout: WAIT_TIMEOUT_MS })
+    expect(order).toEqual(['done'])
+    // 收尾之后的中文仍然送达
+    await vi.waitFor(() => expect(onCaption).toHaveBeenCalledTimes(1), { interval: 10, timeout: WAIT_TIMEOUT_MS })
+    expect(onCaption.mock.calls[0][0]).toMatchObject({ unitId: 'u1', zh: '哈啊……' })
+  })
+
   it('句级文本不残留：end 自带文本时也要出队，否则下一个缺文本的 end 会取到陈旧句子', async () => {
     server = await startMockServer((ws) => {
       ws.on('message', (data, isBinary) => {

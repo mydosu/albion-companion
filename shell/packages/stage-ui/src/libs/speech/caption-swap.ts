@@ -1,21 +1,22 @@
 /**
  * 晚到的中文字幕该不该上屏（2026-11-15）。
  *
- * 服务端先发日语原文的 display.span，中文（display.caption）什么时候回来说不准：
- * 亲密段一句 10~13s，经常是这句已经播完才回来。屏幕状态由壳决定，所以这条判断放在这里：
+ * 字幕条显示的是**这一轮的整段累计文本**（applyDisplaySpan 每次 replace 整段，caption.vue
+ * 一直留到下一轮），所以判断口径是"这一轮还在屏幕上吗"，不是"这句是不是当前句"：
  *
- * - `pending`：这个单元还没落账（还没轮到它上屏）⇒ 先存着，span 来时直接显示中文；
- * - `apply`：就是屏幕上这一句 ⇒ 立刻把这一句的字幕换成中文；
- * - `drop`：落过账、但后面又有单元落账（已经翻篇）⇒ 丢掉，绝不糊到新句上。
+ * - `pending`：这一轮还在，但这个单元还没落账（还没轮到它上屏）⇒ 先存着，span 来了直接用；
+ * - `apply`：这一轮还在，而且这个单元已经落账 ⇒ 存下来并重新 render + replace（哪怕它是
+ *   早几句的，整段累计里也要换成中文）；
+ * - `drop`：这一轮已经不在屏幕上（新一轮开始 / 被打断清掉了账本）⇒ 丢掉，绝不糊到新轮上。
  */
 export type CaptionAdmission = 'pending' | 'apply' | 'drop'
 
 /**
- * @param known 这个 unitId 已经落过账（账本里有它）
- * @param current 它是账本里最近落账的那个单元（= 屏幕上这一句）
+ * @param turnVisible 这一轮还在屏幕上（它的账本还在，没被新一轮/打断清掉）
+ * @param known 这个 unitId 已经落过账
  */
-export function admitCaption(known: boolean, current: boolean): CaptionAdmission {
-  if (!known)
-    return 'pending'
-  return current ? 'apply' : 'drop'
+export function admitCaption(turnVisible: boolean, known: boolean): CaptionAdmission {
+  if (!turnVisible)
+    return 'drop'
+  return known ? 'apply' : 'pending'
 }

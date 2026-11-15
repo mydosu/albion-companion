@@ -47,6 +47,12 @@ export interface StreamingDisplaySpan {
 }
 
 /**
+ * 音频发完以后还愿意为"晚到的中文字幕"多留 ws 多久。服务端 caption_timeout 是 45s，
+ * 这里取同一个量级：到点还没收齐就关，绝不无限挂着。
+ */
+const CAPTION_LINGER_MS = 45_000
+
+/**
  * 服务端 display.caption（2026-11-15）：某一个单元的日语原文有了中文字幕。
  *
  * 与 display.span 配对的是 unitId —— 服务端先发日语原文的 span，中文晚到就补这条；
@@ -198,6 +204,10 @@ export function createStreamingTtsPipeline(options: StreamingTtsPipelineOptions)
   let sawSessionFinished = false
   /** 本会话在 span 上见过的 generation：display.caption 拿它判断是不是旧 generation 的残件。 */
   let spanGeneration: number | undefined
+  /** session.finished 里报的"还在等的中文字幕数"：收尾时据此把 ws 多留一会儿。 */
+  let captionsLeft = 0
+  /** 收尾后等字幕的关闭定时器（到点强制关 ws）。 */
+  let captionLingerTimer: ReturnType<typeof setTimeout> | undefined
   /**
    * Queue for frames sent before the ws transitions to OPEN. Avoids
    * silently dropping early `appendText` calls (the caller doesn't know
@@ -415,8 +425,18 @@ export function createStreamingTtsPipeline(options: StreamingTtsPipelineOptions)
         // 事件一律不认 —— 同一会话里 generation 不会变，变了就是服务端串台了。
         const caption = readDisplayCaption(evt.payload)
         const generation = readGeneration(evt.payload)
-        if (caption && (spanGeneration === undefined || generation === undefined || generation === spanGeneration))
+        if (caption && (spanGeneration === undefined || generation === undefined || generation === spanGeneration)) {
           options.onCaption?.(caption)
+          captionsLeft = Math.max(0, captionsLeft - 1)
+          if (captionsLeft === 0 && captionLingerTimer !== undefined) {
+            clearTimeout(captionLingerTimer) // 收齐了就别再挂着
+            captionLingerTimer = undefined
+            try {
+              ws.close()
+            }
+            catch {}
+          }
+        }
         break
       }
       case 'subtitle': {
@@ -431,6 +451,8 @@ export function createStreamingTtsPipeline(options: StreamingTtsPipelineOptions)
       }
       case 'session.finished': {
         sawSessionFinished = true
+        // 音频说是说完了，但中文字幕可能还要 10~13s：收尾时把 ws 多留一会儿（见 terminate）。
+        captionsLeft = readCaptionsPending(evt.payload)
         void enqueueFlush()
         void requestTerminate(null)
         break
@@ -477,6 +499,21 @@ export function createStreamingTtsPipeline(options: StreamingTtsPipelineOptions)
       options.onDone?.()
     }
 
+    // 音频发完就是"说完了"：onDone 立刻发（markTtsFinished / 说话状态 / 下一轮起播都按音频走）。
+    // 但 ws 先不关 —— 短回复的中文字幕要 10~13s 才回来，关了它壳就再也收不到（2026-11-15）。
+    // 字幕收齐（display.caption 里计数归零）或到 CAPTION_LINGER_MS 才关。
+    if (err == null && captionsLeft > 0) {
+      setTimeout(triggerCallbacks, 0)
+      captionLingerTimer = setTimeout(() => {
+        captionLingerTimer = undefined
+        try {
+          ws.close()
+        }
+        catch {}
+      }, CAPTION_LINGER_MS)
+      return
+    }
+
     try {
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
         // NOTICE:
@@ -514,7 +551,19 @@ export function createStreamingTtsPipeline(options: StreamingTtsPipelineOptions)
       safeSend(JSON.stringify({ event: 'finish' }))
     },
     cancel() {
-      if (closed || terminationRequested)
+      if (closed) {
+        // 收尾正在等字幕：用户/新一轮喊停就立刻关，别让 ws 挂着
+        if (captionLingerTimer !== undefined) {
+          clearTimeout(captionLingerTimer)
+          captionLingerTimer = undefined
+          try {
+            ws.close()
+          }
+          catch {}
+        }
+        return
+      }
+      if (terminationRequested)
         return
       safeSend(JSON.stringify({ event: 'cancel' }))
       // Route through `requestTerminate` so any in-flight `decodeAudioData`
@@ -639,6 +688,12 @@ function readSentenceIdentity(payload: Record<string, unknown> | undefined): Str
     ...(typeof generation === 'number' ? { generation } : {}),
     ...(typeof subIndex === 'number' ? { subIndex } : {}),
   }
+}
+
+/** session.finished 里还在等的中文字幕数（缺/坏值一律当 0：不多留 ws）。 */
+function readCaptionsPending(payload: Record<string, unknown> | undefined): number {
+  const pending = payload?.captions_pending
+  return typeof pending === 'number' && Number.isFinite(pending) && pending > 0 ? Math.floor(pending) : 0
 }
 
 /**

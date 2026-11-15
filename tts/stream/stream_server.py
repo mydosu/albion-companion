@@ -1589,10 +1589,19 @@ class Coordinator:
         sess.state = "FINISHED"
         await self.close_render(sess)
         c = sess.counts
+        # 还在等的中文字幕：壳据此知道"音频说完了，但字幕还会晚到几条"，好把会话多留一会儿。
+        pending = [t for t in sess.caption_senders.values() if not t.done()]
         await sess.send_json({"event": "session.finished", "session_id": sess.id,
                               "generation": sess.generation, "units": c["units"],
                               "audio": c["audio"], "no_audio": c["no_audio"], "failed": c["failed"],
+                              "captions_pending": len(pending),
                               "status": "partial" if c["failed"] else "complete"})
+        # 音频发完就是"说完了"（壳拿到这条就 markTtsFinished，绝不因为字幕推迟）；
+        # 但会话先不收尾：中文字幕要 10~13s 才回，短回复全都在这里丢掉过（2026-11-15），
+        # 所以把晚到的 `display.caption` 送完再让 ws 关，最多等 `caption_timeout`。
+        if pending:
+            log("[caption] %s 收尾前等 %d 条字幕（最多 %.0fs）" % (sess.id, len(pending), self.cfg.caption_timeout))
+            await asyncio.wait(pending, timeout=self.cfg.caption_timeout)
 
     async def _flush(self, sess):
         """等 writer 把队列里剩下的帧发完（断线/出错时也尽力），最多 1s。"""

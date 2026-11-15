@@ -295,8 +295,8 @@ export function createStreamingTtsSession<TAudio = AudioBuffer>(
       hooks?.onDisplay?.(span)
     },
     onCaption: (caption) => {
-      if (terminated)
-        return
+      // 会话收尾（音频发完）之后中文还会晚到 —— ws 特意多留一会儿，所以这里**不**看
+      // terminated：哪一轮还算数由宿主按 turnId 判（新一轮/打断会清掉旧账本）。
       hooks?.onCaption?.(caption)
     },
     onSentence: ({ index, text, audio, identity }) => {

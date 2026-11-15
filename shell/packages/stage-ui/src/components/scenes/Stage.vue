@@ -313,6 +313,11 @@ const ledgersByTurnId = new Map<string, ReturnType<typeof createDisplayLedger>>(
  * 先到中文 ⇒ 这一句落 span / 起播时直接中文；后到 ⇒ 只换还在屏上的这一句。
  */
 const captionZhByTurnId = new Map<string, Map<string, string>>()
+/**
+ * 字幕条现在是哪一轮的（`applyDisplaySpan` 推上去的那一轮）。新一轮推上来以后，
+ * 旧一轮晚到的中文一律不进（否则会把新的一轮盖掉）。
+ */
+let captionOwnerTurnId: string | undefined
 let currentPlayingTurnId: string | null = null
 // 没有可用语音会话（9885 挂了 / 静音 / 按键说话）时，靠它把整轮原文直接顶到字幕和展示通道。
 const captionFallback = createCaptionFallback()
@@ -1060,6 +1065,7 @@ function stopSpeechOutput(reason: string) {
   activeSessions.clear()
   ledgersByTurnId.clear()
   captionZhByTurnId.clear()
+  captionOwnerTurnId = undefined
   currentPlayingTurnId = null
   currentSession?.cancel(reason)
   currentSession = null
@@ -1188,6 +1194,7 @@ function applyDisplaySpan(span: StreamingDisplaySpan, turnId?: string) {
     return
 
   assistantCaption.value = text
+  captionOwnerTurnId = turnId
   try {
     postCaption({ type: 'caption-assistant', text, operation: 'replace' })
   }
@@ -1219,15 +1226,20 @@ function applyDisplayCaption(caption: StreamingDisplayCaption, turnId?: string) 
     return // 兜底已用整轮原文接管字幕，晚到的中文不再插嘴
   if (!turnId)
     return
-  const ledger = ledgersByTurnId.get(turnId) ?? displayLedger
+  // 这一轮的账本还在 = 它还在屏幕上（字幕条显示整轮累计，留到下一轮才换）。
+  // 新一轮/打断时 stopSpeechOutput 会把账本清掉 ⇒ 晚到的旧中文一律丢。
+  const ledger = ledgersByTurnId.get(turnId)
+  if (!ledger)
+    return
+  // 字幕条已经换成别的轮次（新一轮起播了）：旧一轮的中文不许盖上去。
+  if (captionOwnerTurnId !== undefined && captionOwnerTurnId !== turnId)
+    return
   let zhMap = captionZhByTurnId.get(turnId)
   if (!zhMap) {
     zhMap = new Map<string, string>()
     captionZhByTurnId.set(turnId, zhMap)
   }
-  const admission = admitCaption(ledger.has(caption.unitId), ledger.lastUnitId === caption.unitId)
-  if (admission === 'drop')
-    return // 已经翻篇：中文丢掉，不许糊到新句上
+  const admission = admitCaption(true, ledger.has(caption.unitId))
   zhMap.set(caption.unitId, caption.zh)
   if (admission === 'pending')
     return // 还没落账：先存着，span 来时 applyDisplaySpan 直接用它

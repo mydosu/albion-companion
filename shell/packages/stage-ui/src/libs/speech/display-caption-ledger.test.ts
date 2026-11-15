@@ -38,6 +38,18 @@ describe('displayLedger.render', () => {
     expect(ledger.takeNew()).toBe('あっ……') // 只补新长出来的原文
   })
 
+  it('早几句的中文晚到：整段累计里换进去，展示通道不受影响', () => {
+    const ledger = createDisplayLedger()
+    ledger.add(span('u1', 0, 'はぁ……'))
+    ledger.add(span('u2', 4, 'あっ……'))
+    ledger.takeNew() // 展示通道已经拿到这两句的原文
+
+    // 第一句的中文现在才回来：字幕条是整轮累计，照样要换
+    const zh = new Map([['u1', '哈啊……']])
+    expect(ledger.render(unitId => zh.get(unitId))).toBe('哈啊……あっ……')
+    expect(ledger.takeNew()).toBe('') // 原文没长：展示通道不重复补，也不被中文顶掉
+  })
+
   it('has() / lastUnitId 支持"先到 / 当前 / 翻篇"的判断', () => {
     const ledger = createDisplayLedger()
     expect(ledger.lastUnitId).toBe('')
