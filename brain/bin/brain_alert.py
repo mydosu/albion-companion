@@ -1,0 +1,138 @@
+"""脑哑了的告警（2026-11-15）：连续两轮没回出来就在 Discord 喊一声，回魂时补一条恢复。
+
+只告警、不自动换线路——换线路由用户定（2026-11-14 脑哑了 27 小时，每一轮都 403 却没人知道）。
+写法和 memory/openviking-notify.py 里那套已验证能送达的 webhook 一致，但这边独立一份：
+脑是 Pi 在 WSL 里起的长进程，不去 import 别的项目的运维代码。
+"""
+import json
+import os
+import re
+import threading
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+# webhook URL（含 token）只放本机，不进仓库、不进日志、不进状态。
+# 首选 Windows 那份（和 openviking-notify 共用）；这台 WSL 关了 automount（/etc/wsl.conf enabled=false），
+# /mnt/d 根本不存在，所以再留一份脑自己目录下的（agent/.alert-discord-webhook）给它兜着。
+WEBHOOK = Path(os.environ.get("ALBION_ALERT_WEBHOOK_FILE", "/mnt/d/AI/scripts/.ov-alert-discord-webhook"))
+LOCAL_WEBHOOK = Path(__file__).resolve().parent.parent / "agent" / ".alert-discord-webhook"
+DISCORD_USERNAME = "阿尔比恩的脑"
+USER_AGENT = "albion-brain-alert/1.0"      # urllib 默认 UA 会被 Discord 前面的 Cloudflare 403（error 1010）
+SEND_TIMEOUT = 10
+FAIL_ALERT_AT = 2                          # 连续第 2 轮失败就喊
+REPEAT_AFTER_S = 3 * 3600                  # 还一直坏着，隔 3 小时再喊一次
+ERROR_MAX_CHARS = 200
+LOGS = Path(os.environ.get("ALBION_LOGS", str(Path(__file__).resolve().parent.parent / "logs")))
+
+_lock = threading.Lock()
+# shortcut: 计数只在内存，宿主重启清零；要跨重启再落盘
+_state = {}    # session_id -> {'fails', 'alerted_at', 'since', 'error', 'model'}
+
+
+def log(msg, **fields):
+    """一行日志写进 brain.log（和宿主同一个文件）；写不进去也不能影响这一轮。"""
+    line = "%s %s%s" % (time.strftime("%Y-%m-%d %H:%M:%S"), msg,
+                        (" " + json.dumps(fields, ensure_ascii=False)) if fields else "")
+    try:
+        LOGS.mkdir(parents=True, exist_ok=True)
+        with open(LOGS / "brain.log", "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:                      # noqa: BLE001
+        pass
+
+
+def scrub(text):
+    """错误正文常带 key/token：Bearer、sk-、URL 里的 key=/token= 都抹成 ***，再截 200 字。"""
+    text = re.sub(r"(?i)bearer\s+[A-Za-z0-9._\-]+", "Bearer ***", str(text or ""))
+    text = re.sub(r"sk-[A-Za-z0-9._\-]+", "sk-***", text)
+    text = re.sub(r"(?i)([?&](?:key|token)=)[^&\s\"']+", r"\1***", text)
+    return " ".join(text.split())[:ERROR_MAX_CHARS]
+
+
+def webhook_url(path=None):
+    """Webhook 只从本机文件读：文件缺失或为空返回空串，这一路跳过（不算发过）。"""
+    for candidate in ([path] if path else [WEBHOOK, LOCAL_WEBHOOK]):
+        try:
+            url = Path(candidate).read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if url:
+            return url
+    return ""
+
+
+def post_webhook(url, message):
+    # 代理沿用 urllib 默认解析（环境变量 > 系统代理 > 直连），和 openviking-notify 走同一套 socket 路径。
+    # 异常文本可能带 URL/token，所以只记异常类型和 HTTP 状态码，不记 exc 内容。
+    body = json.dumps({"content": message, "username": DISCORD_USERNAME,
+                       "allowed_mentions": {"parse": []}}).encode("utf-8")
+    request = urllib.request.Request(url, data=body, method="POST",
+                                     headers={"Content-Type": "application/json",
+                                              "User-Agent": USER_AGENT})
+    with urllib.request.urlopen(request, timeout=SEND_TIMEOUT) as response:
+        return response.status
+
+
+def _send(message, url, post):
+    """后台线程发：失败只记一行，不往外抛，不能影响这一轮。"""
+    def run():
+        try:
+            log("brain alert sent status=%s" % post(url, message))
+        except urllib.error.HTTPError as exc:
+            log("brain alert failed status=%s" % exc.code)
+        except Exception as exc:           # noqa: BLE001
+            log("brain alert failed status=0 error=%s" % type(exc).__name__)
+    threading.Thread(target=run, daemon=True).start()
+
+
+def _alert_text(item):
+    return ("阿尔比恩的脑连续 %d 轮没回出来（会话 %s，模型 %s）。最近一次错误：%s"
+            % (item["fails"], item.get("session_id") or "?", item.get("model") or "未知",
+               item.get("error") or "（无）"))
+
+
+def _recover_text(item, now):
+    minutes = max(0, int((now - (item.get("since") or now)) / 60))
+    return ("阿尔比恩的脑回魂了（会话 %s）：哑了 %d 分钟，这期间失败 %d 轮。"
+            % (item.get("session_id") or "?", minutes, item["fails"]))
+
+
+def record_failure(session_id, error_text, model=None, *, clock=time.time, post=None):
+    """一轮失败；连续第 2 轮喊一次，之后还坏着就隔 3 小时再喊。返回这次是否发了告警。"""
+    now, url = clock(), webhook_url()
+    with _lock:
+        item = _state.setdefault(session_id, {"fails": 0, "alerted_at": None, "since": None})
+        item.update(session_id=session_id, model=model, error=scrub(error_text))
+        item["fails"] += 1
+        if item["since"] is None:
+            item["since"] = now
+        due = item["fails"] >= FAIL_ALERT_AT and (
+            item["alerted_at"] is None or now - item["alerted_at"] >= REPEAT_AFTER_S)
+        if not due:
+            return False
+        # 没 webhook 就不算发过：不记 alerted_at，下一次失败还会再试。
+        if not url:
+            log("brain alert skipped reason=no_webhook")
+            return False
+        item["alerted_at"] = now
+        text = _alert_text(item)
+    _send(text, url, post or post_webhook)
+    return True
+
+
+def record_success(session_id, *, clock=time.time, post=None):
+    """一轮回了话：告警过的补一条恢复，然后清零；没告警过的只清零。返回这次是否发了恢复。"""
+    now = clock()
+    with _lock:
+        item = _state.pop(session_id, None)
+        if not item or item.get("alerted_at") is None:
+            return False          # 没告警过：只清零，不读文件、不发东西
+        text = _recover_text(item, now)
+    url = webhook_url()
+    if not url:
+        log("brain alert skipped reason=no_webhook")
+        return False
+    _send(text, url, post or post_webhook)
+    return True

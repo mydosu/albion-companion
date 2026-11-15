@@ -326,6 +326,7 @@ def split_for_speech(text, max_chars=60):
 
 # ── Pi 会话管理 ─────────────────────────────────────────────────────────────
 from pi_client import PiError, PiSession   # noqa: E402
+import brain_alert   # noqa: E402  连坏两轮就在 Discord 喊一声（只告警，不换线路）
 import shell_tools   # noqa: E402
 import wake   # noqa: E402
 import widget_snapshot   # noqa: E402
@@ -350,6 +351,14 @@ def route_arg(route=None):
 def current_route():
     with _route_lock:
         return dict(_route)
+
+
+def _route_model():
+    """告警正文里那个模型名：就是这一轮在用的（拿不到就 None）。"""
+    try:
+        return current_route().get("model")
+    except Exception:                   # noqa: BLE001
+        return None
 
 
 def _retarget_session(session, provider, model):
@@ -870,6 +879,7 @@ def chat(session_id, msgs):
             log("[ctx] session=%s tokens=%s window=%s" % (session_id, tokens, window))
     log("turn", session=session_id, ms=round((time.time() - started) * 1000), chars=len(reply),
         sent=1 if sent_in_turn(session, tool_from) else 0)
+    brain_alert.record_success(session_id)     # 哑过就补一条恢复，没哑过只清零
     return reply
 
 
@@ -1046,12 +1056,14 @@ class Brain(BaseHTTPRequestHandler):
             return
         if kind == "timeout":
             log("brain error", session=session_id, error="turn did not finish in time")
+            brain_alert.record_failure(session_id, "turn did not finish in time", _route_model())
             self._json(502, {"error": {"message": "brain error: turn did not finish in time", "type": "server_error"}})
             return
         if kind == "error":
             exc = value
             if isinstance(exc, PiError):
                 log("brain error", session=session_id, error=str(exc)[:300])   # 原来只回给壳、不记，查不到 502 为什么
+                brain_alert.record_failure(session_id, str(exc), _route_model())
                 self._json(502, {"error": {"message": "brain error: %s" % exc, "type": "server_error"}})
             else:
                 log("unhandled", error=repr(exc))
