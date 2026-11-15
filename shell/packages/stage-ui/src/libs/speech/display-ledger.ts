@@ -27,6 +27,16 @@ export interface DisplayLedger {
   add: (span: DisplayLedgerSpan) => string
   /** 当前可显示的**连续前缀**文本。 */
   text: () => string
+  /**
+   * 连续前缀文本，但允许**逐单元替换**：`resolve(unitId)` 给了文字就用它（字幕换中文），
+   * 没给（undefined）用 span 原文。原文账本本身不变 —— `takeNew` / 展示通道仍走原文，
+   * 所以聊天那条链路看到的永远是模型原话（日语就是日语）。
+   */
+  render: (resolve: (unitId: string) => string | undefined) => string
+  /** 最近一个落账的单元 id：中文来晚时用它判断"这句是不是已经翻篇了"。 */
+  readonly lastUnitId: string
+  /** 这个单元落过账没有（判断中文是"还没上屏"还是"已经翻篇"）。 */
+  has: (unitId: string) => boolean
   /** 自上次 `takeNew()` 以来新长出来的那部分（给 `postPresent` 这类增量通道用）。 */
   takeNew: () => string
   /** 落过 span 没有？有 ⇒ 旧的字幕路径（播到才追加）就该停手，否则同一句记两遍。 */
@@ -41,9 +51,10 @@ export function createDisplayLedger(): DisplayLedger {
   const seen = new Set<string>()
   let driven = false
   let shown = ''
+  let lastUnitId = ''
 
   /** 从原文第 0 个字符开始一段接一段取，遇到缺口就停（= 连续前缀）。 */
-  function text(): string {
+  function text(resolve?: (unitId: string) => string | undefined): string {
     // 锚在 0：源文本的单元从 0 铺满整段，所以"缺口"就是还没拿到资格的段 ——
     // 拿第一个到手的 span 当锚会让后段先蹦出来（方案 §4.2 明确不允许）。
     let cursor = 0
@@ -51,7 +62,7 @@ export function createDisplayLedger(): DisplayLedger {
     for (const span of spans) {
       if (span.sourceRange[0] !== cursor)
         break
-      out += span.text
+      out += resolve?.(span.unitId) ?? span.text
       cursor = span.sourceRange[1]
     }
     return out
@@ -64,11 +75,13 @@ export function createDisplayLedger(): DisplayLedger {
         return text()
       seen.add(span.unitId)
       driven = true
+      lastUnitId = span.unitId
       spans.push(span)
       spans.sort((a, b) => a.sourceRange[0] - b.sourceRange[0])
       return text()
     },
-    text,
+    text: () => text(),
+    render: resolve => text(resolve),
     takeNew() {
       const now = text()
       // 前缀只增不减 ⇒ 直接按 code unit 切尾巴：同一串字符，前缀边界在两种计数下一致。
@@ -82,10 +95,15 @@ export function createDisplayLedger(): DisplayLedger {
     get size() {
       return spans.length
     },
+    get lastUnitId() {
+      return lastUnitId
+    },
+    has: unitId => seen.has(unitId),
     clear() {
       spans.length = 0
       seen.clear()
       shown = ''
+      lastUnitId = ''
       driven = false
     },
   }

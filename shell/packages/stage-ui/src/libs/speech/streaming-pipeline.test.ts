@@ -459,6 +459,63 @@ describe('createStreamingTtsPipeline', () => {
     expect(onDisplay.mock.calls[0][0]).toMatchObject({ unitId: 'ok', sourceRange: [0, 4], eligible: 'immediate' })
   })
 
+  it('display.caption 只认本会话 generation 的非空中文字幕（2026-11-15）', async () => {
+    server = await startMockServer((ws) => {
+      ws.on('message', (data, isBinary) => {
+        if (isBinary)
+          return
+        const ev = JSON.parse(data.toString()) as { event?: string }
+        if (ev.event !== 'finish')
+          return
+        // 先落一个 span（带 generation=1），再补中文：这是正常顺序
+        ws.send(JSON.stringify({
+          event: 'display.span',
+          payload: { unit_id: 'u1', source_unit_id: 'u1', source_range: [0, 4], text: 'はぁ……', eligible: 'audio', generation: 1 },
+        }))
+        ws.send(JSON.stringify({
+          event: 'display.caption',
+          payload: { session_id: 's', generation: 1, unit_id: 'u1', source_unit_id: 'u1', zh: '哈啊……' },
+        }))
+        // 旧 generation 的残件：不许上屏
+        ws.send(JSON.stringify({
+          event: 'display.caption',
+          payload: { session_id: 's', generation: 0, unit_id: 'u1', zh: '旧的中文' },
+        }))
+        // 空译文：按"没有字幕"处理，不能拿空串覆盖原文
+        ws.send(JSON.stringify({
+          event: 'display.caption',
+          payload: { session_id: 's', generation: 1, unit_id: 'u1', zh: '' },
+        }))
+        // 坏 payload：没 unit_id
+        ws.send(JSON.stringify({
+          event: 'display.caption',
+          payload: { session_id: 's', generation: 1, zh: '没有 unit' },
+        }))
+        ws.send(JSON.stringify({ event: 'session.finished', payload: {} }))
+      })
+    })
+
+    const onCaption = vi.fn()
+    const onDone = vi.fn()
+    const handle = createStreamingTtsPipeline({
+      serverUrl: server.url,
+      model: 'albion-stream/v2',
+      voice: 'albion',
+      responseFormat: 'wav',
+      audioContext: makeStubAudioContext(),
+      onCaption,
+      onDone,
+    })
+
+    handle.appendText('はぁ……')
+    handle.finish()
+
+    await vi.waitFor(() => expect(onDone).toHaveBeenCalledTimes(1), { interval: 10, timeout: WAIT_TIMEOUT_MS })
+
+    expect(onCaption).toHaveBeenCalledTimes(1)
+    expect(onCaption.mock.calls[0][0]).toMatchObject({ unitId: 'u1', zh: '哈啊……', generation: 1 })
+  })
+
   it('句级文本不残留：end 自带文本时也要出队，否则下一个缺文本的 end 会取到陈旧句子', async () => {
     server = await startMockServer((ws) => {
       ws.on('message', (data, isBinary) => {

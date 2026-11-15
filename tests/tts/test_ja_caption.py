@@ -166,6 +166,193 @@ class NoAudioCaptionTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(shown, "（腰自己浮起来了。）", "无音频的日语心声也要显示中文")
 
 
+def _wav_bytes(samples=800, sr=16000):
+    import io
+    import wave
+    out = io.BytesIO()
+    with wave.open(out, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes(b"\x00\x00" * samples)
+    return out.getvalue()
+
+
+def _sse_render(wav):
+    import base64
+    chunk = json.dumps({"audio_base64": base64.b64encode(wav).decode()})
+    return "event: audio_chunk\ndata: %s\n\nevent: done\ndata: {}\n\n" % chunk
+
+
+class _Bridge:
+    """假桥：/v1/caption 按给定延时回 zh（或 500），其余（渲染）回 SSE。"""
+
+    def __init__(self, zh="哈啊……啊……", delay=0.0, status=200):
+        self.zh, self.delay, self.status = zh, delay, status
+        self.hits = 0
+
+    async def __call__(self, req):
+        if "/v1/caption" in str(req.url):
+            self.hits += 1
+            if self.delay:
+                await asyncio.sleep(self.delay)
+            if self.status != 200:
+                return httpx.Response(self.status, text="boom")
+            return httpx.Response(200, json={"zh": self.zh})
+        return httpx.Response(200, text=_sse_render(_wav_bytes()),
+                              headers={"content-type": "text/event-stream"})
+
+
+class CaptionEarlyTest(unittest.IsolatedAsyncioTestCase):
+    """字幕提前起跑、不再挡音频（2026-11-15）。
+
+    旧行为：9885 出第一帧后才等 caption_wait(3s)，没回就把日语原文当字幕发出去，
+    之后中文回来没人用，于是亲密段字幕几乎全是日语。现在：
+      * 预取拿回 translated=False 就起 /v1/caption，同一单元只打一次；
+      * display.span 立刻发日语原文，不等字幕；
+      * 中文回来另发 display.caption（壳按 unit_id 换这一句）；
+      * 失败/空/取消/换 generation 一律不发。
+    """
+
+    JA = "はぁ……あっ……んっ……"
+
+    async def asyncSetUp(self):
+        self.co = SS.Coordinator(SS.Config())
+        self.sess = SS.Session(self.co.cfg, "s", 1, "albion", "wav")
+        self.unit = self._feed(self.JA)
+        self.sess.text.text = self.JA          # prepare 之外也要能取到原文（_begin_caption 用）
+
+    def _feed(self, text):
+        st, units = unit_of(text)
+        self.sess.text = st
+        self.sess.text.text = text
+        return units[0]
+
+    async def asyncTearDown(self):
+        tasks = list(self.sess.captions.values()) + list(self.sess.caption_senders.values())
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await self.co.aclose()
+
+    def _bridge(self, **kw):
+        b = _Bridge(**kw)
+        self.co._client = httpx.AsyncClient(transport=httpx.MockTransport(b))
+        return b
+
+    def _events(self, event=None):
+        out = []
+        while not self.sess.out.empty():
+            kind, payload = self.sess.out.get_nowait()
+            if kind != "text":
+                continue
+            evt = json.loads(payload)
+            if event is None or evt["event"] == event:
+                out.append(evt["payload"])
+        return out
+
+    async def test_prefetch_starts_caption_when_bridge_says_japanese(self):
+        """预取回 translated=False，立刻起字幕，不等渲染。"""
+        b = self._bridge()
+        self.co.prepare = mock.AsyncMock(return_value={
+            "status": "ready", "translated": False,
+            "ja_segments": [{"sub_index": 0, "text": "はぁ……あっ……んっ……"}]})
+        _nxt, task = self.co._prepare_ahead(self.sess, self.unit)
+        await task
+        self.assertIn(self.unit.unit_id, self.sess.captions)
+        await asyncio.gather(*self.sess.caption_senders.values())
+        self.assertEqual(b.hits, 1, "预取阶段就该打一次 /v1/caption")
+
+    async def test_chinese_unit_does_not_start_caption(self):
+        b = self._bridge()
+        self.unit = self._feed("指挥官，今天也辛苦了。")
+        self.co.prepare = mock.AsyncMock(return_value={
+            "status": "ready", "translated": True,
+            "ja_segments": [{"sub_index": 0, "text": "指揮官、今日もお疲れさまでした。"}]})
+        _nxt, task = self.co._prepare_ahead(self.sess, self.unit)
+        await task
+        self.assertNotIn(self.unit.unit_id, self.sess.captions)
+        self.assertEqual(b.hits, 0)
+
+    async def test_same_unit_only_one_caption_request(self):
+        b = self._bridge(delay=0.05)
+        self.co._begin_caption(self.sess, self.unit)
+        self.co._begin_caption(self.sess, self.unit)
+        self.co._start_caption(self.sess, self.unit, "はぁ……", True)
+        await asyncio.gather(*self.sess.caption_senders.values())
+        self.assertEqual(b.hits, 1, "同一单元只许打一次 /v1/caption")
+
+    async def _render(self, **bridge_kw):
+        self._bridge(**bridge_kw)
+        self.co.plan = mock.AsyncMock(return_value=({"family": "neutral"}, None, False))
+        self.co.open_render = mock.AsyncMock(return_value=("rs", 1))
+        self.co._wait_credit = mock.AsyncMock(return_value=0)
+
+    async def test_render_sends_japanese_span_without_waiting_caption(self):
+        """首帧那条 display.span 立刻发日语原文（字幕 0.5s 才回，不许等它）。"""
+        await self._render(delay=0.5)
+        with mock.patch.object(SS.WR, "save", return_value=None):
+            loop = asyncio.get_running_loop()
+            t0 = loop.time()
+            await self.co.render_unit(self.sess, self.unit,
+                                      [(0, "はぁ……あっ……んっ……", None, None, False)], t0 + 30)
+            took = loop.time() - t0
+        spans = self._events("display.span")
+        self.assertEqual(len(spans), 1)
+        self.assertEqual(spans[0]["text"], "はぁ……あっ……んっ……", "span 必须是日语原文，不能等中文")
+        self.assertLess(took, 0.4, "字幕还没回来就必须已经把音频发完了")
+
+    async def test_caption_event_arrives_after_render(self):
+        await self._render(delay=0.2)
+        with mock.patch.object(SS.WR, "save", return_value=None):
+            await self.co.render_unit(self.sess, self.unit,
+                                      [(0, "はぁ……あっ……んっ……", None, None, False)],
+                                      asyncio.get_running_loop().time() + 30)
+            self.assertEqual(self._events("display.caption"), [], "中文还没回来，先不发")
+            await asyncio.gather(*self.sess.caption_senders.values())
+        caps = self._events("display.caption")
+        self.assertEqual(len(caps), 1)
+        self.assertEqual(caps[0]["unit_id"], self.unit.unit_id)
+        self.assertEqual(caps[0]["zh"], "哈啊……啊……")
+        self.assertEqual(caps[0]["generation"], 1)
+
+    async def test_cancelled_session_sends_no_caption(self):
+        self._bridge(delay=0.1)
+        self.co._begin_caption(self.sess, self.unit)
+        self.sess.cancelled = True
+        await asyncio.gather(*self.sess.caption_senders.values())
+        self.assertEqual(self._events("display.caption"), [])
+
+    async def test_generation_change_sends_no_caption(self):
+        self._bridge(delay=0.1)
+        self.co._begin_caption(self.sess, self.unit)
+        self.sess.generation = 2                       # 换 generation：旧那条中文不许再上屏
+        await asyncio.gather(*self.sess.caption_senders.values())
+        self.assertEqual(self._events("display.caption"), [])
+
+    async def test_failed_caption_sends_nothing(self):
+        self._bridge(status=500)
+        self.co._begin_caption(self.sess, self.unit)
+        await asyncio.gather(*self.sess.caption_senders.values())
+        self.assertEqual(self._events("display.caption"), [])
+
+    async def test_empty_caption_sends_nothing(self):
+        self._bridge(zh="")
+        self.co._begin_caption(self.sess, self.unit)
+        await asyncio.gather(*self.sess.caption_senders.values())
+        self.assertEqual(self._events("display.caption"), [], "空译文不发，壳保持日语")
+
+    async def test_failed_render_drops_caption_tasks(self):
+        """渲染失败，这个单元的字幕没人要了，任务撤掉（不许攒着打上游）。"""
+        await self._render(delay=5.0)
+        self.co.open_render = mock.AsyncMock(side_effect=RuntimeError("render 挂了"))
+        await self.co.render_unit(self.sess, self.unit,
+                                  [(0, "はぁ……", None, None, False)],
+                                  asyncio.get_running_loop().time() + 30)
+        self.assertEqual(self.sess.captions, {})
+        self.assertEqual(self.sess.caption_senders, {})
+
+
 class CaptionSwitchTest(unittest.TestCase):
     def test_env_switches(self):
         with mock.patch.dict(os.environ, {"ALBION_CAPTION_WAIT_S": "1.5"}):

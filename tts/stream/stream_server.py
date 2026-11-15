@@ -200,16 +200,22 @@ class Config:
                                               or kw.get("prefetch_depth", 2))))
         # 直出日语的字幕（2026-11-10）：亲密段脑直接说日语，声音不再走中译日；但字幕一直取
         # 9885 的源账本（`source_of`）⇒ 直出日语后屏幕会显示日语。这里对「主要是日语」的单元
-        # 另发一次 ja→zh 请求，字幕用中文；渲染与这次翻译**并行起跑**，
-        # 渲染出第一帧后最多再等 `caption_wait` 秒（ALBION_CAPTION_WAIT_S，默认 3，0=不等，
-        # 直接把日语原文当字幕）。等待时间与"首声"无关：字幕在 sentence.start 之前发，
-        # 但那时音频已经渲染好了，最多推后这么多。
+        # 另发一次 ja→zh，字幕用中文。
+        #
+        # 2026-11-15 改（字幕不再挡音频）：`display.span` **照旧立刻发日语原文**，不再为字幕等；
+        # 中文回来时另发一条 `display.caption`（含 unit_id/zh），由壳在"这一句播到"时决定显示谁的
+        # 文本 —— "这句什么时候开始播"只有壳知道。字幕请求在预取拿回 `translated=False` 时就起跑，
+        # 渲染时复用同一个任务，同一单元只打一次 `/v1/caption`。
+        # `caption_wait` 只留给无音频段（`_no_audio`，没有渲染可以并行，就地等一下）：
+        # ALBION_CAPTION_WAIT_S，默认 3，0=不等。
         self.caption_zh = (os.environ.get("ALBION_CAPTION_ZH", "1").strip().lower()
                            not in ("0", "false", "no", "off"))
         self.caption_wait = float(os.environ.get("ALBION_CAPTION_WAIT_S")
                                   or kw.get("caption_wait", 3.0))
+        # `/v1/caption` 单次请求的超时：得盖住桥最坏的那一条（首腿超时 20s + 退路 DS 一次），
+        # 否则字幕永远在桥还活着的时候就被这里掐掉（2026-11-15 桥实测 4.4s，留足余量）。
         self.caption_timeout = float(os.environ.get("ALBION_CAPTION_TIMEOUT")
-                                     or kw.get("caption_timeout", 20.0))
+                                     or kw.get("caption_timeout", 45.0))
         self.render_timeout = float(os.environ.get("RENDER_TIMEOUT") or kw.get("render_timeout", 90.0))  # GPU 软超时
         self.max_units = kw.get("max_units", MAX_UNITS)
         self.max_chars = kw.get("max_chars", MAX_CHARS)
@@ -357,6 +363,10 @@ class Session:
         self.plan_v2_only = False
         self.cancelled = False
         self.closed_ws = False
+        # 字幕（ja→zh）：unit_id → `/v1/caption` 任务（同单元只打一次）；
+        # caption_senders：unit_id → 等结果并下发 `display.caption` 的任务。
+        self.captions = {}
+        self.caption_senders = {}
 
     # ---------- 出站（只有 writer 任务真的往 socket 写） ----------
     async def send_json(self, obj):
@@ -828,11 +838,13 @@ class Coordinator:
         每个子段一个 `/v2/render` 请求，且**必须**读到 `done` 才算完整（复核问题 3）。
         """
         display = self.source_of(sess, unit)
-        # 直出日语：字幕的中文与渲染**并行**起跑，出第一帧后再最多等 caption_wait 秒
-        # （见 `_caption_text`）。`shown` 是真正发出去的字幕，字幕回来后被换成中文。
-        cap = self._start_caption(sess, unit, display, ja_direct)
+        # 2026-11-15：字幕（ja→zh）只负责**另发**一条 `display.caption`，这里一个字都不等 ——
+        # `display.span` / `sentence.start` 一律先发日语原文，出声绝不排在字幕后面。
+        # 预取已经起过的直接复用（同一单元只打一次 `/v1/caption`）。
+        self._begin_caption(sess, unit, ja_direct)
         shown = display
         span_sent = False
+        ok = False                       # 子段全发完才置真：失败/取消时这个单元的字幕要撤掉
         seg = None                       # 当前子段的账：start 发过没、帧数、样本数
         try:
             for sub_index, ja_text, emotion, voice_caption, intimate in segments:
@@ -934,10 +946,6 @@ class Coordinator:
                                 sess, need_s=frame_s, need_units=0 if seg["started"] else 1)
                             if not seg["started"]:
                                 if not span_sent:
-                                    # 直出日语：字幕（中文）在这里才取用 —— 渲染已经出帧了，
-                                    # 最多再等 `caption_wait`；没回来就用日语原文顶上。
-                                    shown = await self._caption_text(sess, unit, cap, display)
-                                    cap = None
                                     # 方案 §4.2：可说 span 在**首个音频真的开始**时获得显示资格；
                                     # 一个源单元只给一次，后面的子段共用这一份原文。
                                     await sess.send_json({"event": "display.span", "payload": {
@@ -976,6 +984,7 @@ class Coordinator:
                     # 提交交给**唯一真正写 socket 的 writer**（队列 FIFO 就是回执）：
                     # 之前这里只是"入队成功"就提交，断线/取消时会把没听到的语气带下去。
                     await sess.out.put(("commit", (pending_state, pending_ctx)))
+            ok = True                    # 子段全发完：字幕任务留着 —— 中文回来还要换这一句的字幕
         except StalledCredit:
             raise                                   # 限流砍单元：留给人记 stage="credit"，别报成 render 失败
         except Exception as e:
@@ -985,7 +994,8 @@ class Coordinator:
                 % (sess.id, st, unit.unit_id, type(e).__name__, text_meta(e)))
             await self._fail_span(sess, unit, st, "%s: %s" % (type(e).__name__, str(e)[:160]))
         finally:
-            self._drop_caption(cap)          # 没走到取用点（失败/取消）就别留着那次请求
+            if not ok:                       # 失败/取消：这个单元的字幕没人要了，两个任务都撤掉
+                self._drop_unit_caption(sess, unit)
             if seg is not None and seg["started"]:
                 # 非阻塞投递：预算到点/取消时本协程已处于被取消状态，`await` 会立刻抛
                 sess.send_json_nowait(self._segment_end(sess, unit, seg, shown))
@@ -1053,15 +1063,62 @@ class Coordinator:
         return bool(ja_direct) or looks_japanese(display)
 
     def _start_caption(self, sess, unit, display, ja_direct):
-        """**并行起跑**字幕翻译；返回 (task, 起始时刻) 或 None。
+        """起一次 ja→zh，返回 `(task, 起始时刻)` 或 None；**同一单元只打一次**。
 
-        起跑点放在渲染之前：渲染那 2~3 秒里字幕大多已经回来了，真正要"等"的通常远小于
-        `caption_wait`。这样直出日语的首声不会因为字幕多等（字幕只在 sentence.start 前取用）。
+        2026-11-15：预取拿回 `translated=False` 时就起跑（`_prepare_ahead`），渲染时复用这里存下的
+        任务（原来每处各起一个，同一单元会重复打 `/v1/caption`）。任务只负责取译文，发 `display.caption`
+        的是 `_caption_send` —— 无音频段（`_no_audio`）还要就地取用，不能让它顺手多发一条。
         """
         if not self._need_caption(sess, unit, display, ja_direct):
             return None
-        task = asyncio.create_task(self._caption_call(sess, display))
+        task = sess.captions.get(unit.unit_id)
+        if task is None:
+            task = asyncio.create_task(self._caption_call(sess, display))
+            sess.captions[unit.unit_id] = task
         return (task, time.monotonic())
+
+    def _begin_caption(self, sess, unit, ja_direct=True):
+        """起字幕并且在中文回来时发 `display.caption`（幂等：同一单元只安排一次）。"""
+        cap = self._start_caption(sess, unit, self.source_of(sess, unit), ja_direct)
+        if cap is None:
+            return None
+        task, t0 = cap
+        if unit.unit_id not in sess.caption_senders:
+            # generation 在这里就定下来：任务真正开跑前会话可能已经换了 generation。
+            sess.caption_senders[unit.unit_id] = asyncio.create_task(
+                self._caption_send(sess, unit, task, t0, sess.generation))
+        return cap
+
+    async def _caption_send(self, sess, unit, task, t0, gen):
+        """等译文回来就发 `display.caption`；失败/空译文/已取消/换了 generation 一律不发。
+
+        壳按 `unit_id` 把**这一句**的字幕换成中文；它自己决定什么时候上屏（新句还没播到就先
+        留着，播过去了就丢），服务端不猜播放时刻。
+        """
+        try:
+            zh = await task
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:                    # noqa: BLE001 - 字幕失败绝不影响出声
+            log("[caption] ja fallback unit=%s（%s）" % (unit.unit_id, type(e).__name__))
+            return
+        if not zh:
+            log("[caption] ja fallback unit=%s（空译文）" % unit.unit_id)
+            return
+        if sess.cancelled or sess.generation != gen:
+            return
+        log("[caption] unit=%s ja->zh %.0fms chars=%d" % (unit.unit_id, (time.monotonic() - t0) * 1000.0, len(zh)))
+        await sess.send_json({"event": "display.caption", "payload": {
+            "session_id": sess.id, "generation": gen, "unit_id": unit.unit_id,
+            "source_unit_id": unit.unit_id, "zh": zh}})
+
+    @staticmethod
+    def _drop_unit_caption(sess, unit):
+        """这个单元的字幕没人要了（渲染失败/取消）：两个任务都撤掉，别留着占上游。"""
+        for table in (sess.caption_senders, sess.captions):
+            task = table.pop(unit.unit_id, None)
+            if task is not None and not task.done():
+                task.cancel()
 
     async def _caption_call(self, sess, text):
         r = await self._http().post(self.cfg.bridge_url.rstrip("/") + "/v1/caption",
@@ -1072,7 +1129,11 @@ class Coordinator:
         return str(data.get("zh") or "").strip()
 
     async def _caption_text(self, sess, unit, cap, display):
-        """取中文字幕；超时/失败就**用日语原文顶上**并记一行（绝不为了字幕卡住出声）。"""
+        """就地取中文字幕（**只给无音频段**：没有渲染可以并行，等得起）；超时/失败用日语原文顶上。
+
+        有音频的单元不走这里 —— 那边 `display.span` 立刻发日语原文，中文另发 `display.caption`
+        （2026-11-15：字幕窗口只有 ~5s，等不起 Gemini）。
+        """
         if not cap:
             return display
         task, t0 = cap
@@ -1095,12 +1156,6 @@ class Coordinator:
         log("[caption] unit=%s ja->zh %.0fms len=%d->%d"
             % (unit.unit_id, (time.monotonic() - t0) * 1000.0, len(display or ""), len(zh)))
         return zh
-
-    @staticmethod
-    def _drop_caption(cap):
-        """没走到取用点的字幕任务别留着（取消即可，结果没人要）。"""
-        if cap and not cap[0].done():
-            cap[0].cancel()
 
     @staticmethod
     def source_of(sess, unit):
@@ -1387,6 +1442,11 @@ class Coordinator:
         for uid in sess.pending:
             self._T0.pop(uid, None)
         sess.pending.clear()
+        for table in (sess.caption_senders, sess.captions):   # 取消后中文不许再上屏
+            for task in table.values():
+                if not task.done():
+                    task.cancel()
+            table.clear()
         while not sess.units.empty():                      # 没跑的单元直接丢
             try:
                 sess.units.get_nowait()
@@ -1437,6 +1497,10 @@ class Coordinator:
             async def _timed(sess=sess, unit=nxt, t_start=time.monotonic()):
                 out = await self.prepare(sess, unit)
                 sess._PREP_S[unit.unit_id] = time.monotonic() - t_start
+                # 直出日语（`translated=False`）在预取阶段就已经知道 ⇒ 字幕立刻起跑，
+                # 等它真正渲染时多半已经回来了；渲染那侧只复用这个任务。
+                if out.get("status") == "ready" and out.get("translated") is False:
+                    self._begin_caption(sess, unit)
                 return out
             task = asyncio.create_task(_timed())
         return (nxt, task)

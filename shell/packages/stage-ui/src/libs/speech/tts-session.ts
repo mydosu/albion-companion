@@ -1,7 +1,7 @@
 import type { IntentHandle, IntentOptions, PlaybackItem } from '@proj-airi/pipelines-audio'
 
-import type { StreamingDisplaySpan, StreamingTtsPipelineOptions } from './streaming-pipeline'
 import type { StreamingPlaybackSegmentEvent, StreamingPlaybackStopEvent } from './streaming-playback'
+import type { StreamingDisplayCaption, StreamingDisplaySpan, StreamingTtsPipelineOptions } from './streaming-pipeline'
 
 import { createStreamingPlayback } from './streaming-playback'
 import { createStreamingTtsPipeline } from './streaming-pipeline'
@@ -159,6 +159,11 @@ export interface StreamingSessionHooks {
    */
   onDisplay?: (span: StreamingDisplaySpan) => void
   /**
+   * 每个 v2 display.caption 回调一次：某个单元的中文字幕晚到了。宿主只该拿它换**字幕条**
+   * 这一句的文本；聊天正文永远是模型原话（日语段就该显示日语）。
+   */
+  onCaption?: (caption: StreamingDisplayCaption) => void
+  /**
    * 段级播放事件（方案 §4.3）：接 `nowSpeaking`、口型和 `playback.ack`。
    * **不要**再拿 M 的 `onStart/onEnd` 当"在说话" —— 那是 turn 级（起播时整轮一次、只报一次），
    * 一个流式 turn 内会说完很多段。
@@ -288,6 +293,11 @@ export function createStreamingTtsSession<TAudio = AudioBuffer>(
       if (terminated)
         return
       hooks?.onDisplay?.(span)
+    },
+    onCaption: (caption) => {
+      if (terminated)
+        return
+      hooks?.onCaption?.(caption)
     },
     onSentence: ({ index, text, audio, identity }) => {
       if (terminated)

@@ -8,7 +8,7 @@ import type { SpeechProviderWithExtraOptions } from '@xsai-ext/providers/utils'
 import type { UnElevenLabsOptions } from 'unspeech'
 
 import type { EmotionPayload } from '../../constants/emotions'
-import type { StreamingDisplaySpan } from '../../libs/speech/streaming-pipeline'
+import type { StreamingDisplayCaption, StreamingDisplaySpan } from '../../libs/speech/streaming-pipeline'
 import type { StreamingPlayback } from '../../libs/speech/streaming-playback'
 import type { SpeechTransport, StageTtsSession, StreamingSessionSnapshot } from '../../libs/speech/tts-session'
 
@@ -43,6 +43,7 @@ import { live2dMotionMagicProfiles, useLive2DMotionMagic, useLive2DMotionMagicSe
 import { getDefaultStreamingModel, getDefinedProvider } from '../../libs/providers/providers'
 import { OFFICIAL_SPEECH_PROVIDER_ID, OFFICIAL_SPEECH_STREAMING_PROVIDER_ID } from '../../libs/providers/providers/official'
 import { createCaptionFallback } from '../../libs/speech/caption-fallback'
+import { admitCaption } from '../../libs/speech/caption-swap'
 import { createDisplayLedger } from '../../libs/speech/display-ledger'
 import { bindSpeakingStateToPlaybackManager } from '../../libs/speech/playback-speaking-state'
 import { barrierArmValue, bindFadeBarrier, bindNaturalEndBarrier, createSpeechBarrier } from '../../libs/speech/speech-barrier'
@@ -306,6 +307,12 @@ const streamingControl = useLlmStreamingControlStore()
  */
 const displayLedger = createDisplayLedger()
 const ledgersByTurnId = new Map<string, ReturnType<typeof createDisplayLedger>>()
+/**
+ * 每轮一份 unitId → 中文字幕（display.caption，2026-11-15）。原文账本不动：字幕条显示时
+ * 按这张表替换，聊天那条链路仍拿账本原文（日语段保持日语原话）。
+ * 先到中文 ⇒ 这一句落 span / 起播时直接中文；后到 ⇒ 只换还在屏上的这一句。
+ */
+const captionZhByTurnId = new Map<string, Map<string, string>>()
 let currentPlayingTurnId: string | null = null
 // 没有可用语音会话（9885 挂了 / 静音 / 按键说话）时，靠它把整轮原文直接顶到字幕和展示通道。
 const captionFallback = createCaptionFallback()
@@ -1052,6 +1059,7 @@ function stopSpeechOutput(reason: string) {
   }
   activeSessions.clear()
   ledgersByTurnId.clear()
+  captionZhByTurnId.clear()
   currentPlayingTurnId = null
   currentSession?.cancel(reason)
   currentSession = null
@@ -1165,7 +1173,11 @@ function applyDisplaySpan(span: StreamingDisplaySpan, turnId?: string) {
   if (captionFallback.active)
     return
   const ledger = (turnId ? ledgersByTurnId.get(turnId) : null) ?? displayLedger
-  const text = ledger.add(span)
+  ledger.add(span)
+  // 字幕条：已经有中文的单元直接显示中文（先到中文 ⇒ 起播时就是中文）。
+  // 展示通道（聊天那条）仍用账本原文的增量 —— `takeNew` 只认原文。
+  const zhMap = turnId ? captionZhByTurnId.get(turnId) : undefined
+  const text = ledger.render(unitId => zhMap?.get(unitId))
   const fresh = ledger.takeNew()
   if (!text)
     return
@@ -1188,6 +1200,47 @@ function applyDisplaySpan(span: StreamingDisplaySpan, turnId?: string) {
   // onStart 里追加，凡是没音频的段（心声、合成失败）就永远进不了这条通道。
   try {
     postPresent({ type: 'assistant-append', text: fresh })
+  }
+  catch {
+    // BroadcastChannel may be closed - don't break playback
+  }
+}
+
+/**
+ * 中文字幕晚到（display.caption）：只换**这一句**的字幕。
+ *
+ * 三种命运：
+ *   * 这句还没落 span / 还没起播 ⇒ 先存着，落 span 时直接用中文（applyDisplaySpan 里替换）；
+ *   * 就是屏幕上这一句（账本最后一个单元）⇒ 立刻重发字幕（replace），不动展示通道；
+ *   * 已经翻篇（账本里更靠后的单元已经落账）⇒ 丢掉，绝不把旧中文糊到新句上。
+ */
+function applyDisplayCaption(caption: StreamingDisplayCaption, turnId?: string) {
+  if (captionFallback.active)
+    return // 兜底已用整轮原文接管字幕，晚到的中文不再插嘴
+  if (!turnId)
+    return
+  const ledger = ledgersByTurnId.get(turnId) ?? displayLedger
+  let zhMap = captionZhByTurnId.get(turnId)
+  if (!zhMap) {
+    zhMap = new Map<string, string>()
+    captionZhByTurnId.set(turnId, zhMap)
+  }
+  const admission = admitCaption(ledger.has(caption.unitId), ledger.lastUnitId === caption.unitId)
+  if (admission === 'drop')
+    return // 已经翻篇：中文丢掉，不许糊到新句上
+  zhMap.set(caption.unitId, caption.zh)
+  if (admission === 'pending')
+    return // 还没落账：先存着，span 来时 applyDisplaySpan 直接用它
+  const isPlayingOtherTurn = currentPlayingTurnId && currentPlayingTurnId !== turnId && (nowSpeaking.value || streamTurn.pending)
+  if (isPlayingOtherTurn)
+    return
+  const text = ledger.render(unitId => zhMap?.get(unitId))
+  if (!text)
+    return
+  // 只换字幕条：展示通道（聊天那条）走账本原文，这里一个字都不动它。
+  assistantCaption.value = text
+  try {
+    postCaption({ type: 'caption-assistant', text, operation: 'replace' })
   }
   catch {
     // BroadcastChannel may be closed - don't break playback
@@ -1281,6 +1334,7 @@ function openTtsSession(turnId: string): StageTtsSession {
         markTtsFinished(turnId)
       },
       onDisplay: span => applyDisplaySpan(span, turnId),
+      onCaption: caption => applyDisplayCaption(caption, turnId),
     },
   })
   // P6：开局就把可接收提前量告诉协调器（方案 §3.4 的上限：15 秒 / 8 段，先到为准）。

@@ -46,6 +46,19 @@ export interface StreamingDisplaySpan {
   eligible: 'audio' | 'immediate'
 }
 
+/**
+ * 服务端 display.caption（2026-11-15）：某一个单元的日语原文有了中文字幕。
+ *
+ * 与 display.span 配对的是 unitId —— 服务端先发日语原文的 span，中文晚到就补这条；
+ * 什么时候上屏由壳决定（这句已经翻篇就别再换了）。
+ */
+export interface StreamingDisplayCaption {
+  unitId: string
+  zh: string
+  sessionId?: string
+  generation?: number
+}
+
 export interface StreamingTtsPipelineEvents {
   /**
    * Fires once per synthesized sentence (TTS 1.0) or once per session
@@ -59,6 +72,11 @@ export interface StreamingTtsPipelineEvents {
    * Consumers own the ledger: 按 `sourceRange` 把 span 落进原文账本，别按句子序号对。
    */
   onDisplay?: (span: StreamingDisplaySpan) => void
+  /**
+   * Fires per v2 display.caption: 某单元的中文字幕回来了。字幕条可以用它换掉这一句的
+   * 日语原文；**不要**拿它改聊天正文（模型原话要保持原样）。
+   */
+  onCaption?: (caption: StreamingDisplayCaption) => void
   /**
    * Surfaced for any post-upgrade failure (server `error` event, ws close
    * without `session.finished`, decode failure). Consumers should treat the
@@ -178,6 +196,8 @@ export function createStreamingTtsPipeline(options: StreamingTtsPipelineOptions)
 
   let closed = false
   let sawSessionFinished = false
+  /** 本会话在 span 上见过的 generation：display.caption 拿它判断是不是旧 generation 的残件。 */
+  let spanGeneration: number | undefined
   /**
    * Queue for frames sent before the ws transitions to OPEN. Avoids
    * silently dropping early `appendText` calls (the caller doesn't know
@@ -383,8 +403,20 @@ export function createStreamingTtsPipeline(options: StreamingTtsPipelineOptions)
         // 方案 §4.2：显示资格走独立事件，和音频解码解耦。无音频段（eligible=immediate）
         // 只会有这条事件，不会跟任何 sentence.* / 二进制帧 —— 所以这里绝不能顺手 decode。
         const span = readDisplaySpan(evt.payload)
-        if (span)
+        if (span) {
+          if (spanGeneration === undefined)
+            spanGeneration = readGeneration(evt.payload)
           options.onDisplay?.(span)
+        }
+        break
+      }
+      case 'display.caption': {
+        // 中文字幕晚到（2026-11-15）：只换这一句的字幕，别影响音频/聊天。旧 generation 的
+        // 事件一律不认 —— 同一会话里 generation 不会变，变了就是服务端串台了。
+        const caption = readDisplayCaption(evt.payload)
+        const generation = readGeneration(evt.payload)
+        if (caption && (spanGeneration === undefined || generation === undefined || generation === spanGeneration))
+          options.onCaption?.(caption)
         break
       }
       case 'subtitle': {
@@ -606,6 +638,37 @@ function readSentenceIdentity(payload: Record<string, unknown> | undefined): Str
     ...(typeof sessionId === 'string' ? { sessionId } : {}),
     ...(typeof generation === 'number' ? { generation } : {}),
     ...(typeof subIndex === 'number' ? { subIndex } : {}),
+  }
+}
+
+/**
+ * 从 payload 里取 generation（缺/类型不对就当没有 —— 不猜）。
+ */
+function readGeneration(payload: Record<string, unknown> | undefined): number | undefined {
+  const generation = payload?.generation
+  return typeof generation === 'number' && Number.isFinite(generation) ? generation : undefined
+}
+
+/**
+ * Reads a display.caption payload: 某单元的中文字幕。unit_id 与 zh 都得是非空字符串 ——
+ * 空译文按"没有字幕"处理（壳保持日语），不能拿空串去覆盖原文。
+ */
+function readDisplayCaption(payload: Record<string, unknown> | undefined): StreamingDisplayCaption | null {
+  if (!payload || typeof payload !== 'object')
+    return null
+  const { unit_id: unitId, zh, session_id: sessionId } = payload as {
+    unit_id?: unknown
+    zh?: unknown
+    session_id?: unknown
+  }
+  if (typeof unitId !== 'string' || !unitId || typeof zh !== 'string' || !zh)
+    return null
+  const generation = readGeneration(payload)
+  return {
+    unitId,
+    zh,
+    ...(typeof sessionId === 'string' ? { sessionId } : {}),
+    ...(generation === undefined ? {} : { generation }),
   }
 }
 
