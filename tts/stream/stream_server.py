@@ -264,6 +264,8 @@ class Config:
                 "unit_budget": self.unit_budget, "render_timeout": self.render_timeout,
                 "max_units": self.max_units, "max_chars": self.max_chars,
                 "max_ahead_s": self.max_ahead_s, "max_ahead_units": self.max_ahead_units,
+                # 2026-11-16：部署验收要看这个数（改 local.env 后 /health 里直接能确认生效）
+                "prefetch_depth": self.prefetch_depth,
                 "credit_wait": self.credit_wait, "emotion_mode": self.emotion_mode,
                 "emotion_policy": self.emotion_policy,
                 "caption_zh": self.caption_zh, "caption_wait": self.caption_wait,
