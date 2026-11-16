@@ -46,7 +46,7 @@ class IsJapaneseTest(unittest.TestCase):
 
 
 class KanjiHeavyJapaneseTest(unittest.TestCase):
-    """汉字多的日语不再被当成中文（2026-11-19）。
+    """汉字多的日语不再被当成中文（2026-11-16）。
 
     事故：`指揮官、今日はいい天気ですね。` 只有 6/13 是假名（<0.5）⇒ 判成中文 ⇒ 桥把它
     再翻一遍 ⇒ 这句没有字幕。加宽的判据（无中文虚词 + 假名 ≥2 + 占比 ≥0.25 + 汉字全在
