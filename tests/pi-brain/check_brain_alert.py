@@ -12,6 +12,9 @@
   6) webhook 文件缺失：记 brain alert skipped reason=no_webhook，不算发过
   7) 20 个线程同时记失败：计数不漏，同一秒只喊一条
   8) 外网走代理：默认 127.0.0.1:7897（和 chat_bridge 的 ALBION_CHAT_PROXY 同一个变量），空串则直连
+  9) 门铃被拒（401）：这一段第一次记一行日志、之后不再记；满 10 分钟喊一条，3 小时内不重复、满 3 小时再喊
+ 10) 门铃通过一次就清零、重新从 0 算 10 分钟；告警过的补一条恢复，没告警过的通过什么都不发
+ 11) 门铃和会话告警互不干扰（各自一份计数）；门铃没 webhook 时记 skipped、不算发过
 
 跑：python3 tests/pi-brain/check_brain_alert.py
 """
@@ -61,7 +64,10 @@ class Post:
 
 
 def setup(tmp, webhook=True):
-    """每个用例重置内存计数、日志目录和 webhook 文件。"""
+    """每个用例重置内存计数、日志目录和 webhook 文件。
+
+    日志文件不删：后台发送线程可能还开着它（Windows 上删不掉）。要数行的用例自己取基线。
+    """
     brain_alert._state.clear()
     brain_alert.LOGS = Path(tmp) / "logs"
     brain_alert.WEBHOOK = Path(tmp) / "webhook"          # 两个候选都指到临时目录，别读到真的
@@ -234,6 +240,146 @@ def check_proxy(tmp):
     print("8) 走代理（默认 127.0.0.1:7897，空串直连）OK：%s" % brain_alert.PROXY)
 
 
+# ── 门铃被拒（2026-11-16）────────────────────────────────────────────────────
+
+def wake_log_lines(tmp):
+    return [line for line in log_lines(tmp) if "wake doorbell" in line]
+
+
+def check_wake_denied_logged_once(tmp):
+    """这一段被拒的第一次记一行日志，后面每 30 秒的 401 不再记。"""
+    setup(tmp)
+    base = len(wake_log_lines(tmp))          # 日志是同一个文件，按增量数
+    clock, post = Clock(), Post()
+    kw = dict(clock=clock, post=post)
+    for _ in range(5):                       # 2 分半钟的 401，还没到 10 分钟
+        assert brain_alert.record_wake_denied(**kw) is False
+        clock.now += 30
+    time.sleep(0.05)
+    lines = wake_log_lines(tmp)[base:]
+    assert len(lines) == 1, lines
+    assert "wake doorbell denied status=401" in lines[0], lines
+    assert post.calls == [], "没满 10 分钟不该发"
+    print("9) 第一次被拒记一行日志、后续 401 不再记 OK：%s" % lines[0])
+
+
+def check_wake_alert_after_10min(tmp):
+    """9 分 59 秒不发，满 10 分钟发一条；3 小时内不再发，满 3 小时再发。"""
+    setup(tmp)
+    clock, post = Clock(), Post()
+    kw = dict(clock=clock, post=post)
+    assert brain_alert.record_wake_denied(**kw) is False, "第一次（t0）不该发"
+    clock.now += brain_alert.WAKE_ALERT_AFTER_S - 1
+    assert brain_alert.record_wake_denied(**kw) is False, "9 分 59 秒不该发"
+    time.sleep(0.05)
+    assert post.calls == [], post.calls
+    clock.now += 1
+    assert brain_alert.record_wake_denied(**kw) is True, "满 10 分钟该喊"
+    assert post.wait(1) == 1
+    url, text = post.calls[0]
+    assert url.startswith("https://discord.test/"), url
+    assert "被拒了 10 分钟" in text and "3 次 401" in text, text
+    assert "key 和脑对不上" in text and "shell/apps/stage-tamagotchi/.env.local" in text, text
+    clock.now += brain_alert.REPEAT_AFTER_S - 1
+    assert brain_alert.record_wake_denied(**kw) is False, "3 小时内不该再喊"
+    time.sleep(0.05)
+    assert len(post.calls) == 1, post.calls
+    clock.now += 1
+    assert brain_alert.record_wake_denied(**kw) is True, "满 3 小时该再喊"
+    assert post.wait(2) == 2
+    assert "次 401" in post.calls[1][1], post.calls[1][1]
+    print("10) 满 10 分钟发一条、3 小时内不重复、满 3 小时再发 OK")
+    print("    告警示例：%s" % text)
+
+
+def check_wake_reset_on_ok(tmp):
+    """中途通过一次就清零，重新从 0 算 10 分钟（没告警过的通过只清零、不发东西）。"""
+    setup(tmp)
+    base = len(wake_log_lines(tmp))
+    clock, post = Clock(), Post()
+    kw = dict(clock=clock, post=post)
+    brain_alert.record_wake_denied(**kw)
+    clock.now += 300
+    brain_alert.record_wake_denied(**kw)
+    assert brain_alert.record_wake_ok(**kw) is False, "没告警过的通过：只清零"
+    time.sleep(0.05)
+    assert post.calls == [], "没告警过就不该读 webhook、不该发"
+    assert brain_alert.WAKE_KEY not in brain_alert._state, brain_alert._state
+    clock.now += 1
+    brain_alert.record_wake_denied(**kw)                 # 新的一段，从这一刻起算
+    clock.now += brain_alert.WAKE_ALERT_AFTER_S - 60
+    assert brain_alert.record_wake_denied(**kw) is False, "重新起算还不到 10 分钟"
+    clock.now += 60
+    assert brain_alert.record_wake_denied(**kw) is True, "从通过那一刻起算满 10 分钟该喊"
+    assert post.wait(1) == 1
+    lines = wake_log_lines(tmp)[base:]
+    assert len(lines) == 2, "新的一段被拒要重新记一行：%s" % lines
+    print("11) 通过一次就清零、重新从 0 算 10 分钟 OK")
+
+
+def check_wake_recovery(tmp):
+    """告警之后第一次通过发一条恢复；清零后再通过什么都不发。"""
+    setup(tmp)
+    clock, post = Clock(), Post()
+    kw = dict(clock=clock, post=post)
+    brain_alert.record_wake_denied(**kw)
+    clock.now += brain_alert.WAKE_ALERT_AFTER_S
+    assert brain_alert.record_wake_denied(**kw) is True
+    assert post.wait(1) == 1
+    clock.now += 1200                                     # 从第一次被拒起 30 分钟
+    assert brain_alert.record_wake_ok(**kw) is True, "告警过就该发恢复"
+    assert post.wait(2) == 2
+    recover = post.calls[1][1]
+    assert "门铃恢复了" in recover and "30 分钟" in recover, recover
+    assert brain_alert.record_wake_ok(**kw) is False, "清零后不该再发"
+    time.sleep(0.05)
+    assert len(post.calls) == 2, post.calls
+    print("12) 告警后通过发恢复、没告警过的通过不发 OK")
+    print("    恢复示例：%s" % recover)
+
+
+def check_wake_independent(tmp):
+    """门铃的计数和会话告警各一份，互不影响。"""
+    setup(tmp)
+    clock, post = Clock(), Post()
+    kw = dict(clock=clock, post=post)
+    brain_alert.record_failure(SID, "502 bad gateway", "cc/ds", **kw)   # 会话第 1 轮
+    brain_alert.record_wake_denied(**kw)                                # 门铃被拒的起点
+    clock.now += brain_alert.WAKE_ALERT_AFTER_S
+    assert brain_alert.record_wake_denied(**kw) is True, "门铃自己到点就喊"
+    assert post.wait(1) == 1
+    assert brain_alert._state[SID]["fails"] == 1, brain_alert._state
+    clock.now += 60
+    assert brain_alert.record_failure(SID, "502 bad gateway", "cc/ds", **kw) is True, \
+        "会话照旧第 2 轮才喊"
+    assert post.wait(2) == 2
+    assert "连续 2 轮" in post.calls[1][1], post.calls[1][1]
+    assert brain_alert.record_wake_ok(**kw) is True
+    assert post.wait(3) == 3
+    assert brain_alert._state[SID]["fails"] == 2, "门铃通过不能动会话的计数"
+    assert brain_alert.WAKE_KEY not in brain_alert._state, brain_alert._state
+    print("13) 门铃和会话告警互不干扰 OK")
+
+
+def check_wake_no_webhook(tmp):
+    """没 webhook 文件：记 skipped，不算发过；补上文件后下一次被拒照发。"""
+    setup(tmp, webhook=False)
+    clock, post = Clock(), Post()
+    kw = dict(clock=clock, post=post)
+    brain_alert.record_wake_denied(**kw)
+    clock.now += brain_alert.WAKE_ALERT_AFTER_S
+    assert brain_alert.record_wake_denied(**kw) is False, "没发出去就不算发过"
+    time.sleep(0.1)
+    assert post.calls == [], "没 webhook 就不该调用 post"
+    lines = log_lines(tmp)
+    assert any("brain alert skipped reason=no_webhook" in line for line in lines), lines
+    brain_alert.WEBHOOK.write_text("https://discord.test/api/webhooks/1/x", encoding="utf-8")
+    clock.now += 60
+    assert brain_alert.record_wake_denied(**kw) is True, "skipped 不算发过"
+    assert post.wait(1) == 1
+    print("14) 门铃没 webhook 只记 skipped、不算发过 OK")
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="brain-alert-") as tmp:
         check_two_failures(tmp)
@@ -244,6 +390,12 @@ def main():
         check_no_webhook(tmp)
         check_threads_safe(tmp)
         check_proxy(tmp)
+        check_wake_denied_logged_once(tmp)
+        check_wake_alert_after_10min(tmp)
+        check_wake_reset_on_ok(tmp)
+        check_wake_recovery(tmp)
+        check_wake_independent(tmp)
+        check_wake_no_webhook(tmp)
     print("BRAIN ALERT SELFTEST OK")
 
 

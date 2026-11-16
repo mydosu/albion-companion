@@ -967,8 +967,17 @@ class Brain(BaseHTTPRequestHandler):
         elif path == "/albion/wake":
             # 壳的门铃：到没到她自己定的醒来时间（底线都算进去了）。到点只响一次。
             if not self._authorized():
+                # 401 在两边日志里都不留痕：这一段被拒的第一次记一行，久了往 Discord 喊（2026-11-16）
+                try:
+                    brain_alert.record_wake_denied()
+                except Exception:          # noqa: BLE001 - 告警不能影响这一问的回话
+                    pass
                 self._json(401, {"error": {"message": "unauthorized", "type": "invalid_request_error"}})
                 return
+            try:
+                brain_alert.record_wake_ok()
+            except Exception:              # noqa: BLE001
+                pass
             busy = session_lock(SESSION_DEFAULT).locked()
             due, next_at = wake.ring(busy)
             # 壳只按门铃；醒来时看到什么由 wake.wake_prompt 定，这里不带种类

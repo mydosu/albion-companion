@@ -1,4 +1,5 @@
 """脑哑了的告警（2026-11-15）：连续两轮没回出来就在 Discord 喊一声，回魂时补一条恢复。
+门铃被拒（GET /albion/wake 回 401）也归这里：持续满 10 分钟喊一声，通过时补恢复（2026-11-16）。
 
 只告警、不自动换线路——换线路由用户定（2026-11-14 脑哑了 27 小时，每一轮都 403 却没人知道）。
 写法和 memory/openviking-notify.py 里那套已验证能送达的 webhook 一致，但这边独立一份：
@@ -23,6 +24,8 @@ USER_AGENT = "albion-brain-alert/1.0"      # urllib 默认 UA 会被 Discord 前
 SEND_TIMEOUT = 10
 FAIL_ALERT_AT = 2                          # 连续第 2 轮失败就喊
 REPEAT_AFTER_S = 3 * 3600                  # 还一直坏着，隔 3 小时再喊一次
+WAKE_ALERT_AFTER_S = 600                   # 门铃持续被拒（401）满 10 分钟就喊
+WAKE_KEY = "__wake__"                      # _state 里门铃那格，和会话 id 不会撞
 ERROR_MAX_CHARS = 200
 # 出外网只能走代理（WSL 直连 DNS 超时），变量和默认值跟 chat_bridge 的 ALBION_CHAT_PROXY 一致；空串则直连。
 PROXY = os.environ.get("ALBION_CHAT_PROXY", "http://127.0.0.1:7897").strip()
@@ -141,6 +144,65 @@ def record_success(session_id, *, clock=time.time, post=None):
         if not item or item.get("alerted_at") is None:
             return False          # 没告警过：只清零，不读文件、不发东西
         text = _recover_text(item, now)
+    url = webhook_url()
+    if not url:
+        log("brain alert skipped reason=no_webhook")
+        return False
+    _send(text, url, post or post_webhook)
+    return True
+
+
+# ── 门铃被拒（2026-11-16）────────────────────────────────────────────────────
+# 壳每 30 秒问一次 GET /albion/wake；壳带的 key 和脑对不上就一直是 401，她醒不来，
+# 而 401 在两边日志里都不留痕（2026-11-15 静了 16 小时才发现）。
+# 这一段被拒的第一次记一行日志；持续满 10 分钟喊一次，之后还一直被拒就隔 3 小时再喊。
+def _wake_alert_text(item, now):
+    minutes = max(0, int((now - (item.get("since") or now)) / 60))
+    return ("阿尔比恩的门铃被拒了 %d 分钟（%d 次 401）：壳带的 key 和脑对不上，她醒不来。"
+            "多半是壳打包时没带 shell/apps/stage-tamagotchi/.env.local。"
+            % (minutes, int(item.get("denied") or 0)))
+
+
+def _wake_recover_text(item, now):
+    minutes = max(0, int((now - (item.get("since") or now)) / 60))
+    return "阿尔比恩的门铃恢复了：被拒了 %d 分钟。" % minutes
+
+
+def record_wake_denied(*, clock=time.time, post=None):
+    """门铃回了一次 401（HTTP 线程里调，不能往外抛）。返回这次是否发了告警。"""
+    now, url = clock(), webhook_url()
+    with _lock:
+        item = _state.setdefault(WAKE_KEY, {"denied": 0, "since": None,
+                                            "alerted_at": None, "logged": False})
+        item["denied"] += 1
+        if item["since"] is None:
+            item["since"] = now
+        if not item["logged"]:
+            # 每 30 秒一次 401，只在开头记一行：同类故障至少日志里有痕迹
+            item["logged"] = True
+            log("wake doorbell denied status=401")
+        due = (now - item["since"] >= WAKE_ALERT_AFTER_S and
+               (item["alerted_at"] is None or now - item["alerted_at"] >= REPEAT_AFTER_S))
+        if not due:
+            return False
+        # 没 webhook 就不算发过：不记 alerted_at，下一次被拒还会再试。
+        if not url:
+            log("brain alert skipped reason=no_webhook")
+            return False
+        item["alerted_at"] = now
+        text = _wake_alert_text(item, now)
+    _send(text, url, post or post_webhook)
+    return True
+
+
+def record_wake_ok(*, clock=time.time, post=None):
+    """门铃通过了（鉴权过就算，不管 due 真假）：告警过的补恢复，然后清零；没告警过的只清零。"""
+    now = clock()
+    with _lock:
+        item = _state.pop(WAKE_KEY, None)
+        if not item or item.get("alerted_at") is None:
+            return False          # 没告警过：只清零，不读文件、不发东西
+        text = _wake_recover_text(item, now)
     url = webhook_url()
     if not url:
         log("brain alert skipped reason=no_webhook")
