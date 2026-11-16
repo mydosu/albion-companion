@@ -8,7 +8,7 @@
 
 不嫌弃 DeepSeek 口癖、愿意自己调教的话，建议用 OpenCode、Command Code 或者 OpenDesign 这几家中转站，套餐量大管饱。DeepSeek 的口癖怎么调，[03 篇](03-口癖和人设.md) 已经写了人设换口吻和第 3 条兜底清洗，照着配就行，这里不展开。
 
-想要少点事、就能有人类感，就买 Gemini Pro 反代出来用，Gemini 3.8 Flash 在角色扮演里面还是顶尖的。
+想要少点事、就能有人类感，就买 Gemini Pro 订阅，在 Magpie 里接 Antigravity 官方 CLI 来用（不用反代），Gemini 3.8 Flash 在角色扮演里面还是顶尖的。
 
 我自己是几家混着用的，现在的分工：
 
