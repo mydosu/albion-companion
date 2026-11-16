@@ -284,15 +284,36 @@ _JA_KANA = re.compile(r"[\u3040-\u30ff]")
 _JA_HAN = re.compile(r"[\u4e00-\u9fff]")
 _JA_LATIN = re.compile(r"[A-Za-z0-9]")
 _JA_CN_ONLY = re.compile(r"[的了吗吧呢这]")
+# 加宽判据的两个常量：与 `bridge_v2` 同名同值（那份是源头，这份逐字照抄）
+JA_MIN_KANA = 2
+JA_MIN_KANA_RATIO = 0.25
+
+
+def _ja_han_all_cp932(text: str) -> bool:
+    """汉字是不是全都能用日文 Shift_JIS（cp932）编码；逐字同 `bridge_v2.han_all_cp932`。"""
+    for ch in _JA_HAN.findall(text or ""):
+        try:
+            ch.encode("cp932")
+        except UnicodeEncodeError:      # 简体专用字（挥、说、们……）走这里
+            return False
+    return True
 
 
 def looks_japanese(text: str) -> bool:
-    """与 `bridge_v2.is_japanese` 同一判据：假名占比 ≥0.5，且不夹中文虚词。"""
+    """与 `bridge_v2.is_japanese` 同一判据：先排中文虚词、再排 cp932 编不出来的汉字（简体专用
+    字 ⇒ 中文），然后假名占比 ≥0.5；否则假名 ≥2、占比 ≥0.25 的「汉字多的日语」也算。"""
     if _JA_CN_ONLY.search(text or ""):
+        return False
+    if not _ja_han_all_cp932(text):                     # 简体专用字 ⇒ 中文（硬门）
         return False
     kana = len(_JA_KANA.findall(text or ""))
     body = kana + len(_JA_HAN.findall(text or "")) + len(_JA_LATIN.findall(text or ""))
-    return body > 0 and kana / body >= 0.5
+    if body <= 0:
+        return False
+    ratio = kana / body
+    if ratio >= 0.5:                                    # 现有判据，不动
+        return True
+    return kana >= JA_MIN_KANA and ratio >= JA_MIN_KANA_RATIO
 
 
 def translate_context(full: str, start: int, limit: int = TRANSLATE_CTX_CHARS) -> str:

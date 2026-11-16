@@ -35,6 +35,26 @@ HAN = re.compile(r"[\u4e00-\u9fff]")
 LATIN = re.compile(r"[A-Za-z0-9]")
 # 中文独有的虚词：出现就基本可断定是中文（旧桥同判据，见 bridge.py:is_japanese）
 CN_ONLY = re.compile(r"[的了吗吧呢这]")
+# 加宽判据（2026-11-19）：汉字多的日语假名占比常常不到一半（`指揮官、今日はいい天気ですね。`
+# 只有 6/13），原来会被判成中文再翻一遍 ⇒ 这句没有字幕。补一条「汉字全在日文字符集里」的路：
+# 假名 ≥ JA_MIN_KANA 且占比 ≥ JA_MIN_KANA_RATIO，并且每个汉字都能用 cp932（日文 Shift_JIS）
+# 编码。简体专用字（挥/说/们/还/让/对/时……）在 cp932 里编不出来，所以这条路收不进中文；
+# 反过来日语用的汉字都在 cp932 里。常量与 `stream_server` 同名同值（那份是逐字照抄的副本）。
+JA_MIN_KANA = 2
+JA_MIN_KANA_RATIO = 0.25
+
+
+def han_all_cp932(text: str) -> bool:
+    """这段文本里的汉字是不是全都能用日文 Shift_JIS（cp932）编码。
+
+    ponytail: 只用标准库，逐字 `encode("cp932")`；`stream_server` 有一份逐字相同的副本。
+    """
+    for ch in HAN.findall(text or ""):
+        try:
+            ch.encode("cp932")
+        except UnicodeEncodeError:      # 简体专用字（挥、说、们……）走这里
+            return False
+    return True
 # 可发音内容：字/词/假名/汉字（纯符号段不合成）
 SPEAKABLE = re.compile(r"[\w\u3040-\u30ff\u4e00-\u9fff]")
 SENT = cue_scope.SENT            # 切句判据的唯一来源（归属侧必须与翻译腿同一套，否则坐标会漂）
@@ -80,14 +100,27 @@ def _log_translated(req, srcs, outs, emos, via_ex: bool) -> None:
 def is_japanese(text: str) -> bool:
     """假名占比够高才算「本来就在说日语」；夹中文虚词一律按中文处理。
 
+    2026-11-19 加宽：汉字多的日语（假名 <0.5）只要假名 ≥2、占比 ≥0.25、且汉字全在 cp932
+    里，也算日语 —— 否则会被当中文再翻一遍，译文原样回来，这句就没字幕了。
+    同日另一条：只要出现 cp932 编不出来的汉字（简体专用字：挥/说/们/还/让/对……）就是中文，
+    先于占比判定 —— 「指挥官说おはよう」正好卡在 4/8=0.5，不然会被日语 TTS 按音读念出来。
+
     ponytail: 与旧桥 `bridge.py:is_japanese` 判据一致，等价性由 tests 逐条比对；
-    落地时由 bridge.py 反向 import 本模块，避免两处判据漂移。
+    落地时由 bridge.py 反向 import 本模块，避免两处判据漂移。`stream_server.looks_japanese`
+    是逐字副本（那边要求独立，不跨模块 import），常量同名同值。
     """
     if CN_ONLY.search(text or ""):
         return False
+    if not han_all_cp932(text):                         # 简体专用字 ⇒ 中文（硬门）
+        return False
     kana = len(KANA.findall(text or ""))
     body = kana + len(HAN.findall(text or "")) + len(LATIN.findall(text or ""))
-    return body > 0 and kana / body >= 0.5
+    if body <= 0:
+        return False
+    ratio = kana / body
+    if ratio >= 0.5:                                    # 现有判据，不动
+        return True
+    return kana >= JA_MIN_KANA and ratio >= JA_MIN_KANA_RATIO
 
 
 def pick_speech_slices(text: str):
