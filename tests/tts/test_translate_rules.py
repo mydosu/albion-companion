@@ -45,6 +45,28 @@ class IsJapaneseTest(unittest.TestCase):
                 self.assertIs(is_japanese(text), True)
 
 
+class KanjiHeavyJapaneseTest(unittest.TestCase):
+    """汉字多的日语不再被当成中文（2026-11-19）。
+
+    事故：`指揮官、今日はいい天気ですね。` 只有 6/13 是假名（<0.5）⇒ 判成中文 ⇒ 桥把它
+    再翻一遍 ⇒ 这句没有字幕。加宽的判据（无中文虚词 + 假名 ≥2 + 占比 ≥0.25 + 汉字全在
+    cp932）要能收下这种句子，同时不能把带简体专用字的中文收进来（日语 TTS 念中文更糟）。
+    """
+
+    JA = ["指揮官、今日はいい天気ですね。", "本日は晴天なり", "明日会議室で打ち合わせ"]
+    ZH = ["指挥官早上好，今天天气不错", "指挥官说おはよう", "这是すごい", "東京都庁"]
+
+    def test_kanji_heavy_japanese_is_japanese(self):
+        for text in self.JA:
+            with self.subTest(text=text):
+                self.assertIs(is_japanese(text), True)
+
+    def test_chinese_with_simplified_only_chars_stays_chinese(self):
+        for text in self.ZH:
+            with self.subTest(text=text):
+                self.assertIs(is_japanese(text), False)
+
+
 class SpeechTextTest(unittest.TestCase):
     def test_extract_speech_text(self):
         # 挑朗读行：中文行不能进 TTS

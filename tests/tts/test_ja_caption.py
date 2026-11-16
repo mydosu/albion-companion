@@ -39,7 +39,15 @@ CORPUS = [
     "今日は、少し疲れました。", "指揮官？", "し、子宮口……",
     "舒服吧？ good girl", "Windows Defender 呀？", "（小声）其实我一直在等你回来……",
     "ふぅ……指揮官……全部……アルビオンに、くれたのですか……？",
+    # 汉字多的日语（假名 <0.5，以前判成中文）与「带简体专用字」的中文，两处判据必须一致
+    "指揮官、今日はいい天気ですね。", "本日は晴天なり", "明日会議室で打ち合わせ",
+    "指挥官早上好，今天天气不错", "指挥官说おはよう", "这是すごい", "東京都庁",
 ]
+
+# 汉字多的日语：假名占比 <0.5，旧判据会当中文再翻一遍（→ 这句没字幕）
+JA_HEAVY = ["指揮官、今日はいい天気ですね。", "本日は晴天なり", "明日会議室で打ち合わせ"]
+# 中文侧：有简体专用字（挥/说）或中文虚词（这），或干脆没有假名（東京都庁）
+ZH_MIXED = ["指挥官早上好，今天天气不错", "指挥官说おはよう", "这是すごい", "東京都庁"]
 
 
 class JaDetectTest(unittest.TestCase):
@@ -57,6 +65,20 @@ class JaDetectTest(unittest.TestCase):
     def test_japanese_moans_are_japanese(self):
         for text in ("んっ……はぁ……", "——っ！んんんっ……！！"):
             self.assertTrue(SS.looks_japanese(text), text)
+
+    def test_kanji_heavy_japanese_both_sides(self):
+        """汉字多的日语两处都得判日语（假名占比 <0.5，靠 cp932 那条加宽收进来）。"""
+        for text in JA_HEAVY:
+            with self.subTest(text=text):
+                self.assertTrue(SS.looks_japanese(text), "本地判据漏了「%s」" % text)
+                self.assertTrue(B2.is_japanese(text), "桥判据漏了「%s」" % text)
+
+    def test_simplified_chinese_both_sides(self):
+        """简体专用字 / 中文虚词 / 没假名的纯汉字，两处都不许判成日语。"""
+        for text in ZH_MIXED:
+            with self.subTest(text=text):
+                self.assertFalse(SS.looks_japanese(text), "本地判据把「%s」当日语" % text)
+                self.assertFalse(B2.is_japanese(text), "桥判据把「%s」当日语" % text)
 
 
 def mk_sess(cfg):
