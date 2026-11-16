@@ -9,7 +9,9 @@ $ErrorActionPreference = 'Stop'
 
 # NOTICE: shell/.gitignore ignores these paths on purpose, so temporary worktrees start without
 # them. Without author-models, vue-tsc fails on the two JSON imports in spine38/Model.vue. Without
-# the model zips, electron-vite fails on the spine import and warns on the live2d URL. Copy the
+# the model zips, electron-vite fails on the spine import and warns on the live2d URL. Without
+# .env.local the packed build has an empty brain key: every GET /albion/wake answers 401, so she
+# never wakes (2026-11-15). Copy the
 # files instead of linking them, so deleting a worktree cannot delete the source files. Existing
 # files are kept.
 $directories = @(
@@ -23,6 +25,7 @@ $files = @(
     'shell\packages\stage-ui\src\assets\spine\models\albion-spine-38.zip'
     'shell\packages\stage-ui\src\assets\vrm\models\AvatarSample-A\AvatarSample_A.vrm'
     'shell\packages\stage-ui\src\assets\vrm\models\AvatarSample-B\AvatarSample_B.vrm'
+    'shell\apps\stage-tamagotchi\.env.local'
 )
 
 $copied = 0
