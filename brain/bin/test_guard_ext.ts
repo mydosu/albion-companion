@@ -25,7 +25,7 @@ let fetches = 0;
   throw new Error("albion-guard 不该发网络请求");
 };
 
-const { default: albionGuard, tidy, tidyAndCount, tidyMessage, tidyMessageRegen, isRefusal, NEUTRAL_ACT, fixTicPhrases, detectRegenHits, checkDraft, isDeepSeekModel } = await import("../agent/extensions/albion-guard.ts");
+const { default: albionGuard, tidy, tidyAndCount, tidyMessage, tidyMessageRegen, isRefusal, NEUTRAL_ACT, fixTicPhrases, detectRegenHits, checkDraft, isDeepSeekModel, resetAsideCap } = await import("../agent/extensions/albion-guard.ts");
 const { default: albionTurn, _albionTest } = await import("../agent/extensions/albion-turn.ts");
 
 const assistant = (text: string) => ({ role: "assistant", content: [{ type: "text", text }], stopReason: "stop" });
@@ -115,8 +115,8 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
     ["（被指挥官这样突然反问，耳根都烫起来了……好害羞……）", "（被指挥官这样突然反问，好害羞……）"],
     ["（耳根烫，好害羞，轻轻低头）", "（好害羞）"],
     ["(眨了眨眼;有点开心、抿了抿……)", "(有点开心)"],
-    ["（他低头看书的样子好认真）", "（您低头看书的样子好认真）"],
-    ["（您低头，心跳快了）", "（您低头）"],
+    ["（您低头看书的样子好认真）", "（他低头看书的样子好认真）"],
+    ["（您低头，心跳快了）", "（他低头）"],
     ["（你轻轻点头，指挥官耳根发红）", "（你轻轻点头，指挥官耳根发红）"],
     ["低头在看书（好害羞，有点开心）", "低头在看书（好害羞，有点开心）"],
     ["（耳根烫", "（耳根烫"],
@@ -132,6 +132,7 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   assert.equal(tidy(only, "逐字复述：" + only).text, only);
   assert.deepEqual(tidy(only, "逐字复述：" + only).actions, [], "逐字分支不计动作");
   for (const bad of [undefined, null, "坏", "2", {}, [], -1, 1.5, 1e100]) {
+    resetAsideCap(); // 这一组测的是旧额度字段：心声上限别来插一脚
     writeFileSync(join(TMP, "voice.json"), JSON.stringify({ old: { replies: 2, posture_at: 1, gesture_at: bad } }));
     assert.equal(tidyAndCount(draft, "x", "old").text, draft, "旧字段/坏值按从未留过算");
     assert.equal(state().old.gesture_at, 3);
@@ -146,7 +147,8 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
     const r = tidyAndCount(mixed, "x", "s-both");
     assert.equal(r.actions.includes("posture_kept"), i === 1 || i === 9, `姿态第 ${i} 轮`);
     assert.equal(r.actions.includes("gesture_kept"), i === 1 || i === 7, `动作第 ${i} 轮`);
-    assert.ok(r.text.includes("好害羞"), "念头始终保留");
+    // 念头的去留同时受心声上限管：被上限删掉的那几条不算动作额度出错
+    assert.equal(r.text.includes("好害羞"), !r.actions.includes("aside_capped"), `念头第 ${i} 轮：只在上限删掉时不见`);
   }
   assert.equal(state()["s-both"].posture_at, 9);
   assert.equal(state()["s-both"].gesture_at, 7);
@@ -165,7 +167,7 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
 // E) 泄漏的工具调用标记从那里截掉；心声标签收回括号
 {
   assert.equal(textOfResult(tidyMessage(assistant(A + "我去查一下。<function_calls><invoke name=\"x\">"), "x", "s-e")), A + "我去查一下。");
-  assert.equal(textOfResult(tidyMessage(assistant(A + "晚点再说吧。（心声）希望他开完会就回来。"), "x", "s-e")), A + "晚点再说吧。（希望您开完会就回来。）");
+  assert.equal(textOfResult(tidyMessage(assistant(A + "晚点再说吧。（心声）希望他开完会就回来。"), "x", "s-e")), A + "晚点再说吧。（希望他开完会就回来。）");
   assert.equal(fetches, 0, "整套跑下来没发过一次请求");
   console.log("E 截掉泄漏标记、心声收回括号、全程 0 次网络请求 OK");
 }
@@ -285,10 +287,11 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   // 心声摆到她眼前时只截 14 字（2026-10-29：原来 24 字，太长的旧心声会被照着写回来）
   const longAside = _albionTest.recentAsides([asst("好。（" + "很".repeat(40) + "）")], 1);
   assert.equal(longAside[0].length, 14, "心声只留 14 字");
-  // 每轮约定里写明心声该多长、写什么（Claude 写的那句，逐字保留）
+  // 每轮约定里写明心声该多长、写什么、怎么称呼他（2026-11-16 用户定，逐字保留）
   assert.ok(_albionTest.CONTEXT.includes(
-    "心声只写一个念头，一句话，十来个字，口语，想眼前具体的事或对他的一点真感觉；事情和进度放在正文里说，心声里只有感觉；提到他用「您」。",
+    "括号（……）里写不出声的心声，只显示、不朗读，有真感受才写，大多数回复不写；心声是我心里没说出口的一个念头，一句话，十来个字，口语，想眼前具体的事或对他的一点真感觉；事情和进度放在正文里说，心声里只有感觉；叮嘱、提醒、问他的话写在正文里，不写进心声；心声里提到他就写「指挥官」或「他」，也可以不写主语，不用「您」，说自己就用「我」。",
   ));
+  assert.ok(!_albionTest.CONTEXT.includes("提到他用「您」"), "旧的「提到他用您」已撤");
   console.log("M 最近心声防复读 / 去做自己的事是她自己的念头 OK");
 }
 
@@ -426,7 +429,7 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
     // 正例：人称 +（自己）+「点的」+ 句末标点/语气词/结尾
     ["头一遍是您点，第二遍也是您点的，我总不能不听话。", "头一遍是您点，第二遍也是您让的，我总不能不听话。"],
     ["因为是您点的呀。", "因为是您让的呀。"],
-    ["（明明是您自己点的。）", "（明明是您自己让的。）"],
+    ["（明明是您自己点的。）", "（明明是他自己让的。）"],
     ["这茶是您点的", "这茶是您让的"],
     // 反例：后面跟名词 / 不是人称 / 不是句末
     ["这是您点的外卖，放门口了。", "这是您点的外卖，放门口了。"],
@@ -449,31 +452,102 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   assert.equal(rows.at(-1).fixed, 1);
   console.log("Q 点单腔「点的」→「让的」：正例 4 / 反例 4、逐字分支、guard.log 记账 OK");
 }
-// S) 心声里的「他」→「您」：只动闭合括号；正文、其他/他们、第三方名字、没闭合的都不动
+// S) 心声里的「您」→「他」（2026-11-16 用户定）：只动闭合括号；正文、其他/他们/你们、第三方名字、没闭合的都不动
 {
   const A = '<|ACT:{"emotion":"neutral"}|>';
-  const r1 = tidy(A + "（他跟我说话从来不用挑词。）");
-  assert.equal(r1.text, A + "（您跟我说话从来不用挑词。）", "实例 1");
-  assert.ok(r1.actions.includes("aside_you") && r1.asideYou === 1, JSON.stringify(r1));
-  const r2 = tidy(A + "（想在他额头点一下，可惜手够不到。）");
-  assert.equal(r2.text, A + "（想在您额头点一下，可惜手够不到。）", "实例 2");
+  const r1 = tidy(A + "（您跟我说话从来不用挑词。）");
+  assert.equal(r1.text, A + "（他跟我说话从来不用挑词。）", "实例 1");
+  assert.ok(r1.actions.includes("aside_he") && r1.asideHe === 1, JSON.stringify(r1));
+  const r2 = tidy(A + "（想在您额头点一下，可惜手够不到。）");
+  assert.equal(r2.text, A + "（想在他额头点一下，可惜手够不到。）", "实例 2");
   assert.equal(tidy(A + "（其他人都睡了。）").text, A + "（其他人都睡了。）", "其他 不动");
   assert.equal(tidy(A + "（他们都在忙。）").text, A + "（他们都在忙。）", "他们 不动");
-  assert.equal(tidy(A + "（他乡遇故知，他日再说。）").text, A + "（他乡遇故知，他日再说。）", "他乡/他日 不动");
-  assert.equal(tidy(A + "他说他今晚要早点睡。").text, A + "他说他今晚要早点睡。", "正文不动");
-  assert.equal(tidy(A + "（Hermes 说他来过。）").text, A + "（Hermes 说他来过。）", "含第三方名字整段不换");
-  assert.equal(tidy(A + "（Codex 也是这么说的。）").text, A + "（Codex 也是这么说的。）");
-  assert.equal(tidy(A + "（他们都在忙。").text, A + "（他们都在忙。", "没闭合的不动");
-  const r3 = tidy(A + "（他说明天来。）（他今天很累。）");
-  assert.equal(r3.text, A + "（您说明天来。）（您今天很累。）", "多条各算一处");
-  assert.equal(r3.asideYou, 2, JSON.stringify(r3));
-  // 经钩子：换过的稿子写回，日志记 aside_you
-  const out = tidyMessage(assistant(A + "（他说明天来。）"), "在吗", "s-aside");
-  assert.equal(textOfResult(out), A + "（您说明天来。）");
+  assert.equal(tidy(A + "（你们先吃，不用等我。）").text, A + "（你们先吃，不用等我。）", "你们 不动");
+  assert.equal(tidy(A + "您今天回来得早。（您忙完就早点睡。）").text, A + "您今天回来得早。（他忙完就早点睡。）", "正文的「您」不动");
+  assert.equal(tidy(A + "（Hermes 说您来过。）").text, A + "（Hermes 说您来过。）", "含第三方名字整段不换");
+  assert.equal(tidy(A + "（Codex 说您也这么讲。）").text, A + "（Codex 说您也这么讲。）");
+  assert.equal(tidy(A + "（您说明天来。").text, A + "（您说明天来。", "没闭合的不动");
+  const r3 = tidy(A + "（您说明天来。）（您今天很累。）");
+  assert.equal(r3.text, A + "（他说明天来。）（他今天很累。）", "多条各算一处");
+  assert.equal(r3.asideHe, 2, JSON.stringify(r3));
+  // 经钩子：换过的稿子写回，日志记 aside_he
+  const out = tidyMessage(assistant(A + "（您说明天来。）"), "在吗", "s-aside");
+  assert.equal(textOfResult(out), A + "（他说明天来。）");
   const rows2 = readFileSync(join(TMP, "guard.log"), "utf-8").trim().split("\n").map((l) => JSON.parse(l));
-  assert.ok(rows2.at(-1).actions.includes("aside_you"), JSON.stringify(rows2.at(-1)));
-  assert.equal(rows2.at(-1).aside_you, 1, JSON.stringify(rows2.at(-1)));
-  console.log("S 心声「他」→「您」：两条实例、其他/他们/他乡/他日、正文、第三方名字、没闭合、多条计数、guard.log 记账 OK");
+  assert.ok(rows2.at(-1).actions.includes("aside_he"), JSON.stringify(rows2.at(-1)));
+  assert.equal(rows2.at(-1).aside_he, 1, JSON.stringify(rows2.at(-1)));
+  console.log("S 心声「您」→「他」：两条实例、其他/他们/你们、正文、第三方名字、没闭合、多条计数、guard.log 记账 OK");
+}
+
+// X) 心声上限（2026-11-16 用户定）：同一会话连着 3 条交付的回复最多 1 条留心声
+{
+  const withAside = (body: string) => A + body + "\n（希望他早点回来。）";
+  // 连着 4 条都带心声：1 留、2、3 删、4 留；删完正文一个字不变，不留空格和空行
+  {
+    const S = "s-cap-4";
+    resetAsideCap();
+    const kept: number[] = [];
+    for (let i = 1; i <= 4; i++) {
+      const out = tidyMessage(assistant(withAside(`第${i}句正文。`)), "在吗", S);
+      if (out === undefined) kept.push(i);
+      else {
+        const got = textOfResult(out)!;
+        assert.equal(got, A + `第${i}句正文。`, `第 ${i} 条删掉心声后正文一字不变`);
+        assert.ok(!/[ \t]+$/m.test(got) && !/\n\n/.test(got), `第 ${i} 条不留多余空格/空行：${JSON.stringify(got)}`);
+      }
+    }
+    assert.deepEqual(kept, [1, 4], "连着 4 条都要心声：第 1、4 条留，第 2、3 条删");
+    const rows = readFileSync(join(TMP, "guard.log"), "utf-8").trim().split("\n").map((l) => JSON.parse(l));
+    assert.ok(rows.some((r) => Array.isArray(r.actions) && r.actions.includes("aside_capped") && r.session === S), "guard.log 记 aside_capped");
+  }
+  // 行内的心声：删掉那一句，正文一字不变、不留空格
+  {
+    const S = "s-cap-inline";
+    tidyMessage(assistant(A + "好的，（希望他早点回来。）"), "在吗", S);
+    assert.equal(textOfResult(tidyMessage(assistant(A + "好的，（希望他早点回来。）嗯。"), "在吗", S)), A + "好的，嗯。", "行内心声删掉，正文一字不变");
+  }
+  // 只有心声的那条不删（删了成空回复），但照常计入「带过心声」
+  {
+    const S = "s-cap-only";
+    assert.equal(tidyMessage(assistant(A + "好的。（希望他早点回来。）"), "在吗", S), undefined, "第 1 条留");
+    assert.equal(tidyMessage(assistant(A + "（希望他早点回来。）"), "在吗", S), undefined, "只有心声：不删");
+    assert.equal(textOfResult(tidyMessage(assistant(A + "好的。（希望他早点回来。）"), "在吗", S)), A + "好的。", "只有心声那条也算带过心声");
+  }
+  // 亲密轮（ACT 带 intimate）不删，也照常计入
+  {
+    const S = "s-cap-intimate";
+    const I = '<|ACT:{"emotion":"awkward","face":"bashful","intimate":"steady"}|>';
+    assert.equal(tidyMessage(assistant(I + "嗯。（今天想多待一会儿。）"), "在吗", S), undefined, "第 1 条留");
+    assert.equal(tidyMessage(assistant(I + "嗯……（今天想多待一会儿。）"), "在吗", S), undefined, "亲密轮不删");
+    assert.equal(textOfResult(tidyMessage(assistant(A + "好的。（希望他早点回来。）"), "在吗", S)), A + "好的。", "亲密轮也算带过心声");
+  }
+  // 两个会话各算各的：A 会话第 1 条留了，B 会话第 1 条照留
+  {
+    const SA = "s-cap-a";
+    const SB = "s-cap-b";
+    assert.equal(tidyMessage(assistant(withAside("甲一。")), "在吗", SA), undefined);
+    assert.equal(tidyMessage(assistant(withAside("乙一。")), "在吗", SB), undefined, "另一个会话不共用窗口");
+    assert.equal(textOfResult(tidyMessage(assistant(withAside("甲二。")), "在吗", SA)), A + "甲二。");
+    assert.equal(textOfResult(tidyMessage(assistant(withAside("乙二。")), "在吗", SB)), A + "乙二。");
+  }
+  // 重说的草稿/重说稿不算：一条交付只数一次（首稿丢心声的那条不占额度）
+  {
+    const S = "s-cap-regen";
+    const provider = { baseUrl: "http://mock.local/v1", apiKey: "k" };
+    const req = () => ({ model: "deepseek/deepseek-v4-flash", messages: [{ role: "user", content: "在吗" }] });
+    const resp = (content: string) => ({ ok: true, status: 200, json: async () => ({ model: "deepseek/deepseek-v4-flash", choices: [{ message: { content }, finish_reason: "stop" }] }) });
+    const fetchImpl = async () => resp(A + "\n好，我记住了。");
+    const first = await tidyMessageRegen(assistant(A + "好，我收下了。（希望他早点回来。）"), "在吗", req(), { fetchImpl, provider, regen: true }, S);
+    assert.ok(!textOfResult(first as any)?.includes("希望他早点回来"), "重说稿丢了心声");
+    assert.equal(tidyMessage(assistant(A + "好的。（希望他早点回来。）"), "在吗", S), undefined, "首稿里的心声没占额度：下一条还留");
+  }
+  // 逐字复述他的原文：不动他的字，也不计额度
+  {
+    const S = "s-cap-literal";
+    const quote = A + "好的。（希望他早点回来。）";
+    assert.equal(tidyMessage(assistant(quote), "请逐字念：" + quote, S), undefined);
+  }
+  console.log("X 心声上限：4 条里留 1、4，删完正文不变不留空行；只有心声/亲密轮不删且计入；会话各算各的；重说稿不占额度 OK");
 }
 // T) 口癖语料：命中换成 options 之一、不命中原样、同一规则连换 3 次不重样、语料缺失不崩
 {

@@ -38,7 +38,7 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
 | `bin/memory.py` | OpenViking 回忆 / 写入 / 检索（格式与 Hermes 时代逐字一致） |
 | `bin/brain_alert.py` | 脑哑了喊人（2026-11-15）：连续 2 轮没回出来就往 Discord 发一条告警，还坏着就隔 3 小时再喊；告警过之后第一次成功补一条恢复（哑了多久、失败几轮）。门铃（`GET /albion/wake`）持续被拒 401 满 10 分钟也喊，这一段第一次拒在 brain.log 记一行、通过时补一条恢复。只告警、不换线路，换线路由人定。webhook 从本机文件读（`ALBION_ALERT_WEBHOOK_FILE` > `/mnt/d/AI/scripts/.ov-alert-discord-webhook` > `agent/.alert-discord-webhook`，都是空就记 `brain alert skipped` 不发送），出外网走 `ALBION_CHAT_PROXY`（默认 `127.0.0.1:7897`，WSL 直连 DNS 超时），错误正文脱敏到 200 字；计数只在内存，宿主重启清零。自检 `tests/pi-brain/check_brain_alert.py` |
 | `bin/wake.py` | 她自己醒来：一条门铃计时（她定的时间夹在 30 分钟～3 小时，没定过 60 分钟）+ 三条底线（夜里安静、他刚说过话不打断、两次醒来至少隔 10 分钟）+ `can_speak` 决定这一轮能不能开口；门铃问的就是它 |
-| `bin/test_guard_ext.ts` | 整理器与每轮约定自检（钩子接线、r35 多轮姿态序列、英文拒绝、表态小句删除与误删面、0 次网络请求、约定拼装；Windows/WSL 都能跑） |
+| `bin/test_guard_ext.ts` | 整理器与每轮约定自检（钩子接线、r35 多轮姿态序列、英文拒绝、表态小句删除与误删面、心声「您」→「他」与心声上限、0 次网络请求、约定拼装；Windows/WSL 都能跑） |
 | `bin/test_cross_channel.ts` | 跨渠道近况自检（桌面只收 Discord 群、悄悄话不进桌面、Discord 收桌面近况、水位不重复、内部提示/播种块过滤、send_message 正文落库、6 小时窗口与 12 行/1500 字上限；Windows/WSL 都能跑） |
 | `bin/test_self_look.ts` | `next_wake` 一条计时与 `look` 随时可用的自检（分钟数夹在 30～180、self.json 新旧结构、did 与 life.json 20 条、旧生活轮字段不挡取图；Windows/WSL 都能跑） |
 | `bin/test_loopguard.ts` | 复读断路/坏工具/快照账本自检（39 项，临时目录里造文件，不写生产日志） |
@@ -52,7 +52,7 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
 | `agent/extensions/albion-loopguard.ts` | 复读断路（同一调用 + 文件没变才算复读）、坏工具摘除、一轮前后目录快照账本（给摆件和下一轮约定） |
 | `agent/extensions/albion-self.ts` | `next_wake`（下次什么时候醒——一条计时、想做什么、这次做了什么）、`notebook`（心事本） |
 | `agent/extensions/albion-look.ts` | `look`：his/mine 取屏幕原图交主模型（主模型不收图就原图交 grok 转述）；cam 只交本地视觉模型转文字；随时可看 |
-| `agent/extensions/albion-guard.ts` | `message_end` 钩子上的说话整理器：ACT 补竖线、心声收括号、英文拒绝只留表情、泄漏标记截掉、姿态句与括号动作小句各自计额度、对他的话表态的整句/整小句删掉（`pledge_dropped`） |
+| `agent/extensions/albion-guard.ts` | `message_end` 钩子上的说话整理器：ACT 补竖线、心声收括号、心声里「您」→「他」（2026-11-16 用户定）、连着 3 条回复最多 1 条带心声（`aside_capped`）、英文拒绝只留表情、泄漏标记截掉、姿态句与括号动作小句各自计额度、对他的话表态的整句/整小句删掉（`pledge_dropped`） |
 | `agent/extensions/albion-relay.ts` | 本机转发 :8798（见下"为什么要转发"）；Pi 一启动它就起 |
 | `agent/extensions/openviking.ts` | 一行薄壳：加载官方 OpenViking 记忆扩展（自动捕获 + 16 个 `openviking_*` 工具）。主体在 `agent/openviking/`，来源与配置见那里的说明 |
 | `agent/openviking/` | 官方扩展 `openviking-pi-extension` 0.4.13（**不 vendor 源码**，只记来源）；`来源与配置.md` 写清了装法、开关与回退 |
@@ -281,6 +281,9 @@ Magpie 只是作者的"模型管理器"：它往 `/root/.pi/agent/settings.json`
   ACT 补竖线、心声标签收回括号、英文拒绝稿只留表情、泄漏的工具调用标记截掉、陪伴/等候姿态句每 8 条回复最多放过一次
   （`ALBION_POSTURE_EVERY` 可调）；闭合括号里的自身动作/身体反应每 6 条最多留一次，超额只删命中的小句、保留念头
   （`ALBION_GESTURE_EVERY` 可调，整条删空则原样留并用掉额度）。两种额度各自记在 `state/voice.json`，不叫模型、不发请求。
+  **心声**另有两条（2026-11-16 用户定）：闭合心声里的「您」换成「他」（正文不动，含第三方名字的整段不碰）；
+  同一会话连着 3 条交付的回复最多 1 条留心声，超出整段删掉（`aside_capped`；只有心声的那条与 ACT 带 `intimate`
+  的亲密轮不删、也算带过心声）。这条状态按会话记在内存里，脑重启后从零数。
 - 兜底只剩一条：他说了话她却 0 字 → 在同一会话补一句只用文字的【接着说完】（英文拒绝被换成表情后也走这条）。
   原来的【想起来去做】（去玩没玩、说做好了没做）已撤：做不做由她；改没改文件，下一轮约定里会告诉她账本上的事实。
 - 她写坏的扩展换身子前自检时先跳过、记进 `state/broken-extensions.json`，下一轮约定里告诉她去修。

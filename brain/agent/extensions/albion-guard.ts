@@ -15,6 +15,9 @@
  *      保留念头与括号外正文。整条删空则原样留并用掉额度，按会话记在 voice.json 的 gesture_at。
  *   7. 点单腔：「是您点的（呀）」这种把「您让我做的」说成点菜的说法，只在「人称 +（自己）+ 点的 + 句末」
  *      这一种形态上把「点的」改成「让的」（fixDianOrder），记 dian_fixed；后面跟名词（点的外卖、八点的闹钟）不动。
+ *   8. 心声里的「您」→「他」（2026-11-16 用户定；10-29 那条「用您」作废），只动完整闭合的括号心声。
+ *   9. 心声上限：同一会话连着 3 条交付的回复最多 1 条留心声，超出整段删掉（aside_capped），
+ *      只有心声的那条与亲密轮不删；状态按会话记在内存里，见 capAsides。
  *
  * 判定规则只此一份（bin/voice_tidy.ts 是给 Python 探针用的命令行壳，直接 import 这里）。
  */
@@ -142,18 +145,24 @@ export function foldLabeledAside(body: string): string {
 	return body.replace(new RegExp("^[ \\t]*" + ASIDE_LABEL + "\\s*[：:]\\s*([^\\n（(]+)$", "gm"), (_m, s: string) => "（" + s.trim() + "）");
 }
 
-// 心声里提到指挥官要用「您」（2026-10-29）：DS 仍有约一成心声写「他」。
-// 只改完整闭合的全角/半角括号心声；第三方名字（Hermes/Codex/DSH/管家…）整段不碰，怕是说别人。
+// 心声里提到他用「指挥官」或「他」，也可以不写主语，不用「您」（2026-11-16 用户定；10-29 那条「用您」作废）：
+// 只把完整闭合的全角/半角括号心声里的「您」换成「他」，正文一个字不碰；
+// 第三方名字（Hermes/Codex/DSH/管家…）整段不碰，怕是说别人。
 const THIRD_PARTY = /Hermes|Codex|DSH|管家/i;
-const HIS = /(?<!其)他(?![们人乡日])/g;
+const YOU = /您/g;
+
+/** 完整闭合的括号段（心声、括号动作都是这个形状）。 */
+export function isAside(seg: string): boolean {
+	return /^[（(][\s\S]*[）)]$/.test(seg);
+}
 
 export function fixAsidePronoun(body: string): { text: string; fixed: number } {
 	let fixed = 0;
 	const text = segments(body).map((seg) => {
-		if (!/^[（(][\s\S]*[）)]$/.test(seg) || THIRD_PARTY.test(seg)) return seg;
-		const inner = seg.slice(1, -1).replace(HIS, () => {
+		if (!isAside(seg) || THIRD_PARTY.test(seg)) return seg;
+		const inner = seg.slice(1, -1).replace(YOU, () => {
 			fixed++;
-			return "您";
+			return "他";
 		});
 		return inner === seg.slice(1, -1) ? seg : seg[0] + inner + seg.slice(-1);
 	}).join("");
@@ -321,15 +330,15 @@ export function fixDianOrder(body: string, fixed: string[] = []): string {
 
 export interface TidyResult {
 	text: string;
-	/** 做了什么：act / aside / aside_you / refusal / markup / posture_kept / posture_dropped / gesture_kept / gesture_dropped / pledge_dropped / dian_fixed / tic_fixed */
+	/** 做了什么：act / aside / aside_he / aside_capped / refusal / markup / posture_kept / posture_dropped / gesture_kept / gesture_dropped / pledge_dropped / dian_fixed / tic_fixed */
 	actions: string[];
 	dropped: string[];
 	/** 改写过的「点的」原词（点单腔，见 fixDianOrder）。 */
 	fixed: string[];
 	/** 这条回复里有姿态句（不管留没留）。 */
 	posture: boolean;
-	/** 心声里「他」→「您」换掉的处数（没换就是 0）。 */
-	asideYou?: number;
+	/** 心声里「您」→「他」换掉的处数（没换就是 0）。 */
+	asideHe?: number;
 }
 
 const GESTURE = /歪(?:了歪)?头|低(?:下)?头|垂下眼|眨(?:了眨)?眼|抿(?:嘴|了抿)|揉|攥|捏着|脸红|红着脸|脸颊[^，,、；;…]*?(?:发热|发烫|泛红)|脸(?:好烫|发烫)|耳根|耳尖|心跳|嘴角[^，,、；;…]*?(?:弯|上扬|翘)|轻轻(?:地)?(?:点头|摇头|笑|拉|碰|靠|歪)|靠近一点|凑近/;
@@ -384,10 +393,10 @@ export function tidy(raw: string, source = "", allowPosture = false, allowGestur
 	const folded = foldLabeledAside(body);
 	if (folded !== body) actions.push("aside");
 	body = folded;
-	// 心声里的「他」→「您」：只动闭合括号里的念头，正文一个字不碰
+	// 心声里的「您」→「他」：只动闭合括号里的念头，正文一个字不碰
 	const pronoun = fixAsidePronoun(body);
-	if (pronoun.fixed) actions.push("aside_you");
-	const asideYou = pronoun.fixed;
+	if (pronoun.fixed) actions.push("aside_he");
+	const asideHe = pronoun.fixed;
 	body = pronoun.text;
 	const dropped: string[] = [];
 	const pledgeFree = dropPledges(body, dropped);
@@ -410,14 +419,89 @@ export function tidy(raw: string, source = "", allowPosture = false, allowGestur
 		if (askedPresence) hits = hits.filter((h) => !PRESENCE_ANSWER.test(h.trim()));
 		(hits.length ? postureDropped : kept).push(seg);
 	}
-	if (!postureDropped.length) return tidyGestures({ text: head + body, actions, dropped, fixed, posture: false, asideYou, tic: ticHits }, allowGesture);
+	if (!postureDropped.length) return tidyGestures({ text: head + body, actions, dropped, fixed, posture: false, asideHe, tic: ticHits }, allowGesture);
 	const rest = kept.join("").replace(/\n{3,}/g, "\n\n").trim();
 	if (allowPosture || !rest) {
 		actions.push("posture_kept");
-		return tidyGestures({ text: head + body, actions, dropped, fixed, posture: true, asideYou, tic: ticHits }, allowGesture);
+		return tidyGestures({ text: head + body, actions, dropped, fixed, posture: true, asideHe, tic: ticHits }, allowGesture);
 	}
 	actions.push("posture_dropped");
-	return tidyGestures({ text: head ? head + "\n" + rest : rest, actions, dropped: [...dropped, ...postureDropped], fixed, posture: true, asideYou, tic: ticHits }, allowGesture);
+	return tidyGestures({ text: head ? head + "\n" + rest : rest, actions, dropped: [...dropped, ...postureDropped], fixed, posture: true, asideHe, tic: ticHits }, allowGesture);
+}
+
+// ── 心声上限（2026-11-16 用户定）──────────────────────────────────────────────
+// 同一个会话里，连着 3 条交付的回复中最多只有 1 条留着心声：前 2 条交付的回复里只要有一条带了
+// 闭合心声，这一条就把闭合心声整段删掉（`aside_capped`），删完把多出来的空行、空格收拾干净。
+// 两种情况不删，也照常计入「带过心声」：
+//   · 这一条除了 ACT 和心声没有正文（只有心声）——删了就成空回复，宿主会去补问；
+//   · 亲密轮（ACT 里带 intimate，这时括号里写的是动作）。
+// 调用点只在 tidyAndCount（每次交付一条回复走一次），重说的草稿与重说稿都不经过这里。
+// shortcut: 状态在内存里，脑重启后从零数，要跨重启再存盘
+const ASIDE_LOOKBACK = 2;
+const asideHistory = new Map<string, boolean[]>();
+
+/** 测试用：清空内存里的心声上限状态。 */
+export function resetAsideCap(): void {
+	asideHistory.clear();
+}
+
+function noteAside(session: string, kept: boolean): void {
+	const hist = asideHistory.get(session) ?? [];
+	asideHistory.set(session, [...hist, kept].slice(-ASIDE_LOOKBACK));
+}
+
+/** ACT 标记里的 JSON（没有标记、JSON 坏了都返回空对象，不猜）。 */
+function parseAct(text: string): Record<string, any> {
+	const m = /^<\|ACT:(\{[^\n]*?\})\|>/.exec(text);
+	try {
+		const act = m ? JSON.parse(m[1]) : {};
+		return act && typeof act === "object" && !Array.isArray(act) ? act : {};
+	} catch {
+		return {};
+	}
+}
+
+/** 整段删掉闭合心声；正文一个字不碰，删完收拾掉剩下的空格和空行（整行只有心声的连行一起删）。 */
+export function stripAsides(text: string): string {
+	const head = /^<\|ACT:[^\n]*?\|>/.exec(text)?.[0] ?? "";
+	const marked = segments(text.slice(head.length)).map((seg) => (isAside(seg) ? "\u0000" : seg)).join("");
+	const lines: string[] = [];
+	for (const line of marked.split("\n")) {
+		const hadAside = line.includes("\u0000");
+		const clean = line.replace(/([ \t]*)\u0000([ \t]*)/g, (_m, a: string, b: string) => (a && b ? " " : "")).replace(/[ \t]+$/, "");
+		if (hadAside && !clean.trim()) continue; // 这一行原本只有心声/删完只剩空格：整行不要，不留空行
+		lines.push(clean);
+	}
+	const out = lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
+	return out ? head + out : text;
+}
+
+/** 心声上限：按会话记最近 2 条交付回复有没有留心声，连着 3 条最多 1 条带心声。 */
+function capAsides(r: TidyResult, session: string, source: string): TidyResult {
+	// 逐字复述他的原文时不动他的字（连同不计额度）
+	if (literalRequested(source)) return r;
+	const head = /^<\|ACT:[^\n]*?\|>/.exec(r.text)?.[0] ?? "";
+	const segs = segments(r.text.slice(head.length));
+	const asides = segs.filter(isAside);
+	if (!asides.length) {
+		noteAside(session, false);
+		return r;
+	}
+	const intimate = !!parseAct(r.text).intimate;
+	// 除了 ACT 和心声没有正文：删了就成空回复
+	const onlyAside = !/[\p{L}\p{N}]/u.test(segs.filter((s) => !isAside(s)).join(""));
+	const recent = asideHistory.get(session) ?? [];
+	if (intimate || onlyAside || !recent.slice(-ASIDE_LOOKBACK).some(Boolean)) {
+		noteAside(session, true);
+		return r;
+	}
+	noteAside(session, false);
+	return {
+		...r,
+		text: stripAsides(r.text),
+		actions: [...r.actions, "aside_capped"],
+		dropped: [...r.dropped, ...asides.map((s) => s.trim())],
+	};
 }
 
 // ── 姿态额度计数（state/voice.json，按会话分开记）────────────────────────────
@@ -456,7 +540,7 @@ function saveVoice(v: Record<string, VoiceSession>): void {
  * `ds: false`（非 DeepSeek 模型）：口癖语料替换跳过（同 `skipTic`），姿态句与括号动作描述的额度也关掉
  * ——原样放过、两个计数不推进（切回 DS 时额度还接着原来的算）。DS 与默认行为不变。
  */
-export function tidyAndCount(raw: string, source: string, session: string, opts: { skipTic?: boolean; ds?: boolean } = {}): TidyResult {
+export function tidyAndCount(raw: string, source: string, session: string, opts: { skipTic?: boolean; ds?: boolean; cap?: boolean } = {}): TidyResult {
 	const ds = opts.ds !== false;
 	const all = loadVoice();
 	const s: VoiceSession = all[session] ?? { replies: 0, posture_at: -1e9 };
@@ -464,10 +548,12 @@ export function tidyAndCount(raw: string, source: string, session: string, opts:
 	const postureAt = Number.isFinite(Number(s.posture_at)) ? Number(s.posture_at) : -1e9;
 	const gestureAt = typeof s.gesture_at === "number" && Number.isInteger(s.gesture_at) && s.gesture_at >= 0 && s.gesture_at < replies ? s.gesture_at : -1e9;
 	const ticRecent = s.tic_recent && typeof s.tic_recent === "object" ? s.tic_recent : {};
-	const r = tidy(raw, source,
+	const tidied = tidy(raw, source,
 		!ds || replies - postureAt >= POSTURE_EVERY(),
 		!ds || replies - gestureAt >= GESTURE_EVERY(),
 		{ recent: ticRecent, skipTic: opts.skipTic === true || !ds });
+	// 心声上限只在交付这一条时数一次（草稿与重说稿不走这里，见 capAsides）
+	const r = opts.cap === false ? tidied : capAsides(tidied, session, source);
 	all[session] = {
 		replies,
 		// 非 DS 不动这两个额度指针，免得切回 DS 时计数乱掉
@@ -534,7 +620,7 @@ export function tidyMessage(message: any, source: string, session = process.env.
 	const raw = textOf(message.content);
 	if (!raw.trim()) return undefined;
 	const r = tidyAndCount(raw, source, session);
-	if (r.actions.length) log({ actions: r.actions, dropped: r.dropped.length, fixed: r.fixed.length, aside_you: r.asideYou ?? 0, tic: r.tic ?? [], session });
+	if (r.actions.length) log({ actions: r.actions, dropped: r.dropped.length, fixed: r.fixed.length, aside_he: r.asideHe ?? 0, tic: r.tic ?? [], session });
 	return r.text === raw ? undefined : { message: withText(message, r.text) };
 }
 
@@ -815,8 +901,9 @@ export async function tidyMessageRegen(message: any, source: string, request: an
 	}
 
 	const finalText = drafts.length ? drafts[drafts.length - 1] : raw;
-	const r = tidyAndCount(finalText, source, session, { skipTic: !ds, ds });
-	if (r.actions.length) log({ actions: r.actions, ds, dropped: r.dropped.length, fixed: r.fixed.length, aside_you: r.asideYou ?? 0, tic: r.tic ?? [], session });
+	// 没写完/出错的那条（stopReason 不是 stop）宿主不交付，不算一条回复——例如自动重试前的残稿
+	const r = tidyAndCount(finalText, source, session, { skipTic: !ds, ds, cap: !message.stopReason || message.stopReason === "stop" });
+	if (r.actions.length) log({ actions: r.actions, ds, dropped: r.dropped.length, fixed: r.fixed.length, aside_he: r.asideHe ?? 0, tic: r.tic ?? [], session });
 	return r.text === raw ? undefined : { message: withText(message, r.text) };
 }
 export default function albionGuard(pi: ExtensionAPI) {
