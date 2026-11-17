@@ -37,6 +37,7 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
 | `bin/voice_tidy.ts` | 整理器的命令行壳（给 Python 探针 `tests/pi-brain/check_speech.py` 用；规则直接 import 扩展，不另写一份） |
 | `bin/memory.py` | OpenViking 回忆 / 写入 / 检索（格式与 Hermes 时代逐字一致） |
 | `bin/brain_alert.py` | 脑哑了喊人（2026-11-15）：连续 2 轮没回出来就往 Discord 发一条告警，还坏着就隔 3 小时再喊；告警过之后第一次成功补一条恢复（哑了多久、失败几轮）。门铃（`GET /albion/wake`）持续被拒 401 满 10 分钟也喊，这一段第一次拒在 brain.log 记一行、通过时补一条恢复。只告警、不换线路，换线路由人定。webhook 从本机文件读（`ALBION_ALERT_WEBHOOK_FILE` > `/mnt/d/AI/scripts/.ov-alert-discord-webhook` > `agent/.alert-discord-webhook`，都是空就记 `brain alert skipped` 不发送），出外网走 `ALBION_CHAT_PROXY`（默认 `127.0.0.1:7897`，WSL 直连 DNS 超时），错误正文脱敏到 200 字；计数只在内存，宿主重启清零。自检 `tests/pi-brain/check_brain_alert.py` |
+| `bin/pool_probe.py` | grok 号池（:8000）探活（2026-11-17）：一次性脚本，WSL 的 cron 每 2 分钟跑一次，GET 一次号池的 `/models`（只探活，不调模型接口、不占额度）；连续断满 10 分钟往 Discord 发一条、之后每 3 小时再发，通了补一条恢复。地址和 key 每次现读 `agent/models.json` 的 `providers.grokpool`，不走代理；状态在 `state/pool_probe.json`（`ok`/`checked_at`/`since`/`alerted_at`/`reason`），只在状态变化时写 brain.log，健康的每 2 分钟不写（活着看 `checked_at`）；没有 webhook 就不发、也不记已告警。只告警、不修号池。自检 `tests/pi-brain/check_pool_probe.py` |
 | `bin/wake.py` | 她自己醒来：一条门铃计时（她定的时间夹在 30 分钟～3 小时，没定过 60 分钟）+ 三条底线（夜里安静、他刚说过话不打断、两次醒来至少隔 10 分钟）+ `can_speak` 决定这一轮能不能开口；门铃问的就是它 |
 | `bin/test_guard_ext.ts` | 整理器与每轮约定自检（钩子接线、r35 多轮姿态序列、英文拒绝、表态小句删除与误删面、心声「您」→「他」与心声上限、0 次网络请求、约定拼装；Windows/WSL 都能跑） |
 | `bin/test_cross_channel.ts` | 跨渠道近况自检（桌面只收 Discord 群、悄悄话不进桌面、Discord 收桌面近况、水位不重复、内部提示/播种块过滤、send_message 正文落库、6 小时窗口与 12 行/1500 字上限；Windows/WSL 都能跑） |
@@ -147,6 +148,37 @@ bash /root/albion-pi/accept.sh     # 验一遍：直跑 pi 是不是她、两个
 ```
 
 Windows 侧：`D:\AI\Wife\launch\start_brain.ps1`（只有 `launch\start_all.bat` 的第 4 步调它；两个根入口都先到 start_all）。
+
+### 号池探活（cron，2026-11-17）
+
+11-12～11-16 grok 号池（:8000）断了 5 天没人发现，那段时间她画图、看图转述、联网搜都用不了。
+`bin/pool_probe.py` 是一次性脚本，交给 WSL 的 cron 每 2 分钟跑一次（**不碰宿主的 server.py**）：
+探一次 `/models`，断满 10 分钟发一条 Discord、之后每 3 小时再发，通了补一条恢复；状态写
+`state/pool_probe.json`，只在状态变化时写 `logs/brain.log`。只告警，不修号池。
+
+这台 WSL 没有 systemd（`ps -p 1 -o comm=` 是 `init`，`systemctl is-system-running` 报 `offline`），
+所以用 cron。cron 由 `/etc/rc2.d/S01cron` 随 WSL 开机自起（实测 11-12 04:36:05 开机、cron 04:36:14 起），
+`/etc/cron.d/grok-pool-topup` 已经是同一套写法（`/etc/cron.d` 的作业自带用户与 PATH 规则）：
+`/etc/cron.d` 里的作业由 root 跑、不读用户 crontab，环境变量只有 `SHELL`/`PATH`/`HOME` 那几行，
+所以脚本只用标准库、脑目录由自身位置推出来、地址和 key 每次现读 `agent/models.json`，不依赖 cwd 和环境。
+
+```bash
+# 装（root）
+printf '%s\n' '*/2 * * * * root python3 /root/albion-pi/bin/pool_probe.py >/dev/null 2>&1' \
+  > /etc/cron.d/albion-pool-probe && chmod 644 /etc/cron.d/albion-pool-probe
+# 验：cron 在跑 + 隔两分钟看 checked_at 有没有往前走（这台机 rsyslogd 没跑，/var/log/syslog 是空的，
+# 别指望从那儿看 cron 的 CRON 行）
+service cron status
+ls -l /etc/cron.d/albion-pool-probe
+python3 /root/albion-pi/bin/pool_probe.py --print-state     # {"ok": true, "checked_at": …}
+tail -3 /root/albion-pi/logs/brain.log                      # 只在断/恢复/告警时才有新行
+# 卸
+rm -f /etc/cron.d/albion-pool-probe
+```
+
+手动试一次「断」的告警：把脚本和一份临时 `agent/models.json`（`baseUrl` 指到一个没人监听的端口）
+放进临时目录，`ALBION_LOGS` 也指到临时目录，连跑两次看 `logs/brain.log` 里那行 `grok pool down`；
+不要在生产的 `models.json` 上改地址来试。
 
 ## 消息平台（Telegram / Discord，2026-11-02）
 
