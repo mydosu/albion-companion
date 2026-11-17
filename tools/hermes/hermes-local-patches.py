@@ -627,6 +627,12 @@ PATCHES = [
      "跨平台近况注入（TG ↔ Discord）"),
     (RUN_INBOUND, "[跨平台近况]: 入站拼接处注入", CROSS_PLATFORM_CALL_ANCHOR, None,
      CROSS_PLATFORM_CALL_REPLACEMENT, "build_cross_platform_recency_note(source, _cp_session_key)"),
+    # 2026-11-17: ACP initialize 会跑 git 取版本号；git 继承 ACP 的 stdin 管道会在 Windows 上卡死，
+    # 同席 60 秒连接超时（3 秒超时只杀得掉 D:\Git\bin 的壳，真 git 攥着管道不放）。
+    ("hermes_cli/version_info.py", "[ACP]: git 子进程不继承 stdin",
+     '            ["git", *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3, cwd=str(repo_dir),',
+     "            stdin=subprocess.DEVNULL,  # local patch 2026-11-17: an inherited ACP stdin pipe hangs git on Windows",
+     None, "stdin=subprocess.DEVNULL,  # local patch 2026-11-17"),
 ]
 
 SELFTEST = r'''
