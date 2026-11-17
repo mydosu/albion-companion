@@ -49,8 +49,6 @@ async function cli(args: string[], timeoutMs: number): Promise<string> {
 			timeout: timeoutMs,
 			maxBuffer: 20 * 1024 * 1024,
 			encoding: "utf8",
-			// CLI 自己的动作上限比扩展的 45s 短，慢页面让它先报「等加载超时」退出，别被 execFile 杀掉。
-			env: { ...process.env, AGENT_BROWSER_DEFAULT_TIMEOUT: "40000" },
 		});
 		return String(stdout ?? "");
 	} catch (e: any) {
@@ -138,6 +136,8 @@ async function act(params: any) {
 			if (!url) return text("open 要给网址（url）。");
 			if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) url = "https://" + url;
 			if (!/^https?:\/\//i.test(url)) return text("只开 http/https 网址。");
+			// agent-browser 0.43 的 open / tab new 自己等 load 只等 25s，到点报 "Timed out ... load state"；
+			// 这里接住它：页面其实已经打开，照常拍快照，不当作动作失败。
 			let note = "";
 			try {
 				await cli(params.new_tab === true ? ["tab", "new", url] : ["open", url], NAV_TIMEOUT_MS);
