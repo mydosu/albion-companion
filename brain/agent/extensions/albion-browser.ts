@@ -100,7 +100,13 @@ async function summary(): Promise<string> {
 	try {
 		tabs = parseTabs(await cli(["tab", "list"], ACT_TIMEOUT_MS));
 	} catch {}
-	const snap = (await cli(["snapshot", "-i", "-c"], ACT_TIMEOUT_MS)).trim();
+	let snap = "";
+	try {
+		snap = (await cli(["snapshot", "-i", "-c"], ACT_TIMEOUT_MS)).trim();
+	} catch (e: any) {
+		// 动作已经做成了，只是这一页的元素清单没拿到；别让她以为点/填失败了。
+		return `【浏览器·${title}】${url}\n（做完了，但这一页的元素清单没拿到：${firstLine(e)}）\n${FOOTER}`;
+	}
 	const active = tabs.find((t) => t.active)?.id;
 	const more = tabs.length > 1 ? `（开着 ${tabs.length} 个标签页，当前 ${active ?? "?"}）` : "";
 	return `【浏览器·${title}】${url}${more}\n${clip(snap)}\n${FOOTER}`;
@@ -171,7 +177,7 @@ async function act(params: any) {
 			return text(await summary());
 		case "read": {
 			const body = (await cli(["read"], ACT_TIMEOUT_MS)).trim();
-			return text(clip(body));
+			return text(`${clip(body)}\n${FOOTER}`);
 		}
 		case "shot": {
 			const url = (await cli(["get", "url"], ACT_TIMEOUT_MS)).trim();
