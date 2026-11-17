@@ -586,10 +586,15 @@ def ensure_identity_links(*, check_only: bool) -> str:
 
 # (文件, 说明, 锚点, 插入行(None=替换), 新文本(替换用), 判断「已打过」的特征)
 PATCHES = [
+    # 2026-11-17: 上游 v0.22.6 起 TG 自带 reply_expected=group_reply_expected(...)（私信为 True），
+    # 再插一行会「keyword argument repeated」，所以改成替换它。
     (TG, "SILENT: telegram 入站 MessageEvent",
-     "        return MessageEvent(\n"
-     "            text=expand_link_entities(message), message_type=msg_type, source=source, raw_message=message,",
-     SILENT_LINE, None, "reply_expected=False"),
+     "channel_prompt=group_identity_prompt(self, message, channel_prompt), "
+     "reply_expected=group_reply_expected(self, message, chat_type),\n",
+     None,
+     "channel_prompt=group_identity_prompt(self, message, channel_prompt), "
+     "reply_expected=False,  # 2026-11-02: [SILENT] 在私信和群都生效（hermes-local-patches.py）\n",
+     "reply_expected=False"),
     (DC, "SILENT: discord 入站 MessageEvent",
      "        event = MessageEvent(\n"
      "            text=event_text, message_type=msg_type, source=source, raw_message=message,",
@@ -601,7 +606,9 @@ PATCHES = [
     (BASE, "[分条]: 拆分函数 + 分段发送", SEND_HEAD_OLD,
      None, SPLITTER_BLOCK + SEND_HEAD_OLD.replace("        async def _send", SPLIT_DISPATCH + "        async def _send"),
      "def split_on_break_marker("),
-    (BASE, "[接行]: 多行接成一行", SPLITTER_BLOCK + SEND_HEAD_OLD,
+    # 锚点是上一段 [分条] 打完后的样子（干净源码上一次打完两段）。
+    (BASE, "[接行]: 多行接成一行", SPLITTER_BLOCK + SEND_HEAD_OLD.replace(
+         "        async def _send", SPLIT_DISPATCH + "        async def _send"),
      None, FLATTEN_BLOCK + SPLITTER_BLOCK + SEND_HEAD_OLD.replace(
          "        async def _send", FLATTEN_DISPATCH + "        async def _send"),
      "def flatten_message_lines("),
