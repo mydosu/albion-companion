@@ -901,8 +901,10 @@ export async function tidyMessageRegen(message: any, source: string, request: an
 	}
 
 	const finalText = drafts.length ? drafts[drafts.length - 1] : raw;
-	// 没写完/出错的那条（stopReason 不是 stop）宿主不交付，不算一条回复——例如自动重试前的残稿
-	const r = tidyAndCount(finalText, source, session, { skipTic: !ds, ds, cap: !message.stopReason || message.stopReason === "stop" });
+	// 宿主不交付的那几条不算一条回复：带工具调用的半路话（pi_client 只收没有 toolCall 的那条）、
+	// 没写完/出错的残稿（stopReason 不是 stop）
+	const delivered = !toolRound && (!message.stopReason || message.stopReason === "stop");
+	const r = tidyAndCount(finalText, source, session, { skipTic: !ds, ds, cap: delivered });
 	if (r.actions.length) log({ actions: r.actions, ds, dropped: r.dropped.length, fixed: r.fixed.length, aside_he: r.asideHe ?? 0, tic: r.tic ?? [], session });
 	return r.text === raw ? undefined : { message: withText(message, r.text) };
 }

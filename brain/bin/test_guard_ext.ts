@@ -541,13 +541,22 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
     assert.ok(!textOfResult(first as any)?.includes("希望他早点回来"), "重说稿丢了心声");
     assert.equal(tidyMessage(assistant(A + "好的。（希望他早点回来。）"), "在吗", S), undefined, "首稿里的心声没占额度：下一条还留");
   }
+  // 带工具调用的半路话宿主不交付（只收没有 toolCall 的那条）：不占额度
+  {
+    const S = "s-cap-tool";
+    const toolMsg = { role: "assistant", content: [{ type: "toolCall", name: "read" }, { type: "text", text: A + "我去查一下。（希望他早点回来。）" }], stopReason: "stop" };
+    const req = { model: "deepseek/deepseek-v4-flash", messages: [{ role: "user", content: "在吗" }] };
+    const fetchImpl = async () => ({ ok: true, status: 200, json: async () => ({ model: "deepseek/deepseek-v4-flash", choices: [{ message: { content: A + "\n我去查一下。" }, finish_reason: "stop" }] }) });
+    await tidyMessageRegen(toolMsg, "在吗", req, { fetchImpl, provider: { baseUrl: "http://mock.local/v1", apiKey: "k" }, regen: true }, S);
+    assert.equal(tidyMessage(assistant(A + "好的。（希望他早点回来。）"), "在吗", S), undefined, "工具轮的心声没占额度");
+  }
   // 逐字复述他的原文：不动他的字，也不计额度
   {
     const S = "s-cap-literal";
     const quote = A + "好的。（希望他早点回来。）";
     assert.equal(tidyMessage(assistant(quote), "请逐字念：" + quote, S), undefined);
   }
-  console.log("X 心声上限：4 条里留 1、4，删完正文不变不留空行；只有心声/亲密轮不删且计入；会话各算各的；重说稿不占额度 OK");
+  console.log("X 心声上限：4 条里留 1、4，删完正文不变不留空行；只有心声/亲密轮不删且计入；会话各算各的；重说稿与工具轮不占额度 OK");
 }
 // T) 口癖语料：命中换成 options 之一、不命中原样、同一规则连换 3 次不重样、语料缺失不崩
 {
