@@ -1,9 +1,10 @@
 // albion-todo.ts / albion-browser.ts / albion-draw.ts 的离线检查（WSL 里跑）：
 //   node tests/pi-brain/check_todo_browser_draw.ts
-// 前置：agent/extensions 下装了 playwright-core 1.62.1，~/.cache/ms-playwright 里有对应 Chromium。
+// 前置：装了 agent-browser（0.43.0），~/.cache/ms-playwright 里有对应 Chromium。
 // 全用本机假服务与临时目录：不上外网、不调号池、不碰她真实的 state/ 与画廊。
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,6 +13,9 @@ const root = mkdtempSync(join(tmpdir(), "todo-browser-draw-"));
 process.env.ALBION_STATE_DIR = join(root, "state");
 process.env.ALBION_DRAW_DIR = join(root, "画的");
 process.env.PI_CODING_AGENT_DIR = root;
+const BROWSER_SESSION = `browser-check-${process.pid}`;
+process.env.ALBION_BROWSER_SESSION = BROWSER_SESSION;
+process.env.ALBION_BROWSER_PROFILE = join(root, "browser-profile");
 
 // 假网站 + 假号池（生图返回一个本机 url，再从那里取 JPEG 字节）
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 74, 70, 73, 70, 0, 1, 0xff, 0xd9]);
@@ -52,18 +56,20 @@ assert.ok((await txt("todo", { action: "done", id: 99 })).includes("没有 #99")
 
 // browser
 const opened = await txt("browser", { action: "open", url: `http://127.0.0.1:${port}/` });
-assert.ok(opened.includes("测试页") && opened.includes("阿尔比恩的测试页") && opened.includes("下一页 →"), opened);
+assert.ok(opened.includes("测试页") && opened.includes("下一页"), opened);
+assert.ok((await txt("browser", { action: "read" })).includes("阿尔比恩的测试页"));
 const typed = await txt("browser", { action: "type", target: "#q", value: "灯" });
-assert.ok(typed.includes("阿尔比恩的测试页"));
+assert.ok(typed.includes("测试页"));
 const clicked = await txt("browser", { action: "click", target: "搜索" });
-assert.ok(clicked.includes("搜到：灯"), clicked);
+assert.ok(!clicked.includes("这一步没做成"), clicked);
+assert.ok((await txt("browser", { action: "read" })).includes("搜到：灯"));
 const next = await txt("browser", { action: "click", target: "下一页" });
-assert.ok(next.includes("这里是第二页"), next);
+assert.ok(next.includes("第二页"), next);
 const back = await txt("browser", { action: "back" });
 assert.ok(back.includes("测试页"), back);
 const shot = await call("browser", { action: "shot" });
 assert.equal(shot.content[1].type, "image");
-assert.ok((await txt("browser", { action: "open", url: "file:///etc/passwd" })).includes("没做成") || true);
+assert.ok((await txt("browser", { action: "open", url: "file:///etc/passwd" })).includes("只开 http/https"));
 assert.ok((await txt("browser", { action: "click", target: "#不存在" })).includes("没做成"));
 
 // draw
@@ -74,5 +80,8 @@ assert.equal(readdirSync(process.env.ALBION_DRAW_DIR!).length, 1);
 assert.ok((await txt("draw", { prompt: "" })).includes("要写想画什么"));
 
 srv.close();
+try {
+  execFileSync("agent-browser", ["--session", BROWSER_SESSION, "close"], { timeout: 30_000 });
+} catch {}
 console.log("TODO/BROWSER/DRAW OK：清单列/勾/加；浏览器开/填/点/翻页/后退/截图/点不到；画画存进画廊并交图");
 process.exit(0);
