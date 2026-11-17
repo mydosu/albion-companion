@@ -99,6 +99,7 @@ npm i -g agent-browser@0.43.0
 （Playwright 那份），所以 **`~/.cache/ms-playwright` 不要删**，也不要指望 `agent-browser install` 能下下来。
 profile 在 `/root/.albion-browser/profile`，session 是 `albion`，守护进程闲置一小时自己退出。
 号池（grok2api `:8000`，画图/联网搜/看图转述都靠它）在 WSL `/root/grok-pool/` 用 `docker compose` 跑，开机由 `/etc/wsl.conf` 的 `[boot]` 调 `/usr/local/bin/grok-pool-boot.sh` → `grok-pool-up.sh` 拉起；这两个脚本只在 WSL、不入库。
+重建时要装回 `/etc/cron.d/albion-pool-probe`（每 2 分钟探一次号池，断满 10 分钟喊 Discord），做法见 `brain/README.md` 的「号池探活」一节。
 `[boot]` 环境没有 PATH，`grok-pool-up.sh` 开头必须 `export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`，
 否则 dockerd 报 `userland-proxy-path is not set` 起不来（2026-10-24 踩过）。
 SQLite 从停止后的完整备份或 backup API 快照恢复，不能只复制正在写的主 db。
