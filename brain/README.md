@@ -52,6 +52,7 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
 | `agent/extensions/albion-loopguard.ts` | 复读断路（同一调用 + 文件没变才算复读）、坏工具摘除、一轮前后目录快照账本（给摆件和下一轮约定） |
 | `agent/extensions/albion-self.ts` | `next_wake`（下次什么时候醒——一条计时、想做什么、这次做了什么）、`notebook`（心事本） |
 | `agent/extensions/albion-look.ts` | `look`：his/mine 取屏幕原图交主模型（主模型不收图就原图交 grok 转述）；cam 只交本地视觉模型转文字；随时可看 |
+| `agent/extensions/albion-browser.ts` | `browser` 工具：Vercel Labs `agent-browser` 0.43.0（原生 CLI + 后台守护进程），session 固定 `albion`、长期 profile `/root/.albion-browser/profile`；浏览器复用 `~/.cache/ms-playwright/chromium-1234` 那份 Chromium（CfT CDN 不通，`agent-browser install` 下不动，这份 Chromium 别删）。每个可交互元素带 `@eN` 编号，支持多标签页、截图、读正文；守护进程闲置 1 小时自己退出 |
 | `agent/extensions/albion-guard.ts` | `message_end` 钩子上的说话整理器：ACT 补竖线、心声收括号、心声里「您」→「他」（2026-11-16 用户定）、连着 3 条回复最多 1 条带心声（`aside_capped`）、英文拒绝只留表情、泄漏标记截掉、姿态句与括号动作小句各自计额度、对他的话表态的整句/整小句删掉（`pledge_dropped`） |
 | `agent/extensions/albion-relay.ts` | 本机转发 :8798（见下"为什么要转发"）；Pi 一启动它就起 |
 | `agent/extensions/openviking.ts` | 一行薄壳：加载官方 OpenViking 记忆扩展（自动捕获 + 16 个 `openviking_*` 工具）。主体在 `agent/openviking/`，来源与配置见那里的说明 |

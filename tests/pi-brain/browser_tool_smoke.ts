@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { rmSync } from "node:fs";
+import { createServer } from "node:http";
 import { promisify } from "node:util";
 
 process.env.ALBION_BROWSER_SESSION = "albion-test";
@@ -34,6 +35,8 @@ async function step(name: string, p: any) {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// 一个永远不结束响应的页面：用来看 open 的「等 load 超时」是不是被当成成功。
+let slow: any = null;
 
 try {
 	const open = await step("open example.com", { action: "open", url: "example.com" });
@@ -94,10 +97,26 @@ try {
 
 	const closedCurrent = await step("close_tab（不给 target，关当前唯一一个）", { action: "close_tab" });
 	assert.match(closedCurrent.s, /只剩这一个标签页/, closedCurrent.s);
+
+	// 慢页面：只发头和半页正文，永远不结束；open 由 CLI 自己报「等 load 超时」（早于扩展的 45s
+	// execFile 上限），扩展把它当成功，返回带提示的 summary，而不是「这一步没做成」。测试约 35s。
+	slow = createServer((_req, res) => {
+		res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+		res.write("<title>慢页面</title><h1>还在加载</h1>");
+	});
+	await new Promise<void>((r) => slow.listen(0, "127.0.0.1", () => r()));
+	const slowPort = (slow.address() as any).port;
+	const slowOpen = await step("open 永不加载完的页面", { action: "open", url: `http://127.0.0.1:${slowPort}/` });
+	assert.match(slowOpen.s, /这一页还没完全加载完，先看到的是这些。/, slowOpen.s);
+	assert.ok(!slowOpen.s.includes("这一步没做成"), slowOpen.s);
 } finally {
 	await run(BIN, ["--session", "albion-test", "close"], { timeout: 30_000 }).catch(() => {});
+	try {
+		slow?.closeAllConnections?.();
+		slow?.close();
+	} catch {}
 	rmSync(PROFILE, { recursive: true, force: true });
 }
 
-console.log("BROWSER OK：开/看/新标签页/按编号填+回车/标签列表/切换/关标签页/截图/读正文/滚动/按编号点");
+console.log("BROWSER OK：开/看/新标签页/按编号填+回车/标签列表/切换/关标签页/截图/读正文/滚动/按编号点/慢页面不误报");
 process.exit(0);

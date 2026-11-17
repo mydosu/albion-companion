@@ -49,6 +49,8 @@ async function cli(args: string[], timeoutMs: number): Promise<string> {
 			timeout: timeoutMs,
 			maxBuffer: 20 * 1024 * 1024,
 			encoding: "utf8",
+			// CLI 自己的动作上限比扩展的 45s 短，慢页面让它先报「等加载超时」退出，别被 execFile 杀掉。
+			env: { ...process.env, AGENT_BROWSER_DEFAULT_TIMEOUT: "40000" },
 		});
 		return String(stdout ?? "");
 	} catch (e: any) {
@@ -136,9 +138,16 @@ async function act(params: any) {
 			if (!url) return text("open 要给网址（url）。");
 			if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) url = "https://" + url;
 			if (!/^https?:\/\//i.test(url)) return text("只开 http/https 网址。");
-			await cli(params.new_tab === true ? ["tab", "new", url] : ["open", url], NAV_TIMEOUT_MS);
+			let note = "";
+			try {
+				await cli(params.new_tab === true ? ["tab", "new", url] : ["open", url], NAV_TIMEOUT_MS);
+			} catch (e: any) {
+				// 页面已经打开、只是 load 事件迟迟不来（广告/慢资源）：照常拍快照，不当作动作失败。
+				if (!/timed out.*load state/i.test(firstLine(e))) throw e;
+				note = "（这一页还没完全加载完，先看到的是这些。）\n";
+			}
 			await settle();
-			return text(await summary());
+			return text(note + (await summary()));
 		}
 		case "click": {
 			if (!target) return text("click 要给 target。");
