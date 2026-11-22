@@ -59,7 +59,7 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
 | `agent/extensions/openviking.ts` | 一行薄壳：加载官方 OpenViking 记忆扩展（自动捕获 + 16 个 `openviking_*` 工具）。主体在 `agent/openviking/`，来源与配置见那里的说明 |
 | `agent/openviking/` | 官方扩展 `openviking-pi-extension` 0.4.13（**不 vendor 源码**，只记来源）；`来源与配置.md` 写清了装法、开关与回退 |
 | `agent/models.json` | provider 指向本机转发（`commandcode`）与本机 magpie（`magpie`，2026-10-30 起脑的默认线路）；`commandcode`（Command Code 第一把 key，daily one）与 `grokpool`（号池 key）都只在 WSL 里，**不入库**；仓库里留 `commandcode` 的 `$COMMANDCODE_API_KEY` 引用和 magpie 的本地占位 key `magpie`（回环口不校验，不是凭据） |
-| `agent/settings.json` | Pi 设置：`defaultProvider`/`defaultModel` 跟着脑走——`bin/follow_settings.py` 每轮把脑实际在用的模型写回这两个键（默认 `magpie/antigravity/gemini-3.8-flash`）；`images.autoResize: false`（图片原字节直传，本机不缩） |
+| `agent/settings.json` | Pi 设置：`defaultProvider`/`defaultModel` 跟着脑走——`bin/follow_settings.py` 每轮把脑实际在用的模型写回这两个键（默认 `magpie/agy-cli/gemini-3.8-flash`）；`images.autoResize: false`（图片原字节直传，本机不缩） |
 | `agent/extensions/albion-lunar.ts` | `lunar_calendar`：农历/节气/干支/宜忌，`lunar-javascript` 本机算——**她自己造的**（2026-10-14） |
 | `state/state.db` | 活动库（Hermes state.db 的最小兼容表） |
 | `bin/widget_snapshot.py` → `state/widget.json` | 宿主后台线程每 5 秒把活动库查询结果原子写成快照；Windows 桌面摆件每 5 秒读一次这份（超过 60 秒没更新就显示"上次成功 X 前"）。`--selftest` 自检 |
