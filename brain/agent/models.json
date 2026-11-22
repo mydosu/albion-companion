@@ -6,7 +6,7 @@
       "apiKey": "magpie",
       "models": [
         {
-          "id": "antigravity/gemini-3.8-flash",
+          "id": "agy-cli/gemini-3.8-flash",
           "name": "Gemini 3.8 Flash · Antigravity (via magpie)",
           "reasoning": true,
           "input": [

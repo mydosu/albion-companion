@@ -1,7 +1,7 @@
 {
   "transport": "sse",
   "defaultProvider": "magpie",
-  "defaultModel": "antigravity/gemini-3.8-flash",
+  "defaultModel": "agy-cli/gemini-3.8-flash",
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": true,
   "retry": {
