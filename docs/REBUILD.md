@@ -27,7 +27,7 @@ python tools/check_repository.py
 本机 Node `22.23.2`、pnpm `10.32.1`；`shell/package.json` 声明 `pnpm@11.24.0`。
 此差异已登记，未修改包管理器与 lockfile。干净环境以仓库声明和锁文件为准；
 若声明版本不可用，先在隔离目录核实兼容性，不能盲目重写锁文件。
-先恢复下一节的角色资产，然后执行：
+先恢复下一节的角色资产（含两份模型 zip 与 `author-models/`；只有一个检出不用跑同步脚本，若在 git 工作树或第二个检出里打包，`shell/.gitignore` 会挡掉 `.env.local`、两份 zip 与 `author-models/`，`tools/sync-shell-private-assets.ps1` 是把主检出私密资产拷进工作树的脚本，但里面的 `$files` 清单照作者自己的 8 份资产写死、缺任一份即中止，工作树里要么手动拷这几项，要么先按自己的资产改 `$files` 再跑），然后执行：
 
 ```powershell
 Set-Location D:\AI\Wife\shell
@@ -60,7 +60,8 @@ python tools/restore_weights.py
 |---|---|
 | `tts/irodori/checkpoints/model.safetensors` | 当前基础 checkpoint，3,064,295,596 字节；核对清单 SHA256，不能直接用 README 最新模型替换 |
 | `shell/packages/stage-ui/src/assets/live2d/models/albion.zip` | 本机角色 Live2D 包 |
-| `shell/packages/stage-ui/src/assets/spine/models/albion-spine-38.zip` | 本机角色 Spine 包 |
+| `shell/packages/stage-ui/src/assets/spine/models/albion-spine-38.zip` | 本机角色 Spine 包（装扮 B） |
+| `shell/packages/stage-ui-spine/src/assets/author-models/` | 派生交互 spec（`albion-spec-a.json`、`albion-spec-b.json`）、装扮 A（`albion-spine-38-costume-a.zip`）与触摸语音（`voice/*.wav`）；前几项由 `Model.vue:28-32` 静态 import，缺了 `build:unpack` 会报错；只用自己模型要改 `Model.vue` 第 28–32 行 |
 | `ear/models/modelscope/iic/` | paraformer ASR、fsmn VAD、ct-punc，目录名由 `ear/whisper_serve.py` 指定 |
 | `tts/ref_audio/<角色>/` | 参考音频；后端优先 `004.wav`、`068.wav`、`072.wav`、`003.wav`，缺时取已有 WAV |
 | `ear/.venv/` | 耳朵专属 Python 3.10 环境（CPU 版 torch + funasr）；`uv sync --directory ear` 建 |
@@ -142,9 +143,14 @@ Windows 翻译桥默认 `TTS_TRANSLATE_BACKEND=codex`；这是历史分支名，
 Codex CLI 仅作最终退路；`CODEX_BIN` 指向的文件不存在时立即跳过、只提示一次，不起进程或设置失败冷却。
 退路模型默认 `deepseek/deepseek-v4.1-flash`，可用 `TTS_TRANSLATE_FALLBACK_MODEL` 覆盖；`reflection/beam:free` 仅作手动备选。
 **首腿跟着脑走（2026-10-30）**：桥先问脑的 `http://127.0.0.1:8650/health` 拿 `provider`/`model`（缓存 60 秒，
-问不到用上次的），`magpie` → 打本机 `magpie` `http://127.0.0.1:3425/v1` 的 `/chat/completions`（`apiKey` 本地占位，
-提示词里带 `reasoning_effort: low`：实测一句 2.4~2.8s，不压是 16s）；`commandcode` → 走上面的 Command Code 腿 + 那个模型。
+问不到用上次的），`magpie` → 打本机 `magpie` `http://127.0.0.1:3425/v1` 的 `/chat/completions`（`apiKey` 本地占位；
+以前经 magpie 走 Gemini 压思考 `reasoning_effort: low` 实测一句 `2.4~2.8s`，不压是 `16s`；2026-11-15 脑换成
+`agy-cli/gemini-3.8-flash` 后，翻译跟过去一句要 `10~13s`，因此可用 `TTS_TRANSLATE_ROUTE_PROVIDER`/`TTS_TRANSLATE_ROUTE_MODEL`
+两个都填把翻译单独钉回 `magpie` + `commandcode/deepseek/deepseek-v4.1-flash`，同类 Command Code 线路关思考实测一句 `1.6~2.7s`）；
+`commandcode` → 走上面的 Command Code 腿 + 那个模型。
 DeepSeek 官方、Command Code、codex 三条退路顺序不变；`TTS_BRAIN_ROUTE=0` 可关掉首腿（离线测试用）。
+直出日语的中文字幕开关也在 `config/local.env`（供 9885 流式网关使用）：`ALBION_CAPTION_ZH`（默认 1＝开）、
+`ALBION_CAPTION_WAIT_S`（无音频段就地等字幕秒数，默认 3、0＝不等）、`ALBION_CAPTION_TIMEOUT`（`/v1/caption` 请求与收尾等待上限，默认 45 秒；详见 `config/local.env.example` 与 `教程/05-流式语音.md`）。
 部署时清理上轮留下的 `TTS_TRANSLATE_BACKEND=api` 环境覆盖，或显式设为 `codex`；启动 bat 不再设置该变量。
 只有显式选择 `api` 才需独立 key：进程环境 `TTS_TRANSLATE_KEY` 优先，否则从 `HERMES_ENV_FILE` 指向的本地
 私密文件读取 `DEEPSEEK_API_KEY`（默认文件 `%USERPROFILE%\AppData\Local\hermes\.env`）。
