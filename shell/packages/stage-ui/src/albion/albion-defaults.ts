@@ -2,7 +2,7 @@
  * 阿尔比恩桌宠的本机配置（我们 fork 的定制，2026-09-14）
  *
  * 端点与令牌来自应用根目录的 .env.local（Vite 约定，不进仓库）：
- *   VITE_ALBION_LLM_BASE / VITE_ALBION_LLM_KEY  → Hermes 网关 API Server（她的脑子）
+ *   VITE_ALBION_LLM_BASE / VITE_ALBION_LLM_KEY  → Pi 脑宿主（brain/bin/server.py :8650，她的脑子）
  *   VITE_ALBION_TTS_BASE / VITE_ALBION_TTS_MODEL → Irodori 桥（她的嘴）
  *
  * 这里只放「默认配置」：各 store 把它当自身默认值，用户日后在界面上改过就以界面为准。
@@ -10,7 +10,7 @@
  */
 
 // 兜底即本机服务：不写 .env.local 也能跑（LLM/TTS/STT 都是本地那三个）
-// LLM 的 key 是机密（Hermes 网关的 API_SERVER_KEY），只能来自 .env.local 或界面里填
+// LLM 的 key 是机密（Pi 脑宿主的 API_SERVER_KEY，在 WSL /root/albion-pi/agent/.env），只能来自 .env.local 或界面里填
 export const ALBION_LLM_BASE = (import.meta.env.VITE_ALBION_LLM_BASE as string | undefined) ?? 'http://127.0.0.1:8650/v1'
 export const ALBION_LLM_KEY = (import.meta.env.VITE_ALBION_LLM_KEY as string | undefined) ?? ''
 export const ALBION_TTS_BASE = (import.meta.env.VITE_ALBION_TTS_BASE as string | undefined) ?? 'http://127.0.0.1:9881/v1'
@@ -26,7 +26,7 @@ export const ALBION_STREAM_TTS_PROVIDER_ID = 'albion-stream-tts'
 export const ALBION_STT_BASE = (import.meta.env.VITE_ALBION_STT_BASE as string | undefined) ?? 'http://127.0.0.1:9882/v1'
 export const ALBION_STT_MODEL = 'paraformer-zh' // 耳朵默认引擎已换中文专用 paraformer（whisper-1 仍被接受，切回 whisper 引擎时改这里）
 
-/** LLM 走 Hermes 网关的 OpenAI 兼容口；模型名就是 profile 名（albion） */
+/** LLM 走 Pi 脑宿主（:8650）的 OpenAI 兼容口；模型名默认 albion */
 export const ALBION_LLM_PROVIDER_ID = 'openai-compatible'
 export const ALBION_LLM_MODEL = 'albion'
 /** 嘴走 Irodori 桥；voice/model 就是船名 */

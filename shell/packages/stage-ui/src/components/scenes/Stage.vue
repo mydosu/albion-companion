@@ -1216,10 +1216,10 @@ function applyDisplaySpan(span: StreamingDisplaySpan, turnId?: string) {
 /**
  * 中文字幕晚到（display.caption）：只换**这一句**的字幕。
  *
- * 三种命运：
- *   * 这句还没落 span / 还没起播 ⇒ 先存着，落 span 时直接用中文（applyDisplaySpan 里替换）；
- *   * 就是屏幕上这一句（账本最后一个单元）⇒ 立刻重发字幕（replace），不动展示通道；
- *   * 已经翻篇（账本里更靠后的单元已经落账）⇒ 丢掉，绝不把旧中文糊到新句上。
+ * 三种命运（按轮判定）：
+ *   * 这句还没落 span / 还没入本轮账本 ⇒ 先存进 captionZhByTurnId，落 span 时直接用中文（applyDisplaySpan 里替换）；
+ *   * 本轮账本还在且本轮仍是当前字幕条归属 ⇒ 按本轮账本重渲并立刻重发字幕（replace），不动展示通道；
+ *   * 已切到新一轮或被打断（本轮账本已清掉 / captionOwnerTurnId 已换 / 正在播别的轮次）⇒ 丢掉，绝不把旧轮中文糊到新轮上。
  */
 function applyDisplayCaption(caption: StreamingDisplayCaption, turnId?: string) {
   if (captionFallback.active)

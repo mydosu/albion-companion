@@ -4,7 +4,7 @@
 哪些配置**已经由代码兜底**、哪些**必须人工补**。每条都给 `文件:行号` 出处；找不到确实证据的标「未确认」。
 
 判断依据只有一条：`.env.local` 的 `VITE_*` 是 **Vite 编译期内联**（`shell/apps/stage-tamagotchi/.env.example:1`
-写明「改完重新打包外壳才生效」，`00-复现向导.md:179` 同样提示），而壳里点出来的设置存在渲染端
+写明「改完重新打包外壳才生效」，`教程/00-复现向导.md`「阶段 2 构建桌面壳」同样提示），而壳里点出来的设置存在渲染端
 **localStorage**（`useLocalStorage*`）或 Electron **userData** 的文件里。两者互不覆盖。
 
 ## 最短路径（照做即可）
@@ -12,8 +12,9 @@
 1. 先在 `shell/apps/stage-tamagotchi/.env.local` 填 `VITE_ALBION_LLM_KEY`（= 脑的 `API_SERVER_KEY`），
    其它地址保持默认，然后 `pnpm -F @proj-airi/stage-tamagotchi build:unpack`。
    —— 不填这支 key，聊天 provider 根本不会预置（`albion-defaults.ts:48`），开机就是没脑子。
-2. 确认两个角色包在位：`assets/live2d/models/albion.zip`、`assets/spine/models/albion-spine-38.zip`
-   （`display-models.ts:48-49` 按文件名引用，`.gitignore:13` 忽略 `*.zip`，必须自己放，见 `docs/REBUILD.md:62-63`）。
+2. 确认两个角色包与 Spine 交互资产在位：`shell/packages/stage-ui/src/assets/live2d/models/albion.zip`、
+   `shell/packages/stage-ui/src/assets/spine/models/albion-spine-38.zip`（`display-models.ts:24-25,48-49` 按文件名引用，`.gitignore:13` 忽略 `*.zip`，必须自己放，见 `docs/REBUILD.md`），以及 `shell/packages/stage-ui-spine/src/assets/author-models/`（`albion-spec-a.json`、`albion-spec-b.json`、`albion-spine-38-costume-a.zip`、`voice/*.wav`；前几项由 `shell/packages/stage-ui-spine/src/components/scenes/spine38/Model.vue:28-32` 静态 import，整目录被 `shell/.gitignore:166` 忽略。只用自己模型的话，要改 `Model.vue` 第 28–32 行那几条静态 import）。
+   只有一个检出时不用跑同步脚本；若在 git 工作树或第二个检出里打包，`.env.local`、两份 zip 与 `author-models/` 会被 `.gitignore` 挡掉，`tools/sync-shell-private-assets.ps1` 是把主检出私密资产拷进工作树的脚本，但里面的 `$files` 清单照作者自己的 8 份资产写死、缺任一份即中止——在工作树打包要么手动拷上述资产，要么先按自己的资产改 `$files` 再跑。
 3. 启动一次，让它自己写 onboarding 标记与默认 provider（`applyAlbionDefaults()`，`renderer/main.ts:54`）。
 4. 只有换模型、换上游时才动界面；形象、窗口位置、缩放都不用设（下面表里标「否」的项）。
 5. 要在壳里听声音，先把桥/流式服务拉起来；否则她出字不出声（不是壳配错了）。
@@ -31,7 +32,7 @@
 | 语音识别（耳朵） | localStorage `settings/hearing/*`，默认 `:9882/v1`、`paraformer-zh` | 能（`VITE_ALBION_STT_BASE`） | 否 | `stores/modules/hearing.ts:335-337`、`albion-defaults.ts:26-27` |
 | 视觉模型地址 | provider `vision-openai-compatible`，默认**空** | 能（`VITE_ALBION_VISION_BASE`）；为空则不预置该 provider | 想用壳里的看图才要；眼睛主要走脑的 `ALBION_EYES_VLM` | `albion-defaults.ts:37-39`、`:88-97`、`stores/modules/vision/store.ts:19-21` |
 | 默认形象（皮肤） | localStorage `settings/stage/model`，默认 `preset-spine38-albion` | 不能 | 否 | `stores/settings/stage-model.ts:19`、`albion-defaults.ts:43` |
-| 角色模型包本体 | `packages/stage-ui/src/assets/{live2d,spine}/models/*.zip` | 不能（是文件，不是变量） | **是**（仓库不含，缺了舞台空） | `stores/display-models.ts:48-49`、`docs/REBUILD.md:62-63` |
+| 角色模型包与 `author-models/` | `packages/stage-ui/src/assets/{live2d,spine}/models/*.zip` 与 `packages/stage-ui-spine/src/assets/author-models/` | 不能（是文件，不是变量） | **是**（仓库不含，缺了构建静态 import 失败或舞台空） | `stores/display-models.ts:24-25,48-49`、`stage-ui-spine/src/components/scenes/spine38/Model.vue:28-32`、`docs/REBUILD.md` |
 | 模型缩放 / 位置 | localStorage `settings/live2d/scale|position`、`settings/spine38/scale|x|y` | 不能 | 否；拖一下、滚轮缩放会自动存，托盘「推荐尺寸」还能一键套一套推荐值 | `apps/stage-tamagotchi/src/renderer/bridges/stage-layout.ts:41-45`、`src/main/tray/recommended-layout.ts:18-33`、`:45-59` |
 | 主窗位置 / 尺寸 | `<userData>/app-config.json` 的 `windows[]` | 不能 | 否，移动/缩放后自动写 | `src/main/windows/main/app-config.ts:8-24`、`windows/main/index.ts:102-127` |
 | 托盘三开关（沉底 / 锁拖动 / 锁滚轮缩放） | `<userData>/app-config.json` 的 `windowFlags` | 不能 | 否，默认都不勾 | `windows/main/app-config.ts:25-29`、`windows/main/window-flags.ts:21-23` |
@@ -55,6 +56,5 @@
 
 ## 与 00 复现向导的关系
 
-`00-复现向导.md:189` 已经写了「聊天 provider 与 key、布局、角色卡」要在壳里补。本表是那句话的展开：
-其中**布局**和**角色卡**其实都有代码兜底、不用手设，真正必须人工处理的只有**脑的 key**、
-**两个角色包**，以及（在换模型时）**模型名**。
+`教程/00-复现向导.md`「阶段 2 构建桌面壳」已经说明布局和角色卡都有代码兜底、不用手设。本表是那段清单的展开：
+真正必须人工处理的只有**脑的 key**、**两个角色包与 `author-models/`**，以及（在脑的 profile 不叫 `albion` 时）**模型名**。
