@@ -15,6 +15,7 @@ $LogRoot = 'D:\AI\scripts\logs\openviking-recovery'
 $StatePath = 'D:\AI\scripts\logs\.openviking-recovery-state.json'
 $MaintenanceFlag = 'D:\AI\scripts\logs\.openviking-maintenance'
 $DataBackupRoot = 'D:\AI\Wife\backup\profile-archives\openviking-recovery'
+$KeepColdBackups = 2
 $MutexName = 'Local\AlbionOpenVikingRecovery'
 $script:LogPath = Join-Path $LogRoot 'recovery.log'
 $script:RunId = [Guid]::NewGuid().ToString('N').Substring(0, 12)
@@ -223,6 +224,21 @@ function Backup-ColdData {
     $State.DataBackupPath = $final
     Save-RecoveryState -State $State
     Write-RecoveryLog ('INFO cold data backup verified; files={0}; bytes={1}; robocopy_rc={2}' -f $after.Count, $after.Sum, $copyCode)
+
+    # 每份冷备份都是 OV data 的整份副本（约 1.9GB），不清理会无限堆积（2026-11-22 已堆到 26 份 / 45.6GiB），只留最近 $KeepColdBackups 份。
+    try {
+        $staleBackups = @(Get-ChildItem -LiteralPath $DataBackupRoot -Directory -ErrorAction Stop |
+            Where-Object { ($_.Name -match '^\d{8}-\d{9}$') -and (Test-Path -LiteralPath (Join-Path $_.FullName 'data') -PathType Container) } |
+            Sort-Object Name -Descending |
+            Select-Object -Skip $KeepColdBackups)
+        foreach ($stale in $staleBackups) {
+            Remove-Item -LiteralPath $stale.FullName -Recurse -Force -ErrorAction Stop
+            Write-RecoveryLog ('INFO pruned old cold backup {0}' -f $stale.Name)
+        }
+    }
+    catch {
+        try { Write-RecoveryLog ('WARN cold backup prune failed; type={0}; detail={1}' -f $_.Exception.GetType().Name, $_.Exception.Message) } catch { }
+    }
 }
 
 function Start-OpenViking {

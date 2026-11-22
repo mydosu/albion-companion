@@ -11,6 +11,7 @@
 - 可重复使用的维护工具放 `tools/`；一次性改码脚本放 `archive/legacy/`，不可直接批量执行归档脚本。
 - 旧生产副本放 `backup/code/<日期>/<原相对路径>`，不入 Git；私密 profile 归档放 `backup/profile-archives/`。回滚源码优先用明确 Git commit，在独立 worktree 验证。
 - 日志放 `logs/`，临时草稿放 `_tmp/`；现有仍在写的日志路径等进程自然停止后再迁，不能为了整理杀进程。个人数据 `her-home/`、模型/环境/训练数据保持本地。
+- 成员（同席各席位、子代理）的日志、临时文件和下载物只写在本仓库或自己的工作树里（`logs/`、`_tmp/`、`tests/output/`），不写到 `D:\AI` 根目录或别的项目目录。
 - 修改路径前搜索引用，包括文档、启动器、Python 导入、Node import、fixture 路径与输出目录；同一变更更新引用和 `docs/layout-moves-20261002.json` 的后续迁移记录。保留 bat 原编码与 CRLF。
 - WSL 生产位置及仓库快照的边界见 `brain/README.md`。修改应落在仓库源码/补丁并验证，再按任务授权部署；禁止把 profile 全目录复制进仓库。
 - `.env`、API key、token、私钥、聊天数据库、个人配置、日志与私密报告不入 Git，也不输出到工具结果或文档。示例只填空值；不要读取 `D:\AI\agent-keys.json` 并打印。
