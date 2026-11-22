@@ -14,13 +14,13 @@
 
 | 功能 | 用的模型 | 怎么接的 / 详见 |
 |---|---|---|
-| 脑：她说话、决定调哪个工具 | Gemini 3.8 Flash | Gemini Pro 订阅，Magpie 里走 Antigravity 官方 CLI（agy-cli）；配置见 [00](00-复现向导.md) 阶段 3 |
+| 脑：她说话、决定调哪个工具 | Gemini 3.8 Flash | Gemini Pro 订阅，Magpie 里走 Antigravity 官方 CLI（agy-cli）；配置见 [00 阶段 3](00-复现向导.md#阶段-3-脑与人设教程-03) |
 | 脑的兜底 | DeepSeek V4 Flash | Command Code 中转 |
 | 人设改写 | Gemini | [03](03-口癖和人设.md) |
-| TTS 翻译（中文转日语，她说日语）和日语字幕 | 首腿默认跟脑走，也可单独钉死；代码默认会对冲（慢了就并行打退路腿），我本机把语音和字幕两个阈值都设成 0，所以是串行（报错或超时才换 Command Code） | [04](04-训练角色声音.md) |
+| TTS 翻译（中文转日语，她说日语）和直出日语的中文字幕 | 首腿默认跟脑走，也可单独钉死；代码默认会对冲；我本机和模板都设成了 0，所以是串行（报错或超时才换 Command Code） | [04 翻译线路](04-训练角色声音.md#翻译线路)、[05 字幕](05-流式语音.md#字幕直出日语时的中文字幕) |
 | 联网搜索（基础） | Bing RSS（不走模型，不花 token） | `web_search`（适合英文技术资料） |
-| 联网搜索（主力） | grok-chat-fast | grok 号池（本机代理，默认走这条搜中文站点和资源；有探活，断了会喊，见 `brain/README.md`） |
-| 上网 / 看网页 | 本地 Chromium（不走额外模型） | `agent-browser`（长期 profile、多标签、读正文与截图，见 `brain/README.md`） |
+| 联网搜索（主力） | grok-chat-fast | grok 号池（本机代理，默认走这条搜中文站点和资源；有探活，断了会喊，见 [brain/README.md](../brain/README.md#号池探活cron2026-11-17)） |
+| 上网 / 看网页 | 本地 Chromium（不走额外模型） | `agent-browser`（长期 profile、多标签、读正文与截图，见 [brain/README.md](../brain/README.md#文件)） |
 | 画图 | grok-imagine-image-2.0，改图用 grok-imagine-image-edit | grok 号池（有探活，断了会喊） |
 | 看屏幕截图 / 本地图片 | 屏幕截图由主模型自己看；主模型不收图，或用 `look_image` 看本机图片文件时，原图直传号池里的 grok-4.7 转述 | [09](09-她的眼睛.md) |
 | 看摄像头 | 视觉机上的本地 Qwen3-VL 4B（llama.cpp），照片不出局域网，也不进主模型 | [09](09-她的眼睛.md) |
@@ -29,7 +29,7 @@
 | 语音识别 | 本地 paraformer，跑 CPU | [06](06-语音输入.md) |
 | 她的声音 | 本地 Irodori TTS + 自己训的 LoRA | [04](04-训练角色声音.md) |
 
-看摄像头、语音识别、她的声音、Bing RSS 搜索和本地浏览器都在本地跑或直接抓取，不花模型 token。grok 号池在 WSL 里有定时探活（每 2 分钟探一次，不占额度），断满 10 分钟会往 Discord 喊人，配置见 `brain/README.md`。
+看摄像头、语音识别、她的声音、Bing RSS 搜索和本地浏览器都在本地跑或直接抓取，不花模型 token。grok 号池在 WSL 里有定时探活（每 2 分钟探一次，不占额度），断满 10 分钟会往 Discord 喊人，配置见 [brain/README.md](../brain/README.md#号池探活cron2026-11-17)。
 
 每个功能的模型都能单独换，各篇有写怎么配；在哪改、要不要重启的速查表在 [REBUILD](../docs/REBUILD.md) 的「换模型清单」。
 

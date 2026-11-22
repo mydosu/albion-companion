@@ -17,7 +17,7 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
                                           └─ pi --mode rpc 子进程（长驻，提着她的全部）
                                                ├─ 人格      agent/SYSTEM.md（由 SOUL.md 生成）
                                                ├─ 每轮约定 + 回忆 + 活动库 + 处境  albion-turn.ts
-                                               ├─ 说话整理器  albion-guard.ts（不叫模型）
+                                               ├─ 说话整理器  albion-guard.ts（检查/必要时同路由重说 + 确定性整理）
                                                ├─ 复读断路/坏工具/改文件快照账本  albion-loopguard.ts
                                                ├─ 她自己的时间  albion-self.ts → state/self.json、state/notebook.json
                                                ├─ 她自己的眼睛  albion-look.ts（his/mine 原图或转文字；cam 只走本地视觉模型）
@@ -54,7 +54,7 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
 | `agent/extensions/albion-self.ts` | `next_wake`（下次什么时候醒——一条计时、想做什么、这次做了什么）、`notebook`（心事本） |
 | `agent/extensions/albion-look.ts` | `look`：his/mine 取屏幕原图交主模型（主模型不收图就原图交 grok 转述）；cam 只交本地视觉模型转文字；随时可看 |
 | `agent/extensions/albion-browser.ts` | `browser` 工具：Vercel Labs `agent-browser` 0.43.0（原生 CLI + 后台守护进程），session 固定 `albion`、长期 profile `/root/.albion-browser/profile`；浏览器复用 `~/.cache/ms-playwright/chromium-1234` 那份 Chromium（CfT CDN 不通，`agent-browser install` 下不动，这份 Chromium 别删）。每个可交互元素带 `@eN` 编号，支持多标签页、截图、读正文；守护进程闲置 1 小时自己退出 |
-| `agent/extensions/albion-guard.ts` | `message_end` 钩子上的说话整理器：ACT 补竖线、心声收括号、心声里「您」→「他」（2026-11-16 用户定）、连着 3 条回复最多 1 条带心声（`aside_capped`）、英文拒绝只留表情、泄漏标记截掉、姿态句与括号动作小句各自计额度、对他的话表态的整句/整小句删掉（`pledge_dropped`） |
+| `agent/extensions/albion-guard.ts` | `message_end` 钩子上的说话整理器（`tidyMessageRegen`）：先按模型检查首稿，命中问题走同路由重说（首稿外最多 2 次），最后再过确定性整理——ACT 补竖线、心声收括号、心声里「您」→「他」（2026-11-16 用户定）、连着 3 条回复最多 1 条带心声（`aside_capped`）、英文拒绝只留表情、泄漏标记截掉、表态小句删除（`pledge_dropped`）、点单腔「点的」→「让的」（`dian_fixed`）；DeepSeek 模型另开三类口癖检测/语料替换与姿态句/括号动作额度 |
 | `agent/extensions/albion-relay.ts` | 本机转发 :8798（见下"为什么要转发"）；Pi 一启动它就起 |
 | `agent/extensions/openviking.ts` | 一行薄壳：加载官方 OpenViking 记忆扩展（自动捕获 + 16 个 `openviking_*` 工具）。主体在 `agent/openviking/`，来源与配置见那里的说明 |
 | `agent/openviking/` | 官方扩展 `openviking-pi-extension` 0.4.13（**不 vendor 源码**，只记来源）；`来源与配置.md` 写清了装法、开关与回退 |
@@ -310,13 +310,12 @@ Magpie 只是作者的"模型管理器"：它往 `/root/.pi/agent/settings.json`
   聊天 DS 更自然、更快。换 magpie 的 Gemini 3.8 Flash 后（10-29 实测）聊天/工具/翻译都 200，但思考贵：不压提示词一句 16s，
   压到 `reasoning_effort: low` 是 2.4~2.8s（脑的整理器钩子不受影响，见 `albion-guard.ts`）。
 
-- 说出口之前只过一道**整理器**（`albion-guard.ts`，2026-10-16 起；原来的严格裁判、同路由重生成、哨兵、`ALBION_DS_PATCHES` 开关都撤了）：
-  ACT 补竖线、心声标签收回括号、英文拒绝稿只留表情、泄漏的工具调用标记截掉、陪伴/等候姿态句每 8 条回复最多放过一次
-  （`ALBION_POSTURE_EVERY` 可调）；闭合括号里的自身动作/身体反应每 6 条最多留一次，超额只删命中的小句、保留念头
-  （`ALBION_GESTURE_EVERY` 可调，整条删空则原样留并用掉额度）。两种额度各自记在 `state/voice.json`，不叫模型、不发请求。
-  **心声**另有两条（2026-11-16 用户定）：闭合心声里的「您」换成「他」（正文不动，含第三方名字的整段不碰）；
-  同一会话连着 3 条交付的回复最多 1 条留心声，超出整段删掉（`aside_capped`；只有心声的那条与 ACT 带 `intimate`
-  的亲密轮不删、也算带过心声）。这条状态按会话记在内存里，脑重启后从零数。
+- 说出口之前过一道**说话整理器**（`albion-guard.ts` 的 `tidyMessageRegen`；2026-10-16 曾精简掉严格裁判、哨兵与 `ALBION_DS_PATCHES`，2026-10-29 又把同路由重说接了回来，设 `ALBION_REGEN=0` 可关）：
+  - **先检查、必要时同路由重说**（静默指令、自主醒来轮与逐字复述不重说，首稿之外最多重说 2 次，一共最多 3 稿；重说仍不过或出错也不发哨兵、不回 500，取最后一稿往下走）：
+    - **DeepSeek 模型**（`isDeepSeekModel`）：跑全量 `checkDraft` + 三类口癖检测（`detectRegenHits`：`metaphor` 含 `tic-phrases.json` / `habit` / `stance`），连同 `companionship_posture`（陪伴/等候姿态）与 `awkward_diction`（「自己讨」）命中都会触发同路由重说；
+    - **非 DeepSeek 模型（如 Gemini）**：跳过上述 DS 专属口癖检查，但 `checkDraft` 里的通用格式与边界检查仍会触发同路由重说——包括 `act`（ACT 标记缺失、JSON/情绪名非法或出现多个）、`fictional_touch`（原文没碰头/碰胸却输出 `touch_head`/`touch_body`）、`recalled_meta_narration`（被问回忆时出现元叙述）、`unbalanced_aside`（括号心声未闭合/不配对）、`leaked_markup`（泄漏 `DSML`/`<function_calls>`/`<invoke>` 等标记）、`missing_reply`（非静默/非空闲/非纯动作要求下正文为空）、`incomplete_completion`（`stopReason` 不是 `stop`，没写完；`should_be_silent` 也在 `checkDraft` 里，但静默轮本身不进重说）。
+  - **再过确定性整理**（`tidyAndCount`，不叫模型）：ACT 补竖线、心声标签收回括号、英文拒绝稿只留表情、泄漏的工具调用标记截掉、对他的话表态的小句删掉（`pledge_dropped`）、点单腔「点的」改「让的」（`dian_fixed`）；仅对 DeepSeek 模型另做口癖语料替换（`fixTicPhrases`）与两项额度——陪伴/等候姿态句每 8 条回复最多放过一次（`ALBION_POSTURE_EVERY` 可调）、闭合括号里的自身动作/身体反应每 6 条最多留一次，超额只删命中的小句、保留念头（`ALBION_GESTURE_EVERY` 可调，整条删空则原样留并用掉额度），两种额度各自记在 `state/voice.json`。
+  - **心声**另有两条（2026-11-16 用户定，所有模型都跑）：闭合心声里的「您」换成「他」（正文不动，含第三方名字的整段不碰）；同一会话连着 3 条交付的回复最多 1 条留心声，超出整段删掉（`aside_capped`；只有心声的那条与 ACT 带 `intimate` 的亲密轮不删、也算带过心声；带工具调用的半路话与未写完残稿不占额度）。这条状态按会话记在内存里，脑重启后从零数。
 - 兜底只剩一条：他说了话她却 0 字 → 在同一会话补一句只用文字的【接着说完】（英文拒绝被换成表情后也走这条）。
   原来的【想起来去做】（去玩没玩、说做好了没做）已撤：做不做由她；改没改文件，下一轮约定里会告诉她账本上的事实。
 - 她写坏的扩展换身子前自检时先跳过、记进 `state/broken-extensions.json`，下一轮约定里告诉她去修。
