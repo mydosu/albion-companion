@@ -113,7 +113,7 @@ WSL 里她的技能与 Windows 主 Hermes 的技能树独立，不导入 Windows
 再把实际在用的 `provider/model` 回写 `agent/settings.json` 的 `defaultProvider`/`defaultModel`。
 于是在 magpie 的「Pi · WSL Ubuntu」里换模型就够了，脑下一轮跟上（RPC `set_model`，不行就换身子重开）；
 `ALBION_PROVIDER`/`ALBION_MODEL` 仍最优先，读不到设置时兜底 `commandcode/deepseek/deepseek-v4-flash`。
-`cli.sh` 与 `delegate.ts` 不再传 `--model`，跟着同一份 `settings.json`；要单独换临时 export
+`cli.sh` 读同一份 `settings.json` 的 `defaultProvider`/`defaultModel` 后显式传 `--model`（续 `--session-id` 时省略会沿用旧会话里记的模型），`delegate.ts` 带 `--no-session`、默认不传 `--model` 直接吃那份默认值；要单独换临时 export
 `ALBION_CLI_MODEL` / `ALBION_DELEGATE_MODEL`。合并时去掉模型级 `api`/`baseUrl` 覆盖、统一 provider 级
 `openai-completions`：整理器的钩子与「重说」只发 OpenAI 形状的 payload（`albion-guard.ts` 的 `providerFor` 也只认这种）。
 生产 `agent/models.json` 与仓库示例不同（私密 provider 与明文 key），部署时只追加/替换 magpie 这一个键。
@@ -127,8 +127,8 @@ WSL 里她的技能与 Windows 主 Hermes 的技能树独立，不导入 Windows
 | TTS 翻译 / 字幕 | 默认跟着脑；要单独指定就在 `config/local.env` 填 `TTS_TRANSLATE_ROUTE_PROVIDER`/`TTS_TRANSLATE_ROUTE_MODEL`（两个都填才生效） | 要重启 9881 |
 | OV 记忆抽取 | `ov.conf` 的对话模型 | 要重启 OpenViking |
 
-翻译和字幕默认串行：首腿报错/空回/超过 `TTS_TRANSLATE_MAGPIE_TIMEOUT` 秒才换 Command Code 退路；
-`ALBION_TRANSLATE_HEDGE_S`/`ALBION_CAPTION_HEDGE_S` 大于 0 才会在首腿慢时并行多发一条（多一份 token）。
+翻译和字幕代码里默认是对冲（`ALBION_TRANSLATE_HEDGE_S` 默认 5 秒、`ALBION_CAPTION_HEDGE_S` 默认 1.5 秒，首腿慢于阈值就并行多发一条退路腿，多一份 token）；
+`config/local.env.example` 和作者本机把两个值都设成 0 才是串行（首腿报错/空回/超过 `TTS_TRANSLATE_MAGPIE_TIMEOUT` 秒才换 Command Code 退路）。
 
 **Hermes 退路已删除（2026-10-16）**：`integrations/hermes/`（gateway 补丁与 `albion-voice` 插件）、
 `tests/hermes/`、`config/rebuild/hermes-environment.json`、根目录 `_启动脑WSL.ps1` 都从仓库撤掉了。
