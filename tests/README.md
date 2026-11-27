@@ -18,6 +18,13 @@ python tools/check_repository.py
 # 真实 STT 验收：需 :9882；从 data/_zh_test.wav 读固定中文音频
 python tests/ear/check_ear.py
 
+# agy 内核的会话客户端（假 agy，不联网不调 Google；Linux/WSL 里跑，服务器自检同样只在 WSL 里）
+python tests/pi-brain/check_agy_client.py
+python brain/bin/server.py --selftest
+
+# 真 agy 冒烟（假人设 + 本地 host/mini MCP 桩，4 轮模型调用；只在 WSL 里跑，别在生产目录跑）
+# cd /tmp/agy-client-dev/repo && python3 tests/pi-brain/smoke_agy_client.py
+
 # 已有服务自检：保持原位，因为启动器调用它；含外部视觉服务检查
 python launch/check_all.py 0
 

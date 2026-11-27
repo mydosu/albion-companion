@@ -51,6 +51,31 @@ RELAY_PORT = int(os.environ.get("ALBION_RELAY_PORT", "8798"))
 # 兜底留着是因为 magpie 不在的时候脑还得能说话。
 PROVIDER = os.environ.get("ALBION_PROVIDER", "commandcode")
 MODEL = os.environ.get("ALBION_MODEL", "deepseek/deepseek-v4-flash")
+# 模型循环在谁身上：pi（默认）还是 agy（Antigravity CLI）。2026-11-27：Pi 支持 Google 登录前
+# 先换 agy（WSL 里 /root/.local/bin/agy，用户的 AI Pro），等 Pi 能登录再拨回来；两套都留着。
+# 只认 agent/.env 里的 ALBION_KERNEL，认不出来的值一律按 pi。
+def _kernel_setting():
+    """ALBION_KERNEL：进程环境优先，其次 agent/.env（load_env 在 main 里才跑，这里先认出来）。"""
+    value = (os.environ.get("ALBION_KERNEL") or "").strip()
+    if not value:
+        try:
+            with open(ENV_FILE, encoding="utf-8") as f:
+                for raw in f:
+                    raw = raw.strip()
+                    if not raw or raw.startswith("#") or "=" not in raw:
+                        continue
+                    k, v = raw.split("=", 1)
+                    if "".join(k.split()) == "ALBION_KERNEL":
+                        value = v.strip().strip("\"'")
+                        break
+        except OSError:
+            pass
+    value = value.lower()
+    return value if value in ("pi", "agy") else "pi"
+
+
+KERNEL = _kernel_setting()
+AGY_MODEL = os.environ.get("ALBION_AGY_MODEL", "Gemini 3.8 Flash (Medium)")
 AGENT_NAME = "albion"                 # 壳请求里用的 model id
 SESSION_DEFAULT = "albion-desktop"    # 单只桌宠，一个会话
 TOOLS = ["*"]                         # "*" = 内置四件 + 全部扩展工具（RPC 模式不给 --tools 就没工具）
@@ -324,8 +349,11 @@ def split_for_speech(text, max_chars=60):
     return pieces
 
 
-# ── Pi 会话管理 ─────────────────────────────────────────────────────────────
+# ── 脑的会话（Pi 或 agy，见 ALBION_KERNEL）─────────────────────────────────
 from pi_client import PiError, PiSession   # noqa: E402
+from agy_client import AgyError, AgySession   # noqa: E402
+# 两种内核的报错都按「脑这一轮没答出来」处理：RAISE/捕获都走 BRAIN_ERRORS。
+BRAIN_ERRORS = (PiError, AgyError)
 import brain_alert   # noqa: E402  连坏两轮就在 Discord 喊一声（只告警，不换线路）
 import shell_tools   # noqa: E402
 import wake   # noqa: E402
@@ -378,7 +406,13 @@ def _retarget_session(session, provider, model):
 
 
 def refresh_route():
-    """重新读一次设置：变了就先合并 provider，再让所有身子换模型。读不出来就沿用上一次。"""
+    """重新读一次设置：变了就先合并 provider，再让所有身子换模型。读不出来就沿用上一次。
+
+    agy 内核跳过这一整段：agy 自己连 Google，模型名也是它自己的；magpie 的设置（以及
+    写回 agent/settings.json、agent/models.json 的动作）跟 Pi 的路由有关，她不在 Pi 上就别动。
+    """
+    if KERNEL == "agy":
+        return current_route()
     try:
         r = follow_settings.resolve()
     except Exception as exc:            # noqa: BLE001 - 设置坏了也得让她继续说话
@@ -397,6 +431,20 @@ def refresh_route():
         log("model route synced", now=r.model_arg, source=r.source,
             merged_provider=r.merged, settings_written=r.settings_written)
     return current_route()
+
+
+def _health_body():
+    """`GET /health` 的内容：谁在跑（kernel）、哪个模型、加载了哪些扩展。"""
+    route = current_route()
+    body = {"status": "ok", "brain": "pi", "host": "thin", "kernel": KERNEL,
+            "model": route["model"], "provider": route["provider"],
+            "source": route["source"], "agent": AGENT_NAME,
+            "extensions": [os.path.basename(p) for p in extension_files()]}
+    if KERNEL == "agy":
+        # agy 自带模型；上面的 model/provider 还是 magpie 那条路（只有 Pi 用），
+        # 单独把 agy 的模型名报出来，免得看健康检查的人以为她还在 DS 上。
+        body["agy_model"] = AGY_MODEL
+    return body
 
 
 def session_lock(session_id):
@@ -482,22 +530,32 @@ def get_session(session_id):
         if s is None:
             extra_env = session_env(session_id)
             err_path = err_log_path(session_id)
-            s = PiSession(session_id, cwd="/root", model=route_arg(route),
-                          tools=tools_for_session(session_id), extensions=usable_extension_files(),
-                          log_path=err_path,
-                          sandbox_env={"PI_CODING_AGENT_DIR": AGENT_DIR,
-                                       "ALBION_SESSION_ID": session_id,
-                                       # WSL 系统时区 10-13 起被改成 America/Chicago：她的日期、农历、bash 里的 date 全差 13 小时。
-                                       # 她和指挥官都在北京时间过日子，pi 一律按北京时间起（宿主自己设了 TZ 就照它的）。
-                                       "TZ": os.environ.get("TZ") or "Asia/Shanghai",
-                                       "COMMANDCODE_API_KEY": os.environ.get("COMMANDCODE_API_KEY", ""),
-                                       **extra_env})
+            # WSL 系统时区 10-13 起被改成 America/Chicago：她的日期、农历、bash 里的 date 全差 13 小时。
+            # 她和指挥官都在北京时间过日子，脑子一律按北京时间起（宿主自己设了 TZ 就照它的）。
+            common_env = {"ALBION_SESSION_ID": session_id,
+                          "TZ": os.environ.get("TZ") or "Asia/Shanghai",
+                          **extra_env}
+            if KERNEL == "agy":
+                # agy 自己连 Google，模型名用 agy 的名字（`Gemini 3.8 Flash (Medium)`）；
+                # 扩展不在进程里加载，改由 agy_host 按会话喂（B 块）。
+                s = AgySession(session_id, cwd="/root", model=AGY_MODEL,
+                               agent_dir=AGENT_DIR, tools=tools_for_session(session_id),
+                               log_path=err_path,
+                               sandbox_env={**common_env, "PI_CODING_AGENT_DIR": AGENT_DIR})
+            else:
+                s = PiSession(session_id, cwd="/root", model=route_arg(route),
+                              tools=tools_for_session(session_id), extensions=usable_extension_files(),
+                              log_path=err_path,
+                              sandbox_env={"PI_CODING_AGENT_DIR": AGENT_DIR,
+                                           "COMMANDCODE_API_KEY": os.environ.get("COMMANDCODE_API_KEY", ""),
+                                           **common_env})
             note_capture_filters(err_path, extra_env)
             s.start()
             s.seeded = False
             s.ext_sig = sig
             _sessions[session_id] = s
-            log("started pi session", session=session_id, argv=" ".join(s.args()),
+            log("started %s session" % KERNEL, session=session_id, kernel=KERNEL,
+                argv=" ".join(s.args()),
                 tools=("readonly" if is_ephemeral_session(session_id) else "all"))
         return s
 
@@ -838,7 +896,7 @@ def run_prompt(session_id, session, text, images=None):
     """跑一轮；卡住就恢复再照实抛出（这一轮仍算失败，下一个请求能正常回）。"""
     try:
         return session.prompt(text, images=images, timeout=RUN_TIMEOUT)
-    except PiError as exc:
+    except BRAIN_ERRORS as exc:
         if is_stuck_error(exc):
             recover_stuck_session(session_id, session, exc)
         raise
@@ -959,11 +1017,7 @@ class Brain(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0]
         if path == "/health":
-            route = current_route()
-            self._json(200, {"status": "ok", "brain": "pi", "host": "thin",
-                             "model": route["model"], "provider": route["provider"],
-                             "source": route["source"], "agent": AGENT_NAME,
-                             "extensions": [os.path.basename(p) for p in extension_files()]})
+            self._json(200, _health_body())
         elif path == "/albion/wake":
             # 壳的门铃：到没到她自己定的醒来时间（底线都算进去了）。到点只响一次。
             if not self._authorized():
@@ -1070,8 +1124,9 @@ class Brain(BaseHTTPRequestHandler):
             return
         if kind == "error":
             exc = value
-            if isinstance(exc, PiError):
-                log("brain error", session=session_id, error=str(exc)[:300])   # 原来只回给壳、不记，查不到 502 为什么
+            if isinstance(exc, BRAIN_ERRORS):
+                # agy 出错照 Pi 的办法如实报（用户不要自动退回 DS），下一个请求照常重开。
+                log("brain error", session=session_id, kernel=KERNEL, error=str(exc)[:300])
                 brain_alert.record_failure(session_id, str(exc), _route_model())
                 self._json(502, {"error": {"message": "brain error: %s" % exc, "type": "server_error"}})
             else:
@@ -1550,7 +1605,88 @@ def _selftest():
             patch.object(module, "compose", return_value=("在吗", [], False)), \
             patch.object(module, "log"):
         assert chat(sid, msgs[-1:]) == "好了。", "下一个请求要能正常回复"
+    _selftest_kernel()
     print("HOST SELFTEST OK")
+
+
+def _selftest_kernel():
+    """ALBION_KERNEL=pi|agy 的接线：健康字段、会话工厂、读只口径、报错照实抛。"""
+    import agy_client
+    from unittest.mock import patch
+
+    module = sys.modules[__name__]
+    assert module.KERNEL in ("pi", "agy"), module.KERNEL
+    assert module.BRAIN_ERRORS == (PiError, agy_client.AgyError)
+    assert module.AGY_MODEL, "agy 模型名不能空"
+    # 默认是 pi：认不出来的值一律按 pi，不能悄悄换内核
+    assert module._kernel_setting() in ("pi", "agy")
+    with patch.object(module.os, "environ", {k: v for k, v in os.environ.items() if k != "ALBION_KERNEL"}), \
+            patch.object(module, "ENV_FILE", "/nonexistent/.env"):
+        assert module._kernel_setting() == "pi"
+    for bogus in ("", "PI", "antigravity", "agy2"):
+        with patch.object(module.os, "environ", dict(os.environ, ALBION_KERNEL=bogus)):
+            expected = "agy" if bogus.lower() == "agy" else "pi"
+            assert module._kernel_setting() == expected, bogus
+    # 健康检查：两种内核都带 kernel；agy 还要带自己的模型名
+    for kernel in ("pi", "agy"):
+        with patch.object(module, "KERNEL", kernel):
+            health = module._health_body()
+            assert health["kernel"] == kernel and health["status"] == "ok", health
+            assert ("agy_model" in health) is (kernel == "agy"), health
+            if kernel == "agy":
+                assert health["agy_model"] == module.AGY_MODEL
+    # 会话工厂：agy 下起 AgySession（模型用 agy 的名字、人设目录给她），pi 下照旧是 PiSession
+    made = []
+
+    class _FakeSession:
+        def __init__(self, name, **kw):
+            made.append((name, kw))
+            self.running = False
+            self.seeded = True
+
+        def start(self):
+            self.running = True
+            return self
+
+        def close(self):
+            self.running = False
+
+        def args(self):
+            return ["fake"]
+
+    with patch.object(module, "KERNEL", "agy"), \
+            patch.object(module, "AgySession", _FakeSession), \
+            patch.object(module, "PiSession", _FakeSession), \
+            patch.object(module, "refresh_route", return_value={"provider": "magpie", "model": "m", "source": "x"}), \
+            patch.object(module, "ext_signature", return_value=()), \
+            patch.object(module, "usable_extension_files", return_value=[]), \
+            patch.object(module, "log"):
+        module._sessions.clear()
+        module.get_session("albion-probe-kernel")
+        name, kw = made[-1]
+        assert name == "albion-probe-kernel" and kw["model"] == module.AGY_MODEL, kw
+        assert kw["agent_dir"] == module.AGENT_DIR and kw["tools"] == module.READONLY_TOOLS, kw
+        assert "PI_CODING_AGENT_DIR" in kw["sandbox_env"] and kw["sandbox_env"]["ALBION_SESSION_ID"] == name
+        assert "COMMANDCODE_API_KEY" not in kw["sandbox_env"], "agy 用不到 DS 的 key"
+        # 真实会话一律 all tools（她现在不受限）
+        module._sessions.clear()
+        module.get_session("albion-desktop")
+        assert made[-1][1]["tools"] == module.TOOLS, made[-1][1]
+        module._sessions.clear()
+    with patch.object(module, "KERNEL", "pi"), \
+            patch.object(module, "AgySession", _FakeSession), \
+            patch.object(module, "PiSession", _FakeSession), \
+            patch.object(module, "refresh_route", return_value={"provider": "magpie", "model": "m", "source": "x"}), \
+            patch.object(module, "ext_signature", return_value=()), \
+            patch.object(module, "usable_extension_files", return_value=[]), \
+            patch.object(module, "log"):
+        module._sessions.clear()
+        module.get_session("albion-probe-kernel")
+        assert made[-1][1]["model"] == "magpie/m", made[-1][1]
+        module._sessions.clear()
+    # agy 出错照 Pi 的办法如实抛（不自动退回 DS）
+    assert module.is_stuck_error(agy_client.AgyError("agy process is not running")) is False
+    assert module.is_stuck_error(agy_client.AgyError("agy turn failed")) is False
 
 
 def main():

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Minimal Streamable-HTTP MCP server for the agy smoke probe (Python stdlib).
+"""Tiny Streamable-HTTP MCP server for the agy smoke probe (stdlib only).
 
-Two harmless tools: `say` (echo) and `clock` (local time).
-Usage: python mini_mcp.py <port>
+Tools: `say` (echo) and `clock` (local time) — harmless stand-ins for her real
+extension tools. Usage: python mini_mcp.py <port>
 """
 import datetime
 import json
@@ -52,7 +52,8 @@ def handle(msg):
             content = [{"type": "text", "text": "NOW: " + datetime.datetime.now().isoformat(timespec="seconds")}]
         else:
             content = [{"type": "text", "text": "unknown tool"}]
-        return {"jsonrpc": "2.0", "id": mid, "result": {"content": content, "isError": name not in ("say", "clock")}}
+        return {"jsonrpc": "2.0", "id": mid,
+                "result": {"content": content, "isError": name not in ("say", "clock")}}
     if mid is None:
         return None
     return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32601, "message": "method not found"}}
