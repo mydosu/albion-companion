@@ -2,12 +2,12 @@
 """跟着 magpie 写给 pi 的默认设置走：脑用什么模型不再写死在 server.py 里。
 
 magpie 的「Pi · WSL Ubuntu」那一格写的就是 pi 的默认 agent 目录（/root/.pi/agent/）：
-  settings.json  {"defaultProvider": "magpie", "defaultModel": "agy-cli/gemini-3.8-flash"}
+  settings.json  {"defaultProvider": "magpie", "defaultModel": "<magpie 里选的模型>"}（没选就走下面的兜底）
   models.json    providers.magpie（baseUrl http://127.0.0.1:3425/v1，一百多条模型）
 阿尔比恩的脑有自己的 agent 目录（PI_CODING_AGENT_DIR=/root/albion-pi/agent），读不到那份
 provider，所以这里做三件事：
 
-  1. 解析要用的 (provider, model)：ALBION_PROVIDER / ALBION_MODEL > pi 默认设置 > commandcode/deepseek-v4-flash
+  1. 解析要用的 (provider, model)：ALBION_PROVIDER / ALBION_MODEL > pi 默认设置 > magpie/commandcode/deepseek/deepseek-v4.1-flash
   2. 把来源 models.json 里这个 provider 的整段搬进阿尔比恩的 agent/models.json（只增/替换这一个键）
   3. 把最终在用的 provider/model 写回阿尔比恩的 agent/settings.json（只动这两个键）
 
@@ -29,8 +29,10 @@ import os
 import tempfile
 from typing import NamedTuple
 
-DEFAULT_PROVIDER = "commandcode"
-DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
+# 兜底走 magpie 的 DS：旧的 commandcode 本地口 8798 已经不在了（2026-11-27 实测连不上）；
+# 用户在 magpie 里清掉 Pi 那一格的模型（不用 Gemini）时，脑落到这里也能说话。
+DEFAULT_PROVIDER = "magpie"
+DEFAULT_MODEL = "commandcode/deepseek/deepseek-v4.1-flash"
 # pi 默认 agent 目录里的设置（magpie 写的那一份）
 DEFAULT_SETTINGS = "/root/.pi/agent/settings.json"
 # 来源 provider 没写 baseUrl 时的兜底：magpie 自己

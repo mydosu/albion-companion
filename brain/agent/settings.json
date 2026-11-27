@@ -1,7 +1,7 @@
 {
   "transport": "sse",
   "defaultProvider": "magpie",
-  "defaultModel": "agy-cli/gemini-3.8-flash",
+  "defaultModel": "commandcode/deepseek/deepseek-v4.1-flash",
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": true,
   "retry": {

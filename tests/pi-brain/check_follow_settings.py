@@ -4,7 +4,7 @@
 不联网、不碰生产：全在临时目录里造「magpie 的 pi 默认目录」和「阿尔比恩的 agent 目录」。
 
 验的规则（对应 bin/follow_settings.py）：
-  1) 优先级：ALBION_PROVIDER/ALBION_MODEL > pi 默认设置的 defaultProvider/defaultModel > 兜底 commandcode/deepseek-v4-flash
+  1) 优先级：ALBION_PROVIDER/ALBION_MODEL > pi 默认设置的 defaultProvider/defaultModel > 兜底 magpie/commandcode/deepseek/deepseek-v4.1-flash
   2) 合并 provider：只增/替换这一个键，别的 provider（commandcode 的明文 key 等）原样不动
   3) 合并时去掉模型级 api/baseUrl 覆盖，统一 provider 级 openai-completions
   4) 回写 settings.json：只改 defaultProvider/defaultModel，其它键（transport/retry/…）原样

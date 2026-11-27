@@ -6,6 +6,32 @@
       "apiKey": "magpie",
       "models": [
         {
+          "id": "commandcode/deepseek/deepseek-v4.1-flash",
+          "name": "DeepSeek V4.1 Flash · Command Code (via magpie)",
+          "reasoning": true,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 1000000,
+          "maxTokens": 384000,
+          "cost": {
+            "input": 0.15,
+            "output": 0.6,
+            "cacheRead": 0.003,
+            "cacheWrite": 0
+          },
+          "thinkingLevelMap": {
+            "low": "low",
+            "medium": null,
+            "high": "high",
+            "minimal": null,
+            "max": "max",
+            "off": null,
+            "xhigh": null
+          }
+        },
+        {
           "id": "agy-cli/gemini-3.8-flash",
           "name": "Gemini 3.8 Flash · Antigravity (via magpie)",
           "reasoning": true,
