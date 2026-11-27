@@ -8,10 +8,11 @@
  * 跑：node /root/albion-pi/bin/check_extensions.ts [扩展文件…]   （不给参数 = 查整个目录）
  * 退出码 0 = 全部能加载、工具形状都对；1 = 有问题，逐条列出。
  */
-import { readdirSync } from "node:fs";
+import { readdirSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-const PI = "/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/loader.js";
+// 跟着 /usr/local/bin/pi 实际指向的那份 Pi 走（…/dist/bundle/cli.js → 包根/dist/core/…）：换版本、回滚都只改那个链接
+const PI = join(realpathSync("/usr/local/bin/pi"), "../../core/extensions/loader.js");
 const EXT_DIR = "/root/albion-pi/agent/extensions";
 
 const args = process.argv.slice(2);
