@@ -94,6 +94,7 @@ bash /root/pi-brain-probe/probe_flow.sh --only T1,T7    # 只挑几轮
 | `fixtures/event_tap.ts` | 只记事件、不注册工具的探针扩展，给上面那条用 |
 | `test_shell_tools.py` | 壳插件工具桥离线单测：清单解析与逐件校验、注销后拒调用、tool_calls 往返、并发调用、超时、新一轮作废旧调用、晚到结果；真 `server.Brain` 走本机回环 HTTP，不起 Pi（Windows 需 `pip install tzdata`；批次回归 `pi-brain-shell-tools`） |
 | `check_shell_tools_ext.ts` | `agent/shell-tools-bridge.ts` 的代理工具同步：注册 / 不变不重注册 / 更新 / 撤下 hidden / 恢复 / 重名改 `shell_<名>` / 取不到清单全撤（假 Pi 工具表，纯 TS；批次回归 `pi-brain-shell-tools-ext`） |
+| `check_agy_host.ts` | agy 内核的扩展宿主（`bin/agy_host.ts`）端到端：18 件工具在 `tools/list` 里、`lunar_calendar`/`todo`/壳插件工具真能调、`before` 带约定块与壳插件规则、`event` 写进临时活动库、`final` 跑 guard 的 ACT 补竖线、【接着说完】轮不给工具、两个会话互不串（临时 state/日志/活动库，OpenViking 端点指到丢弃端口；**只在 WSL 跑**，`check_agy_host.ps1` 负责把仓库拷进 `\\wsl$\Ubuntu\tmp\agy-host-dev\`） |
 | `shell_tools_e2e.py` | 真 `server.py` + 真 `pi --mode rpc` + 假 OpenAI 兼容模型的端到端：同一轮里模型看得到新插件工具、调用往返、卸载/恢复、插件出错照样说完、全程不换身子。WSL 里跑，端口 18650/18651，不碰生产 8650、不花钱；拷法见文件头 |
 
 ## 判定口径

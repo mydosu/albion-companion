@@ -44,6 +44,7 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
 | `bin/test_self_look.ts` | `next_wake` 一条计时与 `look` 随时可用的自检（分钟数夹在 30～180、self.json 新旧结构、did 与 life.json 20 条、旧生活轮字段不挡取图；Windows/WSL 都能跑） |
 | `bin/test_loopguard.ts` | 复读断路/坏工具/快照账本自检（39 项，临时目录里造文件，不写生产日志） |
 | `bin/check_extensions.ts` | 用 Pi 自己的加载器整批加载 `agent/extensions/*.ts`，查加载错误和工具 `parameters` 形状；不叫模型 |
+| `bin/agy_host.ts` | agy 内核的扩展宿主（:8661）：MCP 工具面 + 每轮 before/event/final 三个钩子 + health，见下面「agy 内核的扩展宿主」 |
 | `bin/test_brain.py` | 端到端自检：两个回合 + 多轮连续性 + ACT 标记 |
 | `accept.sh` | 可复跑验收（直跑 pi 是不是她／记忆与约定／整理器与复读断路自检／两个壳入口／活动库） |
 | `agent/SYSTEM.md` | **生成物**：启动时从 `SOUL.md` 复制，人格只有一个源 |
@@ -348,6 +349,31 @@ Magpie 只是作者的"模型管理器"：它往 `/root/.pi/agent/settings.json`
 - **一轮卡住先 abort、再换身子**（2026-10-30）：一轮跑满 420s 没定稿时，宿主发 RPC `abort`（Pi 回 abort 时已 idle，
   `bin/pi_client.py` 按命令名等这个没有 id 的回应）；abort 不成或仍忙就关掉这具身子，下一个请求重开并从活动库播种。
   原来超时后同一会话每个请求都秒回 `prompt rejected: pi stayed busy`，直到重启脑。
+
+## agy 内核的扩展宿主（2026-11-27）
+
+换 agy（Antigravity CLI，跑在 Windows）以后，模型的循环不在 Pi 里了，扩展改由 `bin/agy_host.ts`
+用 Pi 自己的加载器（`core/extensions/loader.js` 的 `loadExtensions`）整批加载，喂一个模拟的
+`ExtensionAPI` 运行时和 `ctx`，对外只开三个面（只听 `127.0.0.1:8661`）：
+
+| 面 | 用途 |
+|---|---|
+| `/mcp/<session>` | Streamable HTTP MCP：`initialize` / `tools/list` / `tools/call`（图片按 MCP image content 回）。工具 = 扩展注册的 18 件 + 这个会话当时的壳插件工具（`albion-shell-tools` 同步来的代理工具） |
+| `POST /turn/<session>/before` | `{"text","images"}` → `{"prompt","system_append"}`：跑 `agent_start` → `before_agent_start`（常驻技能、壳插件规则）→ `context`（回忆块 + 逐轮约定）→ `before_provider_request`（guard 记原话、loopguard 判「这一轮不给工具」） |
+| `POST /turn/<session>/event` | `{"type":"tool_call\|tool_result\|message_end\|agent_end"}`：活动库记账、复读断路（要断回 `{"abort":true,"reason"}`） |
+| `POST /turn/<session>/final` | `{"text"}` → `{"text"}`：`message_end` 的 guard 整理（ACT 补竖线、语料替换、心声上限…），再走 `agent_end` 落活动库 |
+| `GET /health` | 会话、扩展数、工具数、加载错误、hook 错误 |
+
+- **会话隔离**：一个进程里每个会话各自重新加载一遍扩展（模块级常量各自一份），执行扩展代码串行
+  + 进出换 `ALBION_SESSION_ID` 与 `globalThis.__albionLedger/__albionTurnFacts`
+  。理由：扩展在模块顶层和调用时都直接读 `process.env`，只有「按会话重新求值 + 同一时刻只有一个人在跑」
+  才保证读到的永远是自己的会话。代价是多会话不能真并行（桌面在跑长工具时探针要等）。
+- **不加载 `albion-relay.ts`**（`ALBION_HOST_SKIP`，默认就它）：agy 自己连 Google，没有 Pi 的 provider
+  请求要转发，而且它会占 8798、拖住进程退出。Pi 的压缩钩子（`session_before_compact` / `session_compact`）
+  在 agy 下不发事件，空跑。
+- guard 的「重说」（首稿外再要 2 稿）需要一次真实模型请求，agy 下没有对应线路，只做确定性整理。
+- 自检：`tests/pi-brain/check_agy_host.ts`（WSL 里跑，临时 state/日志/活动库，OpenViking 端点指到丢弃端口）。
+- 部署与启停仍由 `bin/server.py` 那一侧（`ALBION_KERNEL=agy`）管，见 `.tongxi/任务书/阿尔比恩agy内核.md`。
 
 ## 回退
 
