@@ -107,6 +107,19 @@ if !PORTFREE!==1 (
   echo [5/6] 眼睛采集端已在运行, 跳过
 )
 
+rem 4.6) agy 桥（Windows 侧 :8670，脑换 agy 内核时用；ALBION_KERNEL=agy 才启动）
+if /i "%ALBION_KERNEL%"=="agy" (
+  call :check 8670
+  if !PORTFREE!==1 (
+    echo [4.6/6] 启动 agy 桥 :8670 ...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0silent_run.ps1" !CONSOLE_FLAG! -Bat "%WIFE%\launch\start_agy_bridge.bat" -Log "%WIFE%\logs\agy-bridge.log"
+  ) else (
+    echo [4.6/6] agy 桥已在运行, 跳过
+  )
+) else (
+  echo [4.6/6] ALBION_KERNEL 不是 agy, 跳过 agy 桥
+)
+
 rem 6) 壳：exe/prod 用构建版，dev 用开发版；缺 exe 回退 dev。
 call :check 9335
 if !PORTFREE!==1 (

@@ -26,6 +26,36 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
                                                └─ 工具      openviking / delegate / websearch / 她自己加的
 ```
 
+## agy 内核（Windows 桥，2026-11-27）
+
+Pi 支持 Google 登录之前，脑可以临时换到 Antigravity CLI（agy 1.5.18）当内核：
+`ALBION_KERNEL=agy` 时宿主不再拉 `pi --mode rpc`，而是经 **Windows 上的 agy 桥** 说话
+（agy 只有 Windows 版，桥必须跑在 Windows 侧）。设计见 `.tongxi/任务书/阿尔比恩agy内核.md`。
+
+- 位置：`brain/agy/bridge.py`；端口 `127.0.0.1:8670`
+  - `GET /health` → `{"ok":true,"agy_version":"…","sessions":[…]}`
+  - `POST /sessions`（`session`/`system_prompt`/`model`/`mcp_url`）→ `{"id":…}`，同名同人设同模型就复用，变了就重建
+  - `POST /sessions/<id>/prompt` → NDJSON：`text_delta`、`tool_start`、`tool_end`、`final`、`error`
+  - `POST /sessions/<id>/steer` → 固定 409（agy 没有一轮中间的插话，宿主排队）
+  - `POST /sessions/<id>/cancel`、`DELETE /sessions/<id>`
+- 启动：`launch/start_agy_bridge.bat`；`launch/start_all.bat` 在 `ALBION_KERNEL=agy` 时经
+  `silent_run.ps1` 无窗口拉起（端口 8670 已在跑就跳过）。日志 `logs/agy-bridge.log`，不记人设和正文。
+- 工作区：`%LOCALAPPDATA%\albion-agy\workspace\<会话名>\`，一个会话一个 `agy acp --agent albion` 进程：
+  - `.agents/agents/albion.md`：frontmatter `mainAgent: true`、`tools: []`（agy 自带的读写文件、跑命令、
+    联网工具全部不注册），正文是人设 + 桥从她 MCP 取来的工具清单；
+  - `.agents/mcp_config.json`：只放她这个会话的 MCP（`url`）。
+  - 每个会话还有一份自己的 `.gemini`（`%LOCALAPPDATA%\albion-agy\gemini\<会话>`，`agy acp --gemini-dir`）：她的 MCP 实际是从这份的 `config/mcp_config.json` 读的，所以每个会话可以用不同的 `/mcp/<会话>`；用户全局 `~/.gemini/config` 里的插件 hooks（openviking-memory、rtk）、skills、MCP 进不来。登录凭据在系统 keyring 里，不用为它重新登录。
+- 权限：ACP 的 `session/request_permission` 全由桥回答——只有 `call_mcp_tool` 且 `ServerName` 是她 MCP
+  服务器的调用批准，其它（含 `run_command`、`read_file` 之类）一律拒绝。
+- 她的工具：agy 的 `tools` 白名单点名不了 MCP 工具（会报 `unknown component: tool "mcp_…"`），
+  所以工具走 agy 的 `call_mcp_tool` 包装；桥开局向她 MCP 拿一次 `tools/list` 写进 agent 正文，
+  事件里再把 `call_mcp_tool` 还原成真工具名/参数交给宿主。
+- 自检：`python tests/agy-bridge/check_bridge.py`（假 agy，29 项，不联网不调 Google）；
+  真 agy 冒烟 `python tests/agy-bridge/smoke_real_agy.py`（假人设 "Kettle"，2 次模型调用，产物在
+  `tests/output/agy-bridge-smoke/`）。
+- 回滚：`ALBION_KERNEL` 去掉或改回 `pi`，重启 `launch/start_all.bat`，桥不启动，宿主回到 Pi 通路；
+  桥没有持久状态，`%LOCALAPPDATA%\albion-agy\` 可以整个删掉。
+
 ## 文件
 
 | 路径 | 作用 |
