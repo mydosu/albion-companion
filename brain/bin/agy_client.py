@@ -329,11 +329,14 @@ class AgySession:
         with self._lock:
             slot = self._pending.get(rid)
         if slot is None:
-            return None
+            raise AgyError("agy process exited during the run")
         try:
             msg = slot.get(timeout=max(0.1, end - time.time()))
         except queue.Empty:
-            return None
+            with self._lock:
+                self._pending.pop(rid, None)
+            # 措辞对上 server.py 的 STUCK_ERRORS（"did not settle"）：超时走卡住恢复，不是普通报错
+            raise AgyError("agy did not settle within %ss" % timeout)
         with self._lock:
             self._pending.pop(rid, None)
         if msg is None:
@@ -487,7 +490,7 @@ class AgySession:
         if append:
             blocks.append({"type": "text", "text": append})
         if self._text_only:
-            blocks.append({"type": "text", "text": "（这一轮先不要调用任何工具，直接用话把她说完。）"})
+            blocks.append({"type": "text", "text": "（这一轮不要调用任何工具，直接回答。）"})
         blocks.append({"type": "text", "text": body})
         blocks.extend(image_blocks(images))
         self._finals = []
@@ -500,6 +503,12 @@ class AgySession:
             result = self.request("session/prompt",
                                   {"sessionId": self._acp_session, "prompt": blocks},
                                   timeout=timeout)
+        except AgyError as exc:
+            if "did not settle" in str(exc):
+                # 超时那一轮的迟到文本会混进下一轮：取消后整具身子换掉，下一轮由 compose 重新播种
+                self._cancel()
+                self.close()
+            raise
         finally:
             with self._run_lock:
                 self._run_active = False

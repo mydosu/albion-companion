@@ -118,6 +118,15 @@ def main():
             check("error stop raises AgyError", "failed" in str(exc) or "boom" in str(exc) or True, exc)
         else:
             check("error stop raises AgyError", False, "no exception")
+
+        # ── timeout: stuck-style AgyError, and the body is dropped ─────────
+        try:
+            s.prompt("LONG please", timeout=1)
+        except agy_client.AgyError as exc:
+            check("timeout raises a stuck-style AgyError", "did not settle" in str(exc), exc)
+        else:
+            check("timeout raises a stuck-style AgyError", False, "no exception")
+        check("timed-out session is closed", s.running is False)
     finally:
         s.close()
 

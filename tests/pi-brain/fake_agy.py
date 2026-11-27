@@ -171,6 +171,9 @@ def main():
     if "acp" not in sys.argv:
         sys.stderr.write("stub only speaks acp\n")
         return 2
+    # 客户端发的是 UTF-8；Windows 管道默认按 GBK 解，中文会变成代理字符让桩崩掉、客户端干等到超时
+    sys.stdin.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8")
     record("spawn %d" % os.getpid())
     for line in sys.stdin:
         line = line.strip()
