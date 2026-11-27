@@ -26,35 +26,40 @@ WSL(Ubuntu) 里的阿尔比恩原来寄宿在 Hermes Agent 的 `albion` profile 
                                                └─ 工具      openviking / delegate / websearch / 她自己加的
 ```
 
-## agy 内核（Windows 桥，2026-11-27）
+## agy 内核（2026-11-27，跑在 WSL 里）
 
-Pi 支持 Google 登录之前，脑可以临时换到 Antigravity CLI（agy 1.5.18）当内核：
-`ALBION_KERNEL=agy` 时宿主不再拉 `pi --mode rpc`，而是经 **Windows 上的 agy 桥** 说话
-（agy 只有 Windows 版，桥必须跑在 Windows 侧）。设计见 `.tongxi/任务书/阿尔比恩agy内核.md`。
+Pi 支持 Google 登录之前，脑可以临时换到 Antigravity CLI（agy 1.5.18，`/root/.local/bin/agy`，
+用户的 AI Pro）。`agent/.env` 里写 `ALBION_KERNEL=agy` 就换过去，去掉或写 `pi` 就拨回来，两套都留着。
+**没有 Windows 桥**：agy 有官方 Linux 版，`bin/agy_client.py` 直接起 `agy acp` 子进程，和起 `pi` 一样。
+设计见 `.tongxi/任务书/阿尔比恩agy内核.md`。
 
-- 位置：`brain/agy/bridge.py`；端口 `127.0.0.1:8670`
-  - `GET /health` → `{"ok":true,"agy_version":"…","sessions":[…]}`
-  - `POST /sessions`（`session`/`system_prompt`/`model`/`mcp_url`）→ `{"id":…}`，同名同人设同模型就复用，变了就重建
-  - `POST /sessions/<id>/prompt` → NDJSON：`text_delta`、`tool_start`、`tool_end`、`final`、`error`
-  - `POST /sessions/<id>/steer` → 固定 409（agy 没有一轮中间的插话，宿主排队）
-  - `POST /sessions/<id>/cancel`、`DELETE /sessions/<id>`
-- 启动：`launch/start_agy_bridge.bat`；`launch/start_all.bat` 在 `ALBION_KERNEL=agy` 时经
-  `silent_run.ps1` 无窗口拉起（端口 8670 已在跑就跳过）。日志 `logs/agy-bridge.log`，不记人设和正文。
-- 工作区：`%LOCALAPPDATA%\albion-agy\workspace\<会话名>\`，一个会话一个 `agy acp --agent albion` 进程：
-  - `.agents/agents/albion.md`：frontmatter `mainAgent: true`、`tools: []`（agy 自带的读写文件、跑命令、
-    联网工具全部不注册），正文是人设 + 桥从她 MCP 取来的工具清单；
-  - `.agents/mcp_config.json`：只放她这个会话的 MCP（`url`）。
-  - 每个会话还有一份自己的 `.gemini`（`%LOCALAPPDATA%\albion-agy\gemini\<会话>`，`agy acp --gemini-dir`）：她的 MCP 实际是从这份的 `config/mcp_config.json` 读的，所以每个会话可以用不同的 `/mcp/<会话>`；用户全局 `~/.gemini/config` 里的插件 hooks（openviking-memory、rtk）、skills、MCP 进不来。登录凭据在系统 keyring 里，不用为它重新登录。
-- 权限：ACP 的 `session/request_permission` 全由桥回答——只有 `call_mcp_tool` 且 `ServerName` 是她 MCP
-  服务器的调用批准，其它（含 `run_command`、`read_file` 之类）一律拒绝。
-- 她的工具：agy 的 `tools` 白名单点名不了 MCP 工具（会报 `unknown component: tool "mcp_…"`），
-  所以工具走 agy 的 `call_mcp_tool` 包装；桥开局向她 MCP 拿一次 `tools/list` 写进 agent 正文，
-  事件里再把 `call_mcp_tool` 还原成真工具名/参数交给宿主。
-- 自检：`python tests/agy-bridge/check_bridge.py`（假 agy，29 项，不联网不调 Google）；
-  真 agy 冒烟 `python tests/agy-bridge/smoke_real_agy.py`（假人设 "Kettle"，2 次模型调用，产物在
-  `tests/output/agy-bridge-smoke/`）。
-- 回滚：`ALBION_KERNEL` 去掉或改回 `pi`，重启 `launch/start_all.bat`，桥不启动，宿主回到 Pi 通路；
-  桥没有持久状态，`%LOCALAPPDATA%\albion-agy\` 可以整个删掉。
+- `bin/agy_client.py` / `AgySession`：对外和 `PiSession` 一样（`start/close/running/prompt/reply_text/`
+  `steer/abort/context_usage/set_model`，以及 `turns/steered/tools_used/seeded/ext_sig`）。
+  - 参数：`ALBION_AGY_BIN`（默认 `/root/.local/bin/agy`）、`ALBION_AGY_MODEL`
+    （默认 `Gemini 3.8 Flash (Medium)`，档位拆成 `thought_level`）、`ALBION_AGY_PROXY`
+    （默认 `http://127.0.0.1:7897`，写成 `HTTPS_PROXY/HTTP_PROXY`、`NO_PROXY=127.0.0.1,localhost`）、
+    `ALBION_HOST_PORT`（默认 8661，扩展宿主）。
+  - 人设：读 `agent/SYSTEM.md` + `agent/APPEND_SYSTEM.md`，整段放进 `session/new` 的
+    `_meta.antigravity.systemPrompt.append`。**人设和用户原话都不进日志**，日志只记模型、工具名、字符数。
+  - 她的 MCP：`session/new` 的 `mcpServers: [{type:"http", name:"albion", url:"http://127.0.0.1:8661/mcp/<会话>"}]`，
+    工具名就是 `mcp_albion_<名>`，按会话区分。
+  - 一轮：host `/turn/<s>/before` → `session/prompt`（ACP 事件同时转给 host `/event`）→ host `/final` 交付。
+  - 权限：她自己的会话（`real-sessions.json` 里的）一律批准；探针/验收会话（`is_ephemeral_session`）
+    照 Pi 的只读口径——拒 `run_command`/写/改，MCP 工具只批 `READONLY_TOOLS` 里有的，cwd 用 /tmp 下
+    一个用完就删的空目录。
+  - `steer` 恒 False（ACP 没有一轮中间插话），server.py 照旧退回排队；`abort` 发 `session/cancel`
+    通知并等这一轮收尾；`context_usage` 用 `usage_update` 的 `used/size`；`set_model` 走
+    `session/set_config_option`。
+- `ALBION_KERNEL=agy` 时 `bin/server.py` 不再跑 `follow_settings`（agy 自己连 Google，magpie 的设置只跟 Pi
+  有关），`/health` 多一个 `kernel` 字段和 `agy_model`。
+- 启动：`ALBION_KERNEL=agy bash start.sh` 会在起完 server 后把 `node bin/agy_host.ts` 一起拉起来
+  （8661，带 `API_SERVER_KEY`/`ALBION_BRAIN_PORT`/state/活动库/日志路径）；`stop.sh` 会一起停掉 8661。
+- 自检：`python tests/pi-brain/check_agy_client.py`（假 agy，38 项，不联网不调 Google）、
+  `python brain/bin/server.py --selftest`（含 kernel 开关断言）；
+  真 agy 冒烟 `python tests/pi-brain/smoke_agy_client.py`（假人设 Kettle + `host_stub.py` + `mini_mcp.py`，
+  4 轮模型调用，WSL 里跑）。
+- 回滚：`ALBION_KERNEL` 删掉/改回 `pi`，`bash stop.sh && bash start.sh`；agy 侧没有持久状态，
+  `/tmp` 里的探针工作区用完就删。
 
 ## 文件
 
@@ -382,7 +387,7 @@ Magpie 只是作者的"模型管理器"：它往 `/root/.pi/agent/settings.json`
 
 ## agy 内核的扩展宿主（2026-11-27）
 
-换 agy（Antigravity CLI，跑在 Windows）以后，模型的循环不在 Pi 里了，扩展改由 `bin/agy_host.ts`
+换 agy（Antigravity CLI，和脑一起跑在 WSL 里）以后，模型的循环不在 Pi 里了，扩展改由 `bin/agy_host.ts`
 用 Pi 自己的加载器（`core/extensions/loader.js` 的 `loadExtensions`）整批加载，喂一个模拟的
 `ExtensionAPI` 运行时和 `ctx`，对外只开三个面（只听 `127.0.0.1:8661`）：
 
@@ -403,7 +408,7 @@ Magpie 只是作者的"模型管理器"：它往 `/root/.pi/agent/settings.json`
   在 agy 下不发事件，空跑。
 - guard 的「重说」（首稿外再要 2 稿）需要一次真实模型请求，agy 下没有对应线路，只做确定性整理。
 - 自检：`tests/pi-brain/check_agy_host.ts`（WSL 里跑，临时 state/日志/活动库，OpenViking 端点指到丢弃端口）。
-- 部署与启停仍由 `bin/server.py` 那一侧（`ALBION_KERNEL=agy`）管，见 `.tongxi/任务书/阿尔比恩agy内核.md`。
+- 部署与启停由 `start.sh` / `stop.sh` 管（`ALBION_KERNEL=agy` 时把宿主一起拉起/停掉），模型侧见 `bin/agy_client.py`；设计见 `.tongxi/任务书/阿尔比恩agy内核.md`。
 
 ## 回退
 

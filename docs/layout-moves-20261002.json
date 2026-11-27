@@ -1,4 +1,10 @@
 [
+  {"old": "brain/agy/bridge.py", "new": "(deleted) brain/bin/agy_client.py", "category": "brain-agy-kernel"},
+  {"old": "launch/start_agy_bridge.bat", "new": "(deleted) brain/start.sh", "category": "brain-agy-kernel"},
+  {"old": "tests/agy-bridge/fake_agy.py", "new": "tests/pi-brain/fake_agy.py", "category": "tests"},
+  {"old": "tests/agy-bridge/mini_mcp.py", "new": "tests/pi-brain/mini_mcp.py", "category": "tests"},
+  {"old": "tests/agy-bridge/check_bridge.py", "new": "(deleted) tests/pi-brain/check_agy_client.py", "category": "tests"},
+  {"old": "tests/agy-bridge/smoke_real_agy.py", "new": "(deleted) tests/pi-brain/smoke_agy_client.py", "category": "tests"},
   {
     "old": "pet/tests/_recalib2.py",
     "new": "archive/legacy/pet/tests/_recalib2.py",
