@@ -7,7 +7,7 @@
 | `config/local.env` | Windows 侧唯一环境变量文件（KEY=VALUE）；模板 `local.env.example` | 忽略，只入库模板 |
 | `shell/`、`ear/`、`eyes/`、`widget/`、`tts/` | 当前生产源码、构建配置、运行入口、许可 | 跟踪源码；模型、环境、构建产物忽略 |
 | `shell/` 里的上游件（2026-11-01 移除） | 上游文档站 `shell/docs/`（462 MB，Vitepress + 多语言内容）、聊天机器人 `shell/integrations/`、`services/computer-use-mcp`、插件样例 `shell/plugins/`、AI 技能库 `shell/.agents/`、`packages/font-departure-mono` | 已 `git rm -r` 并移出 pnpm workspace；历史仍在 git 里（`git log -- shell/docs`），需要时看上游仓库 |
-| `tests/ear/`、`tests/tts/`、`tests/pi-brain/` | 独立测试、诊断、复现支持脚本 | 跟踪 |
+| `tests/ear/`、`tests/tts/`、`tests/pi-brain/`、`tests/agy-bridge/` | 独立测试、诊断、复现支持脚本（`tests/agy-bridge/` 用假 agy 验桥，`smoke_real_agy.py` 才碰真 agy） | 跟踪 |
 | `tests/ear/data/`、TTS golden JSON | 经过审查的固定输入/预期值 | 跟踪；不放真实私密会话 |
 | `tests/tts/eval/`、`tests/tts/probes/` | 需真实服务的 A/B 与语音探针 | 脚本跟踪，产物忽略 |
 | `tests/output/<组件>/<运行名>/` | 截图、录音、测量结果 | 全部忽略 |
@@ -19,7 +19,7 @@
 | `backup/code/<日期>/<原相对路径>` | 旧生产副本、回滚目录、手工 `.bak` | 全部忽略，保留磁盘内容 |
 | `backup/profile-archives/`、`backup/` 原个人回档目录 | 私密 profile 与个人回档点 | 全部忽略，禁止强制提交 |
 | `config/rebuild/` | 无凭据的版本清单、权重路径/哈希、adapter 配置 | 跟踪 |
-| `brain/` | WSL 脑（`/root/albion-pi/`）的源码快照：宿主、扩展、自检（原 `integrations/` 下的 pi-brain，2026-11-01 整体改名搬到顶层）；`bin/chat_bridge.py` + `bin/inbox.py` 管 TG/Discord 与未回箱（2026-11-02，跑在 `chat-venv`） | 跟踪；私人 `.env`、SOUL、`state/` 不入库。原 `integrations/hermes/` 已于 2026-10-16 删除，见 git 历史 |
+| `brain/` | WSL 脑（`/root/albion-pi/`）的源码快照：宿主、扩展、自检（原 `integrations/` 下的 pi-brain，2026-11-01 整体改名搬到顶层）；`bin/chat_bridge.py` + `bin/inbox.py` 管 TG/Discord 与未回箱（2026-11-02，跑在 `chat-venv`） | 跟踪；私人 `.env`、SOUL、`state/` 不入库。原 `integrations/hermes/` 已于 2026-10-16 删除，见 git 历史；`brain/agy/bridge.py` 是 agy 内核的 **Windows** 桥（`127.0.0.1:8670`，不跑在 WSL） |
 | `memory/` | OpenViking 记忆链的守护/观测/恢复脚本、`OPENVIKING_GUARD.md`、`templates/ov.conf.*` | 跟踪；`ov.conf` 本身不入库 |
 | `tts/gsv/` | GPT-SoVITS 适配层（Denia）：`denia_launch.py`（按 `ALBION_GSV_DEVICE` 覆盖 device/is_half，写临时 yaml）、`tts_infer_denia.yaml`、`start_denia.bat`、README；上游代码/权重不在仓库 | 跟踪（不含上游文件与权重） |
 | `tts/ref_audio/` | 各船参考音与 Denia 参考音（站点级资产） | 忽略，不入库 |
