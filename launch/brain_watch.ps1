@@ -19,23 +19,35 @@ function Test-Bridge {
     } catch { return $false }
 }
 
+# agy 内核（脑 /health 带 "kernel": "agy"）下她的工具和每轮钩子在扩展宿主 8661 里；宿主单独死了也补一次 start.sh。
+function Test-AgyHost {
+    try {
+        $b = Invoke-WebRequest -Uri 'http://127.0.0.1:8650/health' -UseBasicParsing -TimeoutSec 5
+        if ($b.Content -notlike '*"kernel": "agy"*') { return $true }
+        $r = Invoke-WebRequest -Uri 'http://127.0.0.1:8661/health' -UseBasicParsing -TimeoutSec 5
+        return ($r.Content -like '*"ok"*')
+    } catch { return $false }
+}
+
 $brainOk = Test-Brain
 $bridgeOk = Test-Bridge
-if ($brainOk -and $bridgeOk) { exit 0 }
+$hostOk = Test-AgyHost
+if ($brainOk -and $bridgeOk -and $hostOk) { exit 0 }
 
 # 只走幂等的 start.sh；绝不做 wsl --shutdown，也不调 launch/start_brain.ps1（那条路会重启 WSL）。
 # start.sh 会顺带把平台桥拉起来（没配 token 时桥自己写一行日志说明）。
 $out = @(wsl -d Ubuntu -- bash /root/albion-pi/start.sh 2>&1)
 $brainOk = Test-Brain
 $bridgeOk = Test-Bridge
-$ok = $brainOk -and $bridgeOk
+$hostOk = Test-AgyHost
+$ok = $brainOk -and $bridgeOk -and $hostOk
 $last = ($out | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -Last 1)
 if (-not $last) { $last = '(no output)' }
 
 $logDir = Join-Path $PSScriptRoot '..\logs'
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 $result = 'fail'; if ($ok) { $result = 'ok' }
-$detail = 'brain={0} bridge={1} {2}' -f $brainOk, $bridgeOk, $last
+$detail = 'brain={0} bridge={1} host={2} {3}' -f $brainOk, $bridgeOk, $hostOk, $last
 Add-Content -Path (Join-Path $logDir 'brain-watch.log') -Encoding UTF8 `
     -Value ('{0} {1} {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $result, $detail)
 

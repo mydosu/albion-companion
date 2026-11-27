@@ -7,6 +7,15 @@ cd "$(dirname "$0")" || exit 1
 PORT="${ALBION_BRAIN_PORT:-8650}"
 mkdir -p logs state
 
+# agent/.env 里的一个值（server.py 自己会整份读；这里只要内核开关和宿主要的 key）。shell 里设了就照 shell 的。
+env_val() {
+  [ -f agent/.env ] || return 0
+  grep -E "^[[:space:]]*$1[[:space:]]*=" agent/.env | tail -1 | cut -d= -f2- \
+    | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e "s/^[\"']//" -e "s/[\"']$//"
+}
+KERNEL="${ALBION_KERNEL:-$(env_val ALBION_KERNEL)}"
+KERNEL="$(printf '%s' "${KERNEL:-pi}" | tr '[:upper:]' '[:lower:]')"
+
 # 平台桥（bin/chat_bridge.py，chat-venv 跑，127.0.0.1:8660）：TG/Discord 收发、send_message 的落点。
 # 没配 token 时桥自己写一行日志说明就不干活；chat-venv 不在就跳过（脑照常起来）。
 start_chat_bridge() {
@@ -35,7 +44,7 @@ start_chat_bridge() {
 # 环境变量和 server.py 用的是同一套（API_SERVER_KEY、ALBION_BRAIN_PORT、state/活动库/日志路径）。
 start_agy_host() {
   local port="${ALBION_HOST_PORT:-8661}"
-  local key="${API_SERVER_KEY:-}"
+  local key="${API_SERVER_KEY:-$(env_val API_SERVER_KEY)}"
   if ss -ltn 2>/dev/null | grep -q ":$port "; then
     echo "agy host already up on $port"; return 0
   fi
@@ -66,7 +75,7 @@ start_agy_host() {
 if ss -ltn 2>/dev/null | grep -q ":$PORT "; then
   if curl -sS -m 5 "http://127.0.0.1:$PORT/health" 2>/dev/null | grep -q '"brain": "pi"'; then
     echo "brain already up on $PORT"; start_chat_bridge
-    if [ "${ALBION_KERNEL:-pi}" = "agy" ]; then start_agy_host; fi
+    if [ "$KERNEL" = "agy" ]; then start_agy_host; fi
     exit 0
   fi
   echo "port $PORT is held by something else (旧脑 Hermes 网关？): 先停掉它再启动 Pi 脑"
@@ -78,7 +87,7 @@ for _ in $(seq 1 20); do
   if ss -ltn 2>/dev/null | grep -q ":$PORT "; then
     if curl -sS -m 5 "http://127.0.0.1:$PORT/health" | grep -q '"status"'; then
       echo "brain-up on $PORT"; start_chat_bridge
-      if [ "${ALBION_KERNEL:-pi}" = "agy" ]; then start_agy_host; fi
+      if [ "$KERNEL" = "agy" ]; then start_agy_host; fi
       exit 0
     fi
   fi
