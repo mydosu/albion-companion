@@ -12,9 +12,11 @@ Hard rules baked in here:
   HTTP, is written to ``.agents/agents/<agent>.md`` and is never logged.
 * The custom main agent declares ``tools: []`` so agy's own file/command/web
   tools are not registered at all.
-* Her MCP server is declared in the workspace (``.agents/mcp_config.json``) so
-  that agy registers it at start-up; a tool whitelist cannot name MCP tools,
-  so they are reached through agy's ``call_mcp_tool`` wrapper.
+* Each session runs agy with its own ``--gemini-dir`` (``<home>/gemini/<session>``):
+  the user's global ``~/.gemini/config`` plugins (hooks), skills and MCP never
+  load for her. Her MCP server is declared in that dir's ``config/mcp_config.json``
+  (the workspace ``.agents/mcp_config.json`` alone is not picked up there); a tool
+  whitelist cannot name MCP tools, so they go through agy's ``call_mcp_tool``.
 * Every ACP permission request is answered here: only ``call_mcp_tool`` calls
   whose ``ServerName`` is her MCP server (or a direct ``mcp_<server>_*`` tool)
   are allowed; everything else is denied.
@@ -40,9 +42,14 @@ from pathlib import Path
 
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("ALBION_AGY_BRIDGE_PORT", "8670"))
-AGY_BIN = os.environ.get("ALBION_AGY_BIN", r"C:\Users\24346\AppData\Local\agy\bin\agy.exe")
-AGY_HOME = Path(os.environ.get("ALBION_AGY_HOME") or (Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "albion-agy"))
+_LOCALAPPDATA = Path(os.environ.get("LOCALAPPDATA", str(Path.home())))
+AGY_BIN = os.environ.get("ALBION_AGY_BIN") or str(_LOCALAPPDATA / "agy" / "bin" / "agy.exe")
+AGY_HOME = Path(os.environ.get("ALBION_AGY_HOME") or (_LOCALAPPDATA / "albion-agy"))
 WORKSPACE_ROOT = AGY_HOME / "workspace"
+# 每个会话一份自己的 .gemini（agy acp --gemini-dir）：用户全局 ~/.gemini/config 里的插件 hooks（openviking-memory、rtk）、
+# skills、MCP 不进她的会话；她的 MCP 写进这份的 config/mcp_config.json，各会话的 URL 互不相干。
+# 登录凭据在系统 keyring 里、不在这个目录（11-27 实测：独立目录照样认出 Google AI Pro），不用重新登录。
+GEMINI_ROOT = AGY_HOME / "gemini"
 AGENT_NAME = os.environ.get("ALBION_AGY_AGENT", "albion")
 MCP_SERVER_NAME = os.environ.get("ALBION_AGY_MCP_SERVER", "albion")
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -87,6 +94,30 @@ def agy_argv(*args) -> list:
     if AGY_BIN.lower().endswith(".py"):
         return [sys.executable, AGY_BIN] + list(args)
     return [AGY_BIN] + list(args)
+
+
+def ensure_gemini_dir(gemini_dir: Path, mcp_url: str) -> None:
+    """把一份会话专用的 .gemini 备齐：她的 MCP、默认项目、信任她的工作区根。"""
+    cfg = {"mcpServers": {MCP_SERVER_NAME: {"url": mcp_url}}}
+    (gemini_dir / "config").mkdir(parents=True, exist_ok=True)
+    (gemini_dir / "config" / "mcp_config.json").write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+    # 没有默认项目时 agy 不认工作区的 .agents（11-27 对照日志：缺 "Conversation using project ID"）；内容照用户目录里那份
+    project = gemini_dir / "config" / "projects" / "default-cli-project.json"
+    if not project.exists():
+        project.parent.mkdir(parents=True, exist_ok=True)
+        project.write_text(json.dumps({"id": "default-cli-project", "name": "CLI Project", "projectResources": {}}) + "\n", encoding="utf-8")
+    settings = gemini_dir / "antigravity-cli" / "settings.json"
+    try:
+        data = json.loads(settings.read_text(encoding="utf-8")) if settings.exists() else {}
+    except (OSError, ValueError):
+        data = {}
+    trusted = data.get("trustedWorkspaces") if isinstance(data.get("trustedWorkspaces"), list) else []
+    root = str(WORKSPACE_ROOT)
+    if root in trusted:
+        return
+    data["trustedWorkspaces"] = trusted + [root]
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    settings.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def agy_version() -> str:
@@ -377,6 +408,7 @@ class Session:
         self.model = model
         self.mcp_url = mcp_url
         self.workspace = WORKSPACE_ROOT / name
+        self.gemini_dir = GEMINI_ROOT / name
         self.proc: AcpProcess | None = None
         self.acp_session = None
         self.models = []
@@ -419,8 +451,10 @@ class Session:
 
     def _start(self):
         self._write_workspace()
+        ensure_gemini_dir(self.gemini_dir, self.mcp_url)
         self.proc = AcpProcess(
             self.workspace,
+            extra_args=["--gemini-dir", str(self.gemini_dir)],
             on_update=self._on_update,
             on_permission=self._decide_permission,
             on_done=self._on_proc_done,
@@ -560,6 +594,7 @@ class Session:
             self.proc.stop()
         self.dead = True
         shutil.rmtree(self.workspace, ignore_errors=True)
+        shutil.rmtree(self.gemini_dir, ignore_errors=True)  # agy 的对话存档里也有人设，一起清
         log("session %s closed" % self.name)
 
     def info(self):

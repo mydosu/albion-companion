@@ -43,7 +43,8 @@ Pi 支持 Google 登录之前，脑可以临时换到 Antigravity CLI（agy 1.5.
 - 工作区：`%LOCALAPPDATA%\albion-agy\workspace\<会话名>\`，一个会话一个 `agy acp --agent albion` 进程：
   - `.agents/agents/albion.md`：frontmatter `mainAgent: true`、`tools: []`（agy 自带的读写文件、跑命令、
     联网工具全部不注册），正文是人设 + 桥从她 MCP 取来的工具清单；
-  - `.agents/mcp_config.json`：只放她这个会话的 MCP（`url`），所以每个会话可以用不同的 `/mcp/<会话>`。
+  - `.agents/mcp_config.json`：只放她这个会话的 MCP（`url`）。
+  - 每个会话还有一份自己的 `.gemini`（`%LOCALAPPDATA%\albion-agy\gemini\<会话>`，`agy acp --gemini-dir`）：她的 MCP 实际是从这份的 `config/mcp_config.json` 读的，所以每个会话可以用不同的 `/mcp/<会话>`；用户全局 `~/.gemini/config` 里的插件 hooks（openviking-memory、rtk）、skills、MCP 进不来。登录凭据在系统 keyring 里，不用为它重新登录。
 - 权限：ACP 的 `session/request_permission` 全由桥回答——只有 `call_mcp_tool` 且 `ServerName` 是她 MCP
   服务器的调用批准，其它（含 `run_command`、`read_file` 之类）一律拒绝。
 - 她的工具：agy 的 `tools` 白名单点名不了 MCP 工具（会报 `unknown component: tool "mcp_…"`），
