@@ -13,7 +13,7 @@ import { pathToFileURL } from "node:url";
 const EXT = process.argv[2]
   ? pathToFileURL(process.argv[2]).href
   : new URL("../../brain/agent/extensions/albion-guard.ts", import.meta.url).href;
-const { tidy, segments, postureMatches, canonicalAct, checkDraft, foldLabeledAside, fixAsidePronoun, fixTicPhrases } = await import(EXT);
+const { tidy, segments, postureMatches, canonicalAct, foldLabeledAside, fixAsidePronoun, fixTicPhrases } = await import(EXT);
 
 const ACT = '<|ACT:{"emotion":"neutral"}|>\n';
 const fails: string[] = [];
@@ -123,10 +123,11 @@ const ACT_CASES: [string, string, string | null][] = [
 ];
 for (const [name, text, want] of ACT_CASES) check(canonicalAct(text) === (want ?? text), `ACT[${name}]：${JSON.stringify(canonicalAct(text))}`);
 
-// 亲密阶段不许被 checkDraft 记成 `act` issue（它只看 emotion 与标记个数；键多一个不算错）
+// 亲密阶段不许被整理器当成违规（ACT 只认 emotion 与标记个数；键多一个不算错）
+// 2026-11-28：checkDraft 已删（连同整句重说），改成直接验交付稿一字不动。
 for (const intimate of ['"steady"', '"climax"', '1']) {
   const draft = `<|ACT:{"emotion":"awkward","intimate":${intimate}}|>指挥官，今天的作业做完了。`;
-  check(checkDraft(draft, "").length === 0, `intimate=${intimate} 不该触发 issue：${JSON.stringify(checkDraft(draft, ""))}`);
+  check(tidy(draft, "").text === draft, `intimate=${intimate} 不该被整理改动：${JSON.stringify(tidy(draft, "").text)}`);
 }
 
 // 点单腔（2026-10-27）：人称 +（自己）+「点的」+ 句末 → 「让的」；后面跟名词 / 不是人称 / 不是句末都不动

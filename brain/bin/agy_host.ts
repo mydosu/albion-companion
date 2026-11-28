@@ -21,8 +21,8 @@
  *  · 不加载 albion-relay（模型转发）：agy 自己连 Google，没有 Pi 的 provider 请求要转发；
  *    而且它会占 8798 端口、拖住进程退出。可用 ALBION_HOST_SKIP 调整。
  *  · Pi 的压缩钩子（session_before_compact / session_compact）在 agy 下不发事件：空跑。
- *  · guard 的「重说」需要一条模型请求，agy 下没有（models.json 里也没有 agy 的模型），
- *    只做确定性整理（ACT 补竖线、语料替换等）；重说分支自然走 no_provider。
+ *  · guard 的「整句重说」已于 2026-11-28 删除（用户定：Gemini 类模型几乎不触发），agy 与 Pi 下都只做
+ *    确定性整理（ACT 补竖线、语料替换等）；payload.model 仍要合成，guard 用它判「这一轮是不是 DS」。
  *
  * 跑：node /root/albion-pi/bin/agy_host.ts         （只听 127.0.0.1:8661，ALBION_HOST_PORT 可改）
  * 自检：tests/pi-brain/check_agy_host.mjs（在 WSL 里跑，临时 state 目录，不碰生产）
@@ -613,8 +613,8 @@ async function handleBefore(s: Session, body: any): Promise<any> {
     messages = await emitContext(s, messages, ctx);
     // ④ before_provider_request：guard 在这里记下本轮原话（message_end 的整理要用），
     //    loopguard 在这里摘掉 schema 不合格的工具、【接着说完】那一轮整个不给工具。
-    //    没有真实 provider 请求，只喂一份合成的（model + messages + 工具声明），
-    //    故意不给 messages 配 model 之外的调用参数：guard 的「重说」要一次真实模型调用，agy 下没有。
+    //    没有真实 provider 请求，只喂一份合成的（model + messages + 工具声明）：
+    //    guard 用 payload.model 判这一轮是不是 DS（口癖语料替换/姿态额度只对 DS 生效）。
     const payload: any = {
       model: MODEL,
       messages,

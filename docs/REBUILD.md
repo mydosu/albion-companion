@@ -116,7 +116,8 @@ WSL 里她的技能与 Windows 主 Hermes 的技能树独立，不导入 Windows
 `ALBION_PROVIDER`/`ALBION_MODEL` 仍最优先，读不到设置时兜底 `commandcode/deepseek/deepseek-v4-flash`。
 `cli.sh` 读同一份 `settings.json` 的 `defaultProvider`/`defaultModel` 后显式传 `--model`（续 `--session-id` 时省略会沿用旧会话里记的模型），`delegate.ts` 带 `--no-session`、默认不传 `--model` 直接吃那份默认值；要单独换临时 export
 `ALBION_CLI_MODEL` / `ALBION_DELEGATE_MODEL`。合并时去掉模型级 `api`/`baseUrl` 覆盖、统一 provider 级
-`openai-completions`：整理器的钩子与「重说」只发 OpenAI 形状的 payload（`albion-guard.ts` 的 `providerFor` 也只认这种）。
+`openai-completions`：pi 自己发 OpenAI 形状的 payload（整理器 `albion-guard.ts` 自 2026-11-28 起不再发任何模型请求，
+整句重说已删除，只做确定性整理）。
 生产 `agent/models.json` 与仓库示例不同（私密 provider 与明文 key），部署时只追加/替换 magpie 这一个键。
 
 **换模型清单（2026-11-15）**：每个部件在哪改、改完要不要重启。
