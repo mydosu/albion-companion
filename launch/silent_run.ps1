@@ -22,4 +22,10 @@ $si.FileName = $env:ComSpec
 $si.Arguments = '/d /c ' + $Cmd
 $si.UseShellExecute = $false
 $si.CreateNoWindow = $true
+# Nobody can press a key in a hidden window: the `if not defined ALBION_SILENT pause` tail of
+# start_*.bat would freeze the service forever (2026-11-28: restarting 9881 this way left the outer
+# cmd sitting on pause, port never came up). Set it here so the plain `-Bat <start_*.bat>` restart
+# path is safe by itself. (-Visible is untouched: a human is watching that one.)
+# ASCII only on purpose: Windows PowerShell 5.1 reads BOM-less files as ANSI.
+$si.EnvironmentVariables['ALBION_SILENT'] = '1'
 [void][System.Diagnostics.Process]::Start($si)

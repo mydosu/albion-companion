@@ -575,7 +575,8 @@ def to_japanese(text: str, by_clause: bool = False) -> str:
                         return got
                     if i == len(keys) - 1:
                         print("[translate] Command Code 的 key 都失败，退 codex luna", flush=True)
-                if not keys:
+                if not keys and cc_fallback_enabled():
+                    # 退路关掉时这句不打：那是我们自己关的，不该每句都刷一行告警
                     print("[translate] 没有可用的 Command Code key（没拿到或额度用完冷却中），直接走 codex",
                           flush=True)
                 return ""
@@ -851,8 +852,21 @@ except ValueError:                   # 写错了不该让桥起不来
     CREDIT_COOLDOWN = 1800.0
 
 
+def cc_fallback_enabled() -> bool:
+    """Command Code 直连退路开不开（2026-11-28：指挥官定翻译统一走 magpie group/ds，退路取消）。
+
+    `TTS_TRANSLATE_CC_FALLBACK=0` 关掉后：key#1/key#2 一律不读（不查文件、不查 hermes .env，
+    也就不会每句打一行"读 key 失败"），对冲腿不会发出去，首腿失败这一句直接不念。
+    默认开，不设就还是老行为。
+    """
+    return (os.environ.get("TTS_TRANSLATE_CC_FALLBACK", "1").strip().lower()
+            not in ("0", "false", "no", "off"))
+
+
 def _cc_keys() -> list[str]:
     """Command Code 的 key（#1、#2），去掉没拿到的和额度用完还在冷却的。"""
+    if not cc_fallback_enabled():
+        return []                    # 退路关了：连 key 都不去读（读了会打"读 key 失败"）
     now = time.time()
     out: list[str] = []
     for k in (_fallback_key(), _fallback_key2()):
