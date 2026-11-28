@@ -15,9 +15,9 @@ provider，所以这里做三件事：
 agent 目录的 settings.json 读脑现在用的模型，不必各自写死，也不必再问一遍 magpie。
 
 合并时去掉每个模型条目上的 `api` / `baseUrl` 覆盖，统一成 provider 级的 openai-completions：
-整理器 albion-guard 的 context 钩子和「重说」只发 OpenAI 形状的 payload（/chat/completions），
-而 magpie 给 antigravity/* 写的覆盖是 google-generative-ai + /v1beta；统一到 OpenAI 形状后
-聊天与工具调用实测都 200（2026-10-29 的 RECON）。
+pi 发的是 OpenAI 形状的 payload（/chat/completions），而 magpie 给 antigravity/* 写的覆盖是
+google-generative-ai + /v1beta；统一到 OpenAI 形状后聊天与工具调用实测都 200（2026-10-29 的 RECON）。
+（2026-11-28 起整理器 albion-guard 不再自己发请求：整句重说已删除，它只做确定性整理。）
 
 只用标准库；不打印任何 key。
 """

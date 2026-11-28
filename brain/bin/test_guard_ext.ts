@@ -25,7 +25,7 @@ let fetches = 0;
   throw new Error("albion-guard 不该发网络请求");
 };
 
-const { default: albionGuard, tidy, tidyAndCount, tidyMessage, tidyMessageRegen, isRefusal, NEUTRAL_ACT, fixTicPhrases, detectRegenHits, checkDraft, isDeepSeekModel, resetAsideCap } = await import("../agent/extensions/albion-guard.ts");
+const { default: albionGuard, tidy, tidyAndCount, tidyMessage, isRefusal, NEUTRAL_ACT, fixTicPhrases, detectRegenHits, checkDraft, isDeepSeekModel, resetAsideCap } = await import("../agent/extensions/albion-guard.ts");
 const { default: albionTurn, _albionTest } = await import("../agent/extensions/albion-turn.ts");
 
 const assistant = (text: string) => ({ role: "assistant", content: [{ type: "text", text }], stopReason: "stop" });
@@ -37,9 +37,9 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   assert.equal(tidyMessage(assistant(A + "指挥官早上好，今天想先听您说说昨晚睡得怎么样。"), "早", "s-a"), undefined);
   const src = readFileSync(new URL("../agent/extensions/albion-guard.ts", import.meta.url), "utf-8");
   assert.ok(!/child_process|\bspawn\(/.test(src), "整理器不该起子进程");
-  assert.ok(src.includes("(deps.fetchImpl ?? fetch)("), "只有重说这一处发请求");
+  assert.ok(!/\bfetch\(/.test(src), "整理器不该发网络请求（整句重说 2026-11-28 已删除）");
   assert.ok(!src.includes("ALBION_VOICE_REJECTED"), "哨兵已撤");
-  console.log("A 干净稿不动、整理器不起子进程、只有重说一处 fetch OK");
+  console.log("A 干净稿不动、整理器不起子进程、一处网络请求都没有 OK");
 }
 
 // B) 钩子接线：before_provider_request 记下他那句；带工具调用 / 非 assistant / 没写完的不动
@@ -530,24 +530,11 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
     assert.equal(textOfResult(tidyMessage(assistant(withAside("甲二。")), "在吗", SA)), A + "甲二。");
     assert.equal(textOfResult(tidyMessage(assistant(withAside("乙二。")), "在吗", SB)), A + "乙二。");
   }
-  // 重说的草稿/重说稿不算：一条交付只数一次（首稿丢心声的那条不占额度）
-  {
-    const S = "s-cap-regen";
-    const provider = { baseUrl: "http://mock.local/v1", apiKey: "k" };
-    const req = () => ({ model: "deepseek/deepseek-v4-flash", messages: [{ role: "user", content: "在吗" }] });
-    const resp = (content: string) => ({ ok: true, status: 200, json: async () => ({ model: "deepseek/deepseek-v4-flash", choices: [{ message: { content }, finish_reason: "stop" }] }) });
-    const fetchImpl = async () => resp(A + "\n好，我记住了。");
-    const first = await tidyMessageRegen(assistant(A + "好，我收下了。（希望他早点回来。）"), "在吗", req(), { fetchImpl, provider, regen: true }, S);
-    assert.ok(!textOfResult(first as any)?.includes("希望他早点回来"), "重说稿丢了心声");
-    assert.equal(tidyMessage(assistant(A + "好的。（希望他早点回来。）"), "在吗", S), undefined, "首稿里的心声没占额度：下一条还留");
-  }
   // 带工具调用的半路话宿主不交付（只收没有 toolCall 的那条）：不占额度
   {
     const S = "s-cap-tool";
     const toolMsg = { role: "assistant", content: [{ type: "toolCall", name: "read" }, { type: "text", text: A + "我去查一下。（希望他早点回来。）" }], stopReason: "stop" };
-    const req = { model: "deepseek/deepseek-v4-flash", messages: [{ role: "user", content: "在吗" }] };
-    const fetchImpl = async () => ({ ok: true, status: 200, json: async () => ({ model: "deepseek/deepseek-v4-flash", choices: [{ message: { content: A + "\n我去查一下。" }, finish_reason: "stop" }] }) });
-    await tidyMessageRegen(toolMsg, "在吗", req, { fetchImpl, provider: { baseUrl: "http://mock.local/v1", apiKey: "k" }, regen: true }, S);
+    assert.equal(tidyMessage(toolMsg, "在吗", S), undefined, "工具轮不动");
     assert.equal(tidyMessage(assistant(A + "好的。（希望他早点回来。）"), "在吗", S), undefined, "工具轮的心声没占额度");
   }
   // 逐字复述他的原文：不动他的字，也不计额度
@@ -556,7 +543,7 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
     const quote = A + "好的。（希望他早点回来。）";
     assert.equal(tidyMessage(assistant(quote), "请逐字念：" + quote, S), undefined);
   }
-  console.log("X 心声上限：4 条里留 1、4，删完正文不变不留空行；只有心声/亲密轮不删且计入；会话各算各的；重说稿与工具轮不占额度 OK");
+  console.log("X 心声上限：4 条里留 1、4，删完正文不变不留空行；只有心声/亲密轮不删且计入；会话各算各的；工具轮不占额度 OK");
 }
 // T) 口癖语料：命中换成 options 之一、不命中原样、同一规则连换 3 次不重样、语料缺失不崩
 {
@@ -607,130 +594,6 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   assert.ok(Array.isArray(st.tic_recent["接住"]) && st.tic_recent["接住"].length === 1, JSON.stringify(st));
   console.log("T 口癖语料：8 句命中换 options、4 句不动、连换 3 次不重样、语料缺失不崩、日志与 voice.json 记账 OK");
 }
-// U) 重说：检测 → 同路由最多 3 稿（首稿 + 2 次）；失败交最后一稿/首稿；工具/静默/醒来/关掉不重说
-{
-  const A = '<|ACT:{"emotion":"neutral"}|>';
-  const provider = { baseUrl: "http://mock.local/v1", apiKey: "k" };
-  const req = () => ({ model: "deepseek/deepseek-v4-flash", messages: [{ role: "user", content: "在吗" }] });
-  const resp = (content: string, model = "deepseek/deepseek-v4-flash") => ({ ok: true, status: 200, json: async () => ({ model, choices: [{ message: { content }, finish_reason: "stop" }] }) });
-  const fail = (status: number) => ({ ok: false, status, json: async () => ({}) });
-  const make = (queue: any[]) => {
-    const calls: any[] = [];
-    const f = async (_url: string, init: any) => {
-      calls.push(JSON.parse(init.body));
-      const r = queue.length > 1 ? queue.shift() : queue[0];
-      if (typeof r === "function") return r();
-      return r;
-    };
-    return { calls, f };
-  };
-  const run = async (text: string, source: string, queue: any[], deps: any = {}) => {
-    const { calls, f } = make(queue);
-    const text0 = text.startsWith("<|ACT:") ? text : A + text;
-    const out = await tidyMessageRegen(assistant(text0), source, req(), { fetchImpl: f, provider, regen: true, ...deps }, "s-regen");
-    return { calls, out };
-  };
-  const promptOf = (c: any) => c.messages[c.messages.length - 1].content as string;
-
-  // 五句各触发一次，请求里只带对应那一行
-  const cases: [string, string, string][] = [
-    ["这话不绕，我接住。", "metaphor", "他的话、他的心意和心事"],
-    ["想帮您把这句话拆开看看。", "metaphor", "他的话、他的心意和心事"],
-    ["您总把难处说得这么轻。", "habit", "他平时怎么样"],
-    ["这话我认一半。", "stance", "自己怎么想"],
-    ["被子盖好，别又踢到一边去。", "habit", "他平时怎么样"],
-  ];
-  const lines = ["他的话、他的心意和心事", "他平时怎么样", "自己怎么想"];
-  for (const [text, rule, line] of cases) {
-    const { calls } = await run(text, "在吗", [resp(A + "\n我听进去了。")]);
-    assert.equal(calls.length, 1, `${text} 应重说一次`);
-    const p = promptOf(calls[0]);
-    assert.ok(p.startsWith("你现在只负责把这一次的话重新说好"), "B 代提示语原文");
-    assert.ok(p.includes(line), `${text} 应带 ${rule} 那一行`);
-    for (const other of lines.filter((l) => l !== line)) assert.ok(!p.includes(other), `${text} 不该带别的行`);
-    const payload = JSON.parse(p.split("\n").at(-1)!);
-    assert.ok(payload.review.some((x: string) => x.startsWith(rule + ":")), JSON.stringify(payload.review));
-    assert.ok(payload.review.every((x: string) => x.length <= 26));
-    assert.ok(typeof payload.unpublished_draft === "string" && typeof payload.current_message === "string");
-  }
-  // 不触发
-  for (const text of ["我去接电话。", "您总得吃饭吧。", "明天我去接您。", "说话的时候别急。"]) {
-    const { calls } = await run(text, "在吗", [resp(A + "\n好。")]);
-    if (calls.length) console.log("DBG", text, JSON.stringify(promptOf(calls[0]).slice(-200)));
-    assert.equal(calls.length, 0, `${text} 不该触发`);
-  }
-  {
-    const { calls } = await run(A + "辛苦了。", "在吗", [resp(A + "\n好。")]);
-    assert.equal(calls.length, 0, "干净稿不触发");
-  }
-  // 工具轮：只查前导正文，tool_calls 保留
-  {
-    const toolMsg = { role: "assistant", content: [{ type: "toolCall", name: "read" }, { type: "text", text: A + "想帮您把这句话拆开看看。" }], stopReason: "stop" };
-    const { calls, f } = make([resp(A + "\n我知道了。")]);
-    const out = await tidyMessageRegen(toolMsg, "在吗", req(), { fetchImpl: f, provider, regen: true }, "s-regen");
-    assert.equal(calls.length, 1, "工具轮只重说前导正文");
-    const msg = (out as any).message;
-    assert.ok(msg.content.some((b: any) => b.type === "toolCall"), "tool_calls 保留");
-    assert.ok(msg.content.some((b: any) => b.type === "text" && b.text.includes("我知道了")));
-  }
-  // 静默轮 / 醒来轮 / 关掉
-  {
-    const { calls } = await run(A + "想帮您把这句话拆开看看。", "静默指令：这一次不写正文", [resp(A + "\n好。")]);
-    assert.equal(calls.length, 0, "静默轮不重说");
-  }
-  {
-    const { calls } = await run(A + "想帮您把这句话拆开看看。", "【自主醒来】现在是 2026-10-29 10:00（星期四）。", [resp(A + "\n好。")]);
-    assert.equal(calls.length, 0, "醒来轮不重说");
-  }
-  {
-    const { calls } = await run(A + "这话不绕，我接住。", "在吗", [resp(A + "\n我听进去了。")], { regen: false });
-    assert.equal(calls.length, 0, "ALBION_REGEN=0 不重说");
-  }
-  // 失败：500 / 超时 / 空正文 / 换模型 → 交整理后的原稿，只请求 1 次
-  for (const [name, q] of [["http_500", [fail(500)]], ["timeout", [() => { throw Object.assign(new Error("t"), { name: "TimeoutError" }); }]],
-    ["empty", [resp("")]], ["model_mismatch", [resp(A + "\n好。", "other/model")]]] as [string, any][]) {
-    const { calls, out } = await run(A + "这话不绕，我接住。", "在吗", q);
-    assert.equal(calls.length, 1, `${name}: 只请求一次`);
-    const got = textOfResult(out as any);
-    assert.ok(got.includes("这话不绕") && !got.includes("好。"), `${name}: 应交原稿 ${got}`);
-  }
-  // 成功 → 交重说稿
-  {
-    const { out } = await run(A + "这话不绕，我接住。", "在吗", [resp(A + "\n您说的我记住了。")]);
-    assert.ok(textOfResult(out as any).includes("您说的我记住了"), textOfResult(out as any));
-  }
-  // 重说稿仍命中 → 再请求一次；第 3 稿仍命中 → 不再请求，交第 3 稿
-  {
-    const { calls, out } = await run(A + "这话不绕，我接住。", "在吗",
-      [resp(A + "\n我想把您的话收下。"), resp(A + "\n您总是这样。")]);
-    assert.equal(calls.length, 2, "两稿都还命中：总共 2 次请求");
-    assert.ok(textOfResult(out as any).includes("您总是这样"), textOfResult(out as any));
-    // 第 2 次请求的 marked 填上一稿的命中
-    const payload2 = JSON.parse(promptOf(calls[1]).split("\n").at(-1)!);
-    assert.ok(payload2.unpublished_draft.includes("我想把您的话收下"), "第 2 次的 draft 是上一稿");
-  }
-  // 干净重说稿 → 不再请求
-  {
-    const { calls } = await run(A + "这话不绕，我接住。", "在吗", [resp(A + "\n好，我在。")]);
-    assert.equal(calls.length, 1, "第二稿干净就不再请求");
-  }
-  // 第 2 次请求失败 → 交第 2 稿
-  {
-    const { calls, out } = await run(A + "这话不绕，我接住。", "在吗",
-      [resp(A + "\n我想把您的话收下。"), fail(500)]);
-    assert.equal(calls.length, 2);
-    assert.ok(textOfResult(out as any).includes("我想把您的话"), textOfResult(out as any));
-  }
-  // B 代 checks：缺 ACT / missing_reply / 括号没闭合 / 回忆盘点 / 泄漏标记 都会触发
-  for (const [text, source] of [["你好呀。", "在吗"], [A, "在吗"], [A + "\n你好（今天", "在吗"],
-    [A + "\n水果这类事，敢说的只有这一笔。", "你还记得九月份买过什么水果吗？"],
-    [A + "\n你好呀 DSML", "在吗"]] as [string, string][]) {
-    const { calls, f } = make([resp(A + "\n好。")]);
-    await tidyMessageRegen(assistant(text), source, req(), { fetchImpl: f, provider, regen: true }, "s-regen");
-    assert.equal(calls.length, 1, `旧检查该触发：${text.slice(0, 12)}`);
-  }
-  console.log("U 重说：5 句各触发一次且只带对应行、4 句不触发、工具/静默/醒来/关闭不重说、失败交原稿、最多 2 次请求、第 2 次失败交第 2 稿、旧 checks 触发 OK");
-}
 // V 10-29 复测漏网的说法要查得出来，正常说法不误查
 {
   const yes = ["这句我听第二遍了，头一遍我就当真收着了，没敢忘。", "您就丢这么一句过来，我不太放心。", "那这句我不认。",
@@ -749,65 +612,36 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   for (const s of no) assert.deepEqual(detectRegenHits(s), [], `不该查：${s}`);
   console.log("V 漏网说法 20 句查得出、正常说法 24 句不误查 OK");
 }
-// W) 口癖清洗只对 DS 生效：同一段含口癖首稿，DS 模型触发重说/语料替换；别的模型不重说、不替换，通用 checks 与整理照旧
+// W) 口癖清洗只对 DS 生效（整句重说 2026-11-28 已删，这里只剩检测与确定性整理）
 {
   const A = '<|ACT:{"emotion":"neutral"}|>';
-  const provider = { baseUrl: "http://mock.local/v1", apiKey: "k" };
   const DS = "deepseek/deepseek-v4-flash";
   const GM = "antigravity/gemini-3.8-flash";
-  const reqOf = (model: string) => ({ model, messages: [{ role: "user", content: "在吗" }] });
-  const resp = (content: string, model: string) => ({ ok: true, status: 200, json: async () => ({ model, choices: [{ message: { content }, finish_reason: "stop" }] }) });
-  const fail = () => ({ ok: false, status: 500, json: async () => ({}) });
-  const call = async (text: string, model: string, queue: any[], session: string, source = "在吗") => {
-    const calls: any[] = [];
-    const f = async (_url: string, init: any) => {
-      calls.push(JSON.parse(init.body));
-      return queue.length > 1 ? queue.shift() : queue[0];
-    };
-    const out = await tidyMessageRegen(assistant(text), source, reqOf(model), { fetchImpl: f, provider, regen: true }, session);
-    return { calls, out };
-  };
+  const tidyAs = (text: string, model: string, session: string, source = "在吗") =>
+    tidyMessage(assistant(text), source, session, { model });
   const ticOpts = (JSON.parse(readFileSync(new URL("../agent/tic-phrases.json", import.meta.url), "utf-8")).rules as any[])
     .find((r: any) => r.name === "收下").options as string[];
   const draft = A + "\n好，我收下了。";
 
-  // DS：同一段首稿触发重说（带 metaphor 命中）；重说不成落回 tidy 时照样做语料替换
+  // DS：语料替换照旧生效（原来那条重说路没了，替换还在）
   {
-    const { calls, out } = await call(draft, DS, [fail()], "s-ds");
-    assert.equal(calls.length, 1, "DS 该重说一次");
-    const review = JSON.parse(calls[0].messages.at(-1).content.split("\n").at(-1)).review as string[];
-    assert.ok(review.some((x) => x.startsWith("metaphor:")), JSON.stringify(review));
-    const got = textOfResult(out as any);
+    const got = textOfResult(tidyAs(draft, DS, "s-ds") as any);
     assert.ok(!got.includes("收下了"), `DS 该换掉口癖：${got}`);
     assert.ok(ticOpts.some((o) => got.includes(o)), `DS 换上的该是 options：${got}`);
   }
-  // Gemini：同一段首稿不重说、不替换（原样不动）
+  // Gemini：同一段首稿不替换（原样不动）
   {
-    const { calls, out } = await call(draft, GM, [resp(A + "\n好，我记住了。", GM)], "s-gemini");
-    assert.equal(calls.length, 0, "非 DS 不该重说");
-    assert.equal(out, undefined, "非 DS 不该换口癖");
+    assert.equal(tidyAs(draft, GM, "s-gemini"), undefined, "非 DS 不该换口癖");
   }
-  // Gemini：通用 checks 照旧——missing_reply 仍触发重说，且请求里不带口癖那一行
+  // Gemini：缺竖线的 ACT 照旧补上
   {
-    const { calls, out } = await call(A, GM, [resp(A + "\n我在呢。", GM)], "s-gemini2");
-    assert.equal(calls.length, 1, "非 DS 也查缺失正文");
-    const prompt = calls[0].messages.at(-1).content as string;
-    assert.ok(prompt.includes("missing_reply"), prompt.slice(-300));
-    assert.ok(!prompt.includes("他的话、他的心意和心事"), "非 DS 不带口癖那一行");
-    assert.ok(textOfResult(out as any).includes("我在呢"));
-  }
-  // Gemini：其余整理照旧（缺竖线的 ACT 还是补上）
-  {
-    const { calls, out } = await call('<ACT:{"emotion":"neutral"}|> 好，我收下了。', GM, [], "s-gemini3");
-    assert.equal(calls.length, 0);
-    assert.equal(textOfResult(out as any), A + " 好，我收下了。");
+    assert.equal(textOfResult(tidyAs('<ACT:{"emotion":"neutral"}|> 好，我收下了。', GM, "s-gemini3") as any), A + " 好，我收下了。");
   }
   // Gemini：姿态句额度与括号动作额度也关掉——原样放过，两个计数不推进
   {
     const mixed = A + "嗯。阿尔比恩会在这里等您。（耳根烫，好害羞）";
     writeFileSync(join(TMP, "voice.json"), JSON.stringify({ "s-quota-gm": { replies: 9, posture_at: 9, gesture_at: 9, tic_recent: {} } }));
-    const { calls, out } = await call(mixed, GM, [], "s-quota-gm");
-    assert.equal(calls.length, 0, "非 DS 不重说");
+    const out = tidyAs(mixed, GM, "s-quota-gm");
     assert.equal(out, undefined, "非 DS 姿态句与括号动作原样留");
     const st = JSON.parse(readFileSync(join(TMP, "voice.json"), "utf-8"))["s-quota-gm"];
     assert.equal(st.replies, 10);
@@ -818,8 +652,7 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   {
     const mixed = A + "嗯。阿尔比恩会在这里等您。（耳根烫，好害羞）";
     writeFileSync(join(TMP, "voice.json"), JSON.stringify({ "s-quota-ds": { replies: 9, posture_at: 9, gesture_at: 9, tic_recent: {} } }));
-    const { out } = await call(mixed, DS, [fail()], "s-quota-ds");
-    const got = textOfResult(out as any);
+    const got = textOfResult(tidyAs(mixed, DS, "s-quota-ds") as any);
     assert.ok(!got.includes("在这里等您") && !got.includes("耳根烫"), `DS 该按额度删：${got}`);
     assert.ok(got.includes("好害羞"), "念头留着");
     const st = JSON.parse(readFileSync(join(TMP, "voice.json"), "utf-8"))["s-quota-ds"];
@@ -830,27 +663,13 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   {
     const mixed = A + "嗯。阿尔比恩会在这里等您。（耳根烫，好害羞）";
     writeFileSync(join(TMP, "voice.json"), JSON.stringify({ "s-quota-ds2": { replies: 8, posture_at: 0, gesture_at: 0, tic_recent: {} } }));
-    const { out } = await call(mixed, DS, [fail()], "s-quota-ds2");
+    const out = tidyAs(mixed, DS, "s-quota-ds2");
     assert.equal(out, undefined, "DS 额度到点：姿态句与动作描写原样留");
     const st = JSON.parse(readFileSync(join(TMP, "voice.json"), "utf-8"))["s-quota-ds2"];
     assert.equal(st.posture_at, 9, "DS 记下这次姿态放过");
     assert.equal(st.gesture_at, 9, "DS 记下这次动作放过");
   }
-  // 回包 model 判定：转发会把 model 改写成上游名（等于/以请求 model 最后一段开头）也算匹配；对不上仍报 mismatch
-  {
-    // gemini：请求 antigravity/gemini-3.8-flash，回包 gemini-3.8-flash-n → 算匹配，重说稿生效
-    const { calls, out } = await call(A, GM, [resp(A + "\n我在呢。", "gemini-3.8-flash-n")], "s-model-gm");
-    assert.equal(calls.length, 1);
-    assert.ok(textOfResult(out as any).includes("我在呢"), `回包是上游名也算匹配：${textOfResult(out as any)}`);
-    // DS：请求 deepseek/deepseek-v4-flash，回包 deepseek/deepseek-v4.1-flash → 仍算 mismatch，交原稿、只请求一次
-    const { calls: dsCalls, out: dsOut } = await call(draft, DS, [resp(A + "\n我等您忙完再说。", "deepseek/deepseek-v4.1-flash")], "s-model-ds");
-    assert.equal(dsCalls.length, 1, "mismatch 只请求一次");
-    // 交出去的是原稿走完 tidy 的样子（收下 rule 的 options 之一），不是重说稿
-    const dsGot = textOfResult(dsOut as any);
-    assert.ok(!dsGot.includes("等您忙完"), `mismatch 该交原稿：${dsGot}`);
-    assert.ok(/^<\|ACT:\{[^\n]*\}\|>\n好，我(?:记住了|记下了|听进去了)。$/.test(dsGot), dsGot);
-  }
-  // checkDraft 的两项 DS 口癖只对 DS 报；其余通用项照旧
+  // checkDraft 的两项 DS 口癖只对 DS 报；其余通用项照旧（检测保留，只是没人拿它去重说了）
   {
     const posture = A + "\n阿尔比恩会在这里等您。";
     assert.ok(checkDraft(posture, "在吗").includes("companionship_posture"));
@@ -877,16 +696,14 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
       else process.env.ALBION_MODEL = old;
     }
   }
-  // 日志：regen 与 actions 两处都带 ds 标记
+  // 日志：actions 一处带 ds 标记（regen 那条日志随重说一起删了）
   {
     const rows = readFileSync(join(TMP, "guard.log"), "utf-8").trim().split("\n").map((l) => JSON.parse(l));
-    assert.ok(rows.some((r) => r.regen === true && r.ds === true), "DS 的 regen 日志该带 ds:true");
-    assert.ok(rows.some((r) => r.regen === true && r.ds === false), "非 DS 的 regen 日志该带 ds:false");
     assert.ok(rows.some((r) => Array.isArray(r.actions) && r.ds === true), "actions 日志该带 ds:true");
     assert.ok(rows.some((r) => Array.isArray(r.actions) && r.ds === false), "actions 日志该带 ds:false");
+    assert.ok(!rows.some((r) => "regen" in r), "重说的日志字段该没了");
   }
-  console.log("W 口癖清洗只对 DS：DS 重说+语料替换、姿态/动作按额度删；gemini 不重说/不替换、姿态句与动作描写原样留且两个计数不推进，但 missing_reply、ACT 补竖线照旧；两项口癖检查不报；模型判定与 ds 日志 OK");
+  console.log("W 口癖清洗只对 DS：DS 语料替换+姿态/动作按额度删；gemini 不替换、姿态句与动作描写原样留且两个计数不推进，但 ACT 补竖线照旧；两项口癖检查不报；模型判定与 ds 日志 OK（重说已删）");
 }
 rmSync(TMP, { recursive: true, force: true });
 console.log("GUARD_EXT SELFTEST OK");
-
