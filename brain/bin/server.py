@@ -705,7 +705,8 @@ CAPTURE_FILTERS = (
     # 0) 换身子后的第一轮，消息头顶着一条压缩笔记（COMPACTION_TITLE，见 compose/compaction_note）：
     #    笔记 + 接上的旧记录一起剥到【现在】，剩下的才是「这一轮真正要处理的那句话」。
     #    这条必须排在下面 `^【以下是…` 之前——那条规则会连【现在】一起吃掉，之后就没锚点了（2026-11-28）。
-    r"user:s|^（这是之前和指挥官聊过的事，整理成的笔记）[\s\S]*?【现在】\n||",
+    #    笔记标题直接用 COMPACTION_TITLE 拼，标题改了规则跟着走，不会悄悄失配。
+    r"user:s|^" + re.escape(COMPACTION_TITLE) + r"[\s\S]*?【现在】\n||",
     # 1) 先剥壳：旧记录 / 回忆块 / 每轮约定
     r"user:s|^【以下是这次对话此前的记录[^\n]*\n[\s\S]*?【现在】\n||",
     r"user:s|<memory-context>[\s\S]*?</memory-context>||",
