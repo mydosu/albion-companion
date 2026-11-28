@@ -61,8 +61,10 @@ cpSync(join(here, "data", "agy-ov-stub", "turn-rewrite.ts"), join(agentDir, "ext
 writeFileSync(join(agentDir, "real-sessions.json"), JSON.stringify(["albion-desktop"]), "utf-8");
 
 // ── 假 OV 端点 ───────────────────────────────────────────────────────────────
+// commit 故意晚 2 秒才回：宿主收到 SIGTERM 后要先放开 8661，再等这个慢 commit 走完才退。
+const COMMIT_DELAY_MS = 2000;
 const ovPort = 18933;
-const requests: Array<{ event: string; body: any }> = [];
+const requests: Array<{ event: string; body: any; at: number }> = [];
 const fakeOv = createServer((req, res) => {
   const url = new URL(req.url ?? "/", `http://127.0.0.1:${ovPort}`);
   const m = /^\/__check\/([a-z_]+)$/.exec(url.pathname);
@@ -74,13 +76,19 @@ const fakeOv = createServer((req, res) => {
   const chunks: Buffer[] = [];
   req.on("data", (c) => chunks.push(c));
   req.on("end", () => {
+    let body: any = {};
     try {
-      requests.push({ event: m[1], body: JSON.parse(Buffer.concat(chunks).toString("utf-8") || "{}") });
+      body = JSON.parse(Buffer.concat(chunks).toString("utf-8") || "{}");
     } catch {
-      requests.push({ event: m[1], body: {} });
+      body = {};
     }
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end('{"ok":true}');
+    requests.push({ event: m[1], body, at: Date.now() });
+    const reply = () => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end('{"ok":true}');
+    };
+    if (m[1] === "commit") setTimeout(reply, COMMIT_DELAY_MS);
+    else reply();
   });
 });
 await new Promise<void>((r) => fakeOv.listen(ovPort, "127.0.0.1", () => r()));
@@ -323,7 +331,7 @@ try {
     assert.deepEqual(snap.hook_errors, [], JSON.stringify(snap.hook_errors));
   });
 
-  await check("③ 宿主 SIGTERM 退出时给活着的会话补一次 commit", async () => {
+  await check("③ SIGTERM：先放开 8661，再等慢 commit 走完才退", async () => {
     const OTHER = "albion-desktop-z";
     // 让这个会话进 real-sessions.json 也认的名单（用同一支：先改名再开）
     writeFileSync(join(agentDir, "real-sessions.json"), JSON.stringify(["albion-desktop", "albion-desktop-z"]), "utf-8");
@@ -332,12 +340,33 @@ try {
     await turn(OTHER, "final", { text: "退出前的回话。", source: "退出前那句" });
     await settle();
     const commitsBefore = requests.filter((r) => r.event === "commit" && r.body?.session === OTHER).length;
+
     const exited = new Promise<number | null>((r) => host.once("exit", (code) => r(code)));
+    const tSigterm = Date.now();
     host.kill("SIGTERM");
+
+    // ① 1 秒内端口就得放开（不然 start.sh 会以为宿主还活着、跳过拉起）
+    let closedAt = 0;
+    while (Date.now() - tSigterm < 1500) {
+      try {
+        await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(200) });
+      } catch {
+        closedAt = Date.now();
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    assert.ok(closedAt, "SIGTERM 后 1.5 秒了 8661 还在监听");
+    assert.ok(closedAt - tSigterm <= 1000, `端口关得太慢：${closedAt - tSigterm}ms`);
+
+    // ② 进程还得活着把那个要 2 秒才回的 commit 等到
     const code = await Promise.race([exited, new Promise((r) => setTimeout(() => r("timeout"), 15000))]);
     assert.notEqual(code, "timeout", `宿主 15 秒没退出\n${hostErr.slice(-1000)}`);
+    const exitDelay = Date.now() - tSigterm;
     const commitsAfter = requests.filter((r) => r.event === "commit" && r.body?.session === OTHER).length;
     assert.equal(commitsAfter, commitsBefore + 1, `SIGTERM 没 commit：${commitsBefore} → ${commitsAfter}`);
+    assert.ok(exitDelay >= COMMIT_DELAY_MS - 300, `没等慢 commit 就退了：${exitDelay}ms`);
+    console.log(`       端口关闭 ${closedAt - tSigterm}ms，退出 ${exitDelay}ms（commit 慢 ${COMMIT_DELAY_MS}ms）`);
   });
 
   await check("宿主日志里没有 hook 失败", () => {

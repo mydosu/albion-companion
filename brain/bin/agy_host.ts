@@ -1044,15 +1044,20 @@ async function shutdown(sig: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   log("shutting down", { signal: sig });
-  // 先给每个会话一次 session_shutdown（官方扩展在这里 commit），再退。
-  // commit 是网络请求，一个会话给 10 秒；到点没完就照常退，不拖住 stop.sh。
+  // ① 先关监听，马上把 8661 放掉：`stop.sh` 只发一次 SIGTERM、不等我们退，而它后面的
+  //    `start.sh` 只看端口有没有人在听——端口还占着就会打出「agy host already up」直接跳过拉起，
+  //    等这个进程真退了 8661 就没人听了（只剩看门狗来捞）。
+  server.close();
+  // ② 兜底：比单个会话的 10 秒略长，卡在任何一步都不会让 stop.sh 干等（unref：不挡正常退出）
+  setTimeout(() => process.exit(0), 12000).unref();
+  // ③ 再让每个会话发 session_shutdown（官方扩展在这里 commit）：commit 是网络请求，
+  //    一个会话给 10 秒；到点没完就照常退，不拖住 stop.sh。
   await Promise.all(
     [...sessions.values()].map((s) =>
       withTimeout(shutdownSession(s, "host-exit"), 10000, "session_shutdown").catch(() => undefined),
     ),
   );
-  server.close(() => process.exit(0));
-  setTimeout(() => process.exit(0), 3000).unref();
+  process.exit(0);
 }
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
