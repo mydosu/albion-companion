@@ -702,6 +702,10 @@ def ephemeral_state_dir(session_id):
 # 【平台消息】/【自主醒来】前面顶着旧记录块，`^` 永远匹配不上，整条照样提交给抽取器
 # （线上证据：sessions/pi-01a19c97…/messages.jsonl 里 【平台消息】 与 【以下是这次对话此前的记录】 同时存在）。
 CAPTURE_FILTERS = (
+    # 0) 换身子后的第一轮，消息头顶着一条压缩笔记（COMPACTION_TITLE，见 compose/compaction_note）：
+    #    笔记 + 接上的旧记录一起剥到【现在】，剩下的才是「这一轮真正要处理的那句话」。
+    #    这条必须排在下面 `^【以下是…` 之前——那条规则会连【现在】一起吃掉，之后就没锚点了（2026-11-28）。
+    r"user:s|^（这是之前和指挥官聊过的事，整理成的笔记）[\s\S]*?【现在】\n||",
     # 1) 先剥壳：旧记录 / 回忆块 / 每轮约定
     r"user:s|^【以下是这次对话此前的记录[^\n]*\n[\s\S]*?【现在】\n||",
     r"user:s|<memory-context>[\s\S]*?</memory-context>||",
@@ -1717,8 +1721,21 @@ def main():
             s.close()
 
 
+def print_session_env(session_id):
+    """把这一会话的 session_env() 按 JSON 打到 stdout（2026-11-28）。
+
+    谁在用：agy 内核下扩展跑在 bin/agy_host.ts 里，那个进程是 start.sh 起的、拿不到这里给
+    pi 子进程的 env。宿主每开一个会话就问一次，把 `OPENVIKING_CAPTURE_FILTERS`（ephemeral 会话
+    是 bypass + 临时 state）原样铺进自己的 process.env —— 规则仍然只在上面维护一份，不会漂移。
+    """
+    print(json.dumps(session_env(session_id or SESSION_DEFAULT), ensure_ascii=False))
+
+
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
         _selftest()
+    elif "--print-session-env" in sys.argv:
+        i = sys.argv.index("--print-session-env")
+        print_session_env(sys.argv[i + 1] if len(sys.argv) > i + 1 else SESSION_DEFAULT)
     else:
         main()

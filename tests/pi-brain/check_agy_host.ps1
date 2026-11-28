@@ -12,12 +12,13 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $stage = '\\wsl$\Ubuntu\tmp\agy-host-dev\repo'
 
 # 上一轮的假 node_modules 是软链，Windows 这边删不掉：清目录/建目录都交给 WSL
-wsl -d Ubuntu -- bash -c 'rm -rf /tmp/agy-host-dev/repo && mkdir -p /tmp/agy-host-dev/repo/brain/bin /tmp/agy-host-dev/repo/tests/pi-brain/data'
+wsl -d Ubuntu -- bash -c 'rm -rf /tmp/agy-host-dev/repo && mkdir -p /tmp/agy-host-dev/repo/brain /tmp/agy-host-dev/repo/tests/pi-brain/data'
 if ($LASTEXITCODE -ne 0) { throw 'WSL 里建临时目录失败' }
 
 Copy-Item (Join-Path $repo 'brain\agent') (Join-Path $stage 'brain\agent') -Recurse -Force
-Copy-Item (Join-Path $repo 'brain\bin\agy_host.ts') (Join-Path $stage 'brain\bin\agy_host.ts') -Force
-Copy-Item (Join-Path $repo 'brain\bin\memory.py') (Join-Path $stage 'brain\bin\memory.py') -Force
+# 整个 brain\bin：宿主自己读 .env，还会问 bin/server.py 要 OPENVIKING_CAPTURE_FILTERS
+# （server.py 又 import wake/agy_client/…），少一个就起不来
+Copy-Item (Join-Path $repo 'brain\bin') (Join-Path $stage 'brain\bin') -Recurse -Force
 Copy-Item (Join-Path $repo 'tests\pi-brain\check_agy_host.ts') (Join-Path $stage 'tests\pi-brain\check_agy_host.ts') -Force
 Copy-Item (Join-Path $repo 'tests\pi-brain\check_agy_ov_capture.ts') (Join-Path $stage 'tests\pi-brain\check_agy_ov_capture.ts') -Force
 Copy-Item (Join-Path $repo 'tests\pi-brain\data\agy-ov-stub') (Join-Path $stage 'tests\pi-brain\data\agy-ov-stub') -Recurse -Force

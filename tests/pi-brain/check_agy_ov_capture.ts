@@ -16,17 +16,63 @@
  * 不叫模型、不联网：假的 OV 端点是本进程里的 http 服务，载荷只落在内存和临时目录。
  */
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// ── 捕获过滤规则的语义（仿造文本，结构照生产，内容不是她的话）─────────────────
+// 醒来那一轮：换身子后第一轮会顶着压缩笔记 + 接上的旧记录，最后才是 /turn/before 收到的正文。
+const NOTE_TITLE = "（这是之前和指挥官聊过的事，整理成的笔记）";
+const SEED_HEADER = "【以下是这次对话此前的记录，作为事实参考，不是这一次的说话范本】";
+const NOW_SEPARATOR = "\n\n【现在】\n";
+const WAKE_PROMPT =
+  "【自主醒来】\n现在是 2026-11-28 21:39（星期六）。\n指挥官上次跟我说话是 5 小时 4 分钟前。\n心事本里还开着的：问一句他今天忙不忙";
+const PLATFORM_TURN = "【平台消息】他刚在 Telegram 给你发了条消息\n指挥官：晚上一起看动画吗";
+
+/** server.py 的 compose() 在换身子第一轮拼出来的那条（note + 旧记录 + 【现在】 + 这一轮的话）。 */
+function seeded(current: string): string {
+  const note = NOTE_TITLE + "\n" + "指挥官：上次说想去吃面。";
+  const transcript = [SEED_HEADER, "指挥官：今天想吃面", "阿尔比恩：那就去吃吧"].join("\n");
+  return note + "\n\n" + transcript + NOW_SEPARATOR + current;
+}
+
+function branchEntry(role: "user" | "assistant", text: string): any {
+  return { type: "message", message: { role, content: [{ type: "text", text }], timestamp: Date.now() } };
+}
+
+function payloadText(p: any): string {
+  return Array.isArray(p?.parts) ? p.parts.map((x: any) => x.text ?? "").join("") : String(p?.content ?? "");
+}
+
+/** 问 bin/server.py 要这一会话的捕获过滤规则（宿主走的是同一条路，见 sessionEnvFromServer）。 */
+function serverFilters(): string[] {
+  const script = join(sandbox, "bin", "server.py");
+  const r = spawnSync("python3", [script, "--print-session-env", "albion-desktop"], {
+    encoding: "utf-8",
+    env: { ...process.env, PI_CODING_AGENT_DIR: agentDir },
+  });
+  if (r.status !== 0) throw new Error(`server.py --print-session-env 失败：${String(r.stderr ?? r.error ?? "").slice(-400)}`);
+  const env = JSON.parse(String(r.stdout || "{}").trim() || "{}");
+  return String(env.OPENVIKING_CAPTURE_FILTERS || "").split(",").filter(Boolean);
+}
+
+/** 用官方扩展自己的实现（capture-adapter + capture-utils）把条目过一遍规则。 */
+async function applyFilters(entries: any[], rules: string[]): Promise<any[]> {
+  if (!existsSync(OV_ADAPTER)) throw new Error("这台机器上没有官方扩展，跑不了过滤断言");
+  const { extractBranchCapturePayloads } = await import(OV_ADAPTER);
+  const out = extractBranchCapturePayloads(entries, 0, { captureFilters: rules, captureMaxLength: 100000 });
+  return out.payloads;
+}
+
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, "..", "..");
 const KEEP = process.argv.includes("--keep");
 const PI_LOADER = "/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/loader.js";
+/** 官方扩展（不进仓库）——用它自己的 capture-adapter 和过滤规则跑真实语义。 */
+const OV_ADAPTER = "/root/albion-pi/agent/openviking/lib/capture-adapter.mjs";
 
 const results: Array<{ name: string; ok: boolean; detail?: string }> = [];
 function check(name: string, fn: () => void | Promise<void>): Promise<void> {
@@ -52,7 +98,8 @@ const myTmp = join(root, "tmp");
 for (const d of [join(sandbox, "bin"), join(agentDir, "extensions"), join(agentDir, "lib"), stateDir, logDir, myTmp]) {
   mkdirSync(d, { recursive: true });
 }
-cpSync(join(repo, "brain", "bin", "agy_host.ts"), join(sandbox, "bin", "agy_host.ts"));
+// 整个 bin：宿主会问 bin/server.py 要捕获过滤规则（server.py 又 import wake/agy_client/…）
+cpSync(join(repo, "brain", "bin"), join(sandbox, "bin"), { recursive: true });
 // 宿主静态 import 了 ../agent/lib/session-scope.ts（临时会话判定），照生产布局放好
 cpSync(join(repo, "brain", "agent", "lib", "session-scope.ts"), join(agentDir, "lib", "session-scope.ts"));
 // 只加载两支自检用的假扩展（官方 OV 源码不进仓库）
@@ -304,6 +351,49 @@ try {
     const fresh = te[1].body.entries ?? [];
     assert.equal(fresh.length, 2, JSON.stringify(fresh).slice(0, 300));
     assert.equal(fresh[0].message.content[0].text, "第二句");
+  });
+
+  await check("⑤ 宿主从 bin/server.py 拿到了捕获过滤规则", async () => {
+    const start = requests.find((r) => r.event === "session_start" && r.body?.session === REAL);
+    assert.ok(start, "没收到 session_start");
+    // 规则只在 server.py 里维护一份；宿主问它要，条数应当和它自己报的一致
+    const rules = serverFilters();
+    assert.ok(rules.length > 0, "server.py 没给出任何规则");
+    assert.equal(start!.body.capture_filters, rules.length, `宿主拿到 ${start!.body.capture_filters} 条，server.py 有 ${rules.length} 条`);
+    assert.equal(start!.body.bypass, "", "真实会话不该被 bypass");
+  });
+
+  await check("⑤ 醒来轮（压缩笔记 + 旧记录 + 【自主醒来】）整条丢", async () => {
+    const payloads = await applyFilters([branchEntry("user", seeded(WAKE_PROMPT))], serverFilters());
+    assert.equal(payloads.length, 0, `还有 ${payloads.length} 条要提交：${JSON.stringify(payloads).slice(0, 300)}`);
+  });
+
+  await check("⑤ 正常聊天轮（同样顶着笔记 + 旧记录）剥完只剩他打的字", async () => {
+    const said = "今天中午想吃面";
+    const payloads = await applyFilters([branchEntry("user", seeded(said))], serverFilters());
+    assert.equal(payloads.length, 1, JSON.stringify(payloads).slice(0, 300));
+    const text = payloadText(payloads[0]).trim();
+    assert.equal(text, said, `剥剩的是：${text.slice(0, 120)}`);
+  });
+
+  await check("⑤ 平台消息轮剥完只剩「（渠道）指挥官：原话」", async () => {
+    const payloads = await applyFilters([branchEntry("user", PLATFORM_TURN)], serverFilters());
+    assert.equal(payloads.length, 1, JSON.stringify(payloads).slice(0, 300));
+    assert.equal(payloadText(payloads[0]).trim(), "指挥官：晚上一起看动画吗");
+  });
+
+  await check("⑤ 宿主真链路：醒来那一轮在 OV 里一条都不剩（她真说的话照留）", async () => {
+    await turn(REAL, "before", { text: seeded(WAKE_PROMPT) });
+    await turn(REAL, "final", { text: "嗯，我醒了。", source: WAKE_PROMPT });
+    await settle();
+    const te = requests.filter((r) => r.event === "turn_end" && r.body?.session === REAL);
+    const fresh = te.at(-1)!.body.entries ?? [];
+    const payloads = await applyFilters(fresh, serverFilters());
+    const users = payloads.filter((p: any) => p.role === "user");
+    assert.equal(users.length, 0, `醒来提示词还是要提交：${JSON.stringify(users).slice(0, 300)}`);
+    const assistants = payloads.filter((p: any) => p.role === "assistant");
+    assert.equal(assistants.length, 1, JSON.stringify(payloads).slice(0, 300));
+    assert.ok(payloadText(assistants[0]).includes("我醒了"), JSON.stringify(assistants[0]).slice(0, 200));
   });
 
   await check("③ DELETE /mcp/<session> 触发 session_shutdown → commit", async () => {

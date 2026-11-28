@@ -34,6 +34,7 @@
  *       -Test host 跑宿主本身，-Test ov 跑 OV 捕获钩子那一支）
  */
 import { createServer } from "node:http";
+import { spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -58,10 +59,17 @@ const MAX_BODY = 48 * 1024 * 1024; // 图片走 base64，给够
 const SESSION_RE = /^[A-Za-z0-9._-]{1,120}$/;
 /**
  * 会话级环境变量：执行扩展代码前后按会话换一份，退出时还原。
- * OPENVIKING_BYPASS_SESSION 跟着换：探针/自检会话要让官方扩展整段跳过（和 server.py 的
- * session_env() 给 pi 子进程设的是同一个口子）。
+ * 后四条都由 bin/server.py 的 session_env() 给（宿主每开一个会话问它要一次，见
+ * sessionEnvFromServer）：捕获过滤规则 / 探针 bypass / 探针标记 / 探针 state 目录。
+ * 规则只在 server.py 里维护一份，宿主不抄，所以不会漂移。
  */
-const SESSION_ENV_KEYS = ["ALBION_SESSION_ID", "OPENVIKING_BYPASS_SESSION"];
+const SESSION_ENV_KEYS = [
+  "ALBION_SESSION_ID",
+  "OPENVIKING_BYPASS_SESSION",
+  "OPENVIKING_CAPTURE_FILTERS",
+  "ALBION_EPHEMERAL",
+  "ALBION_PERSONAL_STATE_DIR",
+];
 
 /**
  * 把 agent/.env 读成 process.env（2026-11-28）。
@@ -206,6 +214,8 @@ class Session {
    * 的 commit 阈值。
    */
   branch: any[] = [];
+  /** bin/server.py 的 session_env() 给这个会话的那套 env（捕获过滤规则等），进 inSession 时铺上。 */
+  env: Record<string, string> = {};
   /** 本轮的临时状态：before 开头建、final 结束清。 */
   turn: {
     active: boolean;
@@ -251,10 +261,52 @@ function restoreEnv(snap: EnvSnapshot): void {
 }
 function applySessionEnv(s: Session): void {
   process.env.ALBION_SESSION_ID = s.id;
-  // 探针/自检会话：官方 OV 扩展整段跳过（连会话都不建、队列也不重放），和 Pi 内核下
-  // server.py 通过 session_env() 给 pi 子进程设的是同一个开关。
+  // 先把上一具会话留下的那几条清干净（别串到别的会话），再铺 server.py 给这个会话的
+  for (const k of SESSION_ENV_KEYS) {
+    if (k !== "ALBION_SESSION_ID") delete process.env[k];
+  }
+  for (const [k, v] of Object.entries(s.env)) {
+    if (v) process.env[k] = v;
+  }
+  // 兜底：server.py 要不到（python 不在、脚本被挪走）时，探针会话照样 bypass，
+  // 至少不会把探针的话记进她的记忆。
   if (isEphemeralSession(s.id)) process.env.OPENVIKING_BYPASS_SESSION = "1";
-  else delete process.env.OPENVIKING_BYPASS_SESSION;
+}
+
+/**
+ * 问 bin/server.py 要这个会话的 session_env()（JSON），原样铺进 process.env。
+ *
+ * 为什么绕这一圈：捕获过滤规则（`OPENVIKING_CAPTURE_FILTERS`）是「提交给 OV 之前剥掉脑自己
+ * 拼进去的段」的那套 sed 式规则，Pi 内核下由 server.py 交给 pi 子进程；agy 内核下扩展跑在这个
+ * 宿主里，start.sh 拉它时没有这套东西，于是醒来提示词、旧记录、约定块会被当成「他说的」记进
+ * 长期记忆。规则只在 server.py 里维护一份，宿主每开一个会话问一次，不抄第二份。
+ */
+function sessionEnvFromServer(sessionId: string): Record<string, string> {
+  const script = join(AGENT_DIR, "..", "bin", "server.py");
+  if (!existsSync(script)) {
+    log("capture env unavailable", { script, reason: "server.py not found" });
+    return {};
+  }
+  try {
+    const r = spawnSync("python3", [script, "--print-session-env", sessionId], {
+      encoding: "utf-8",
+      timeout: 20000,
+      env: process.env,
+    });
+    if (r.error || r.status !== 0) {
+      log("capture env unavailable", { script, status: r.status, error: String(r.error ?? r.stderr ?? "").slice(0, 200) });
+      return {};
+    }
+    const parsed = JSON.parse(String(r.stdout || "{}").trim() || "{}");
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed ?? {})) {
+      if (typeof v === "string" && v) out[k] = v;
+    }
+    return out;
+  } catch (e) {
+    log("capture env unavailable", { script, error: String((e as Error)?.message ?? e).slice(0, 200) });
+    return {};
+  }
 }
 
 async function inSession<T>(s: Session, fn: () => Promise<T>): Promise<T> {
@@ -430,6 +482,16 @@ async function ensureSession(id: string): Promise<Session> {
   let s = sessions.get(id);
   if (!s) {
     s = new Session(id);
+    // 捕获过滤规则/探针标记由 bin/server.py 说了算（规则只维护一份）；加载扩展之前就要铺好，
+    // 官方 OV 扩展在 session_start 里读一次配置（OPENVIKING_CAPTURE_FILTERS 在那时定型）。
+    s.env = sessionEnvFromServer(id);
+    // 只报条数：规则正文里是她的话，日志里不需要
+    log("session env", {
+      session: id,
+      keys: Object.keys(s.env).length,
+      capture_filters: (s.env.OPENVIKING_CAPTURE_FILTERS || "").split(",").filter(Boolean).length,
+      bypass: s.env.OPENVIKING_BYPASS_SESSION === "1",
+    });
     sessions.set(id, s);
   }
   if (!s.loadedAt) {
@@ -955,6 +1017,7 @@ function healthSnapshot(): any {
       skill_paths: s.skillPaths,
       turn_active: s.turn.active,
       capture: captureOn(s),
+      capture_filters: (s.env.OPENVIKING_CAPTURE_FILTERS || "").split(",").filter(Boolean).length,
       branch_entries: s.branch.length,
     })),
   };

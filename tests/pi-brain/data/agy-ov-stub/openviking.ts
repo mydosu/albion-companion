@@ -38,6 +38,9 @@ export default function (pi: any) {
       url: String(process.env.OPENVIKING_URL || ""),
       has_key: Boolean(process.env.OPENVIKING_API_KEY),
       auto_recall: String(process.env.OPENVIKING_AUTO_RECALL || ""),
+      // 宿主有没有把 bin/server.py 的 session_env() 铺进来（捕获过滤规则条数）
+      capture_filters: String(process.env.OPENVIKING_CAPTURE_FILTERS || "").split(",").filter(Boolean).length,
+      bypass: String(process.env.OPENVIKING_BYPASS_SESSION || ""),
     });
   });
 
