@@ -181,6 +181,8 @@ class AgySession:
             env["NO_PROXY"] = "127.0.0.1,localhost"
             env["no_proxy"] = "127.0.0.1,localhost"
         env.setdefault("TZ", "Asia/Shanghai")
+        # 关掉 agy 的后台自动更新：它会在聊天时悄悄换掉已经验过的版本（只认 "true"）
+        env.setdefault("AGY_CLI_DISABLE_AUTO_UPDATE", "true")
         return env
 
     def start(self):
