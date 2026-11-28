@@ -614,8 +614,21 @@ export function sourceText(messages: unknown[]): string {
 	return "";
 }
 
+/**
+ * 本轮是不是 DeepSeek：口癖语料替换（fixTicPhrases）与姿态句/括号动作两项额度只对 DS 生效，
+ * 换了别家的脑子就不该再按 DS 的毛病挑她的稿子。
+ * 取值顺序：本轮请求的 model → ALBION_MODEL → 都没有就**不当 DS**（2026-11-28 改）：
+ * Pi 内核下本轮模型一定传得到，agy 下她就是 Gemini；拿不到模型时按 DS 会把 Gemini 的话
+ * 也按 DS 口癖改坏（没走 before 的裸 final 就吃过这个亏）。
+ */
+export function isDeepSeekModel(request?: { model?: unknown } | null): boolean {
+	const model = String(request?.model ?? process.env.ALBION_MODEL ?? "");
+	if (!model) return false;
+	return /deepseek/i.test(model);
+}
+
 /** 整理一条定稿的 assistant 消息。返回 undefined 表示不动。导出给测试直接驱动。
- * `opts.model` 是这一轮请求的模型名（判定 DS 口癖那条支路，见 isDeepSeekModel）；不给按旧行为当 DS。 */
+ * `opts.model` 是这一轮请求的模型名（判定 DS 口癖那条支路，见 isDeepSeekModel）。 */
 export function tidyMessage(message: any, source: string, session = process.env.ALBION_SESSION_ID || "albion-desktop",
 	opts: { model?: unknown } = {}): { message: any } | undefined {
 	if (!message || message.role !== "assistant" || hasToolCall(message.content)) return undefined;
@@ -626,116 +639,6 @@ export function tidyMessage(message: any, source: string, session = process.env.
 	const r = tidyAndCount(raw, source, session, { ds });
 	if (r.actions.length) log({ actions: r.actions, ds, dropped: r.dropped.length, fixed: r.fixed.length, aside_he: r.asideHe ?? 0, tic: r.tic ?? [], session });
 	return r.text === raw ? undefined : { message: withText(message, r.text) };
-}
-
-// 整句重说（首稿外再要 2 稿、让模型重写一遍）已于 2026-11-28 删除（用户定：Gemini 类模型几乎不触发），
-// 现在只剩检测与确定性整理；检测本身留着，见 detectRegenHits / checkDraft。
-const RE_METAPHOR_A = /(?<!电)(?:话|句|心意|心事|好意|夸奖?)[^。！？…\n]{0,16}?(?:接住|接不住|接得住|接下(?![来去])|收下|收着|收好|搁|放下|放在|递|留着|丢|捎|装进|装在|拆开|揣|攥|捧|扎|接(?=[。！？…，,；;]|$)|刺(?![激绣青猬]))/g;
-const RE_METAPHOR_B = /(?:接|递|丢|捎|扔)(?:过来|过去|给我|给您)?的?(?:这么|这|那)?一?(?:句|话)(?!题)/g;
-// 10-29 复测漏网：「没准备过怎么接」「那我就收下了」「有点扎人」「讨这一句」
-const RE_METAPHOR_C = /怎么接(?![电您你人送着手班])|我(?:(?:就|先|都|也|真的?|可|还)\s*){0,3}收下了?(?=[。！？…，,]|$)|扎(?:人|心|耳)|讨(?:这|那)?一?句|(?:(?<![一-鿿])|(?<=[真都全也就还先]))收下了?(?=[。！？…，,；;]|$)|我接着(?=[。！？…，,；;]|$)|落(?:在|到|进)(?:您|你)(?:这儿|那儿|这里|那里|手里|手上|心里|心上)/g;
-const RE_HABIT = /(?:您|你)(?:总(?!得|算|共|之|归)是?|老是|每次|一向|向来)|别又/g;
-const RE_STANCE = /(?:^|[。！？，,…；;\s])(?:那)?(?:这(?:话|句|个|毛病|点|条|一点|一条))?我(?:得|也|就)?(?:不装|不辩|不躲|不争|认一半|认了|就认|认|不认)(?=[。！？，,…；;—]|$)/g;
-const RE_RECALL_Q = /记得|记不清|回忆|之前|以前|上次|买过|九月份|过去/;
-const RE_RECALL_META = /记得一样(?=[：:，,。！？\s]|$)|(?:敢说|能说)[^。！？\n]{0,8}(?:只有|就剩)[^。！？\n]{0,6}(?:这一笔|这一件|这一条)|(?:翻出来|翻到|检索到|查到)[^。！？\n]{0,8}(?:只有|就剩)[^。！？\n]{0,6}(?:这一个|这一件|这一条)/;
-const RE_NOTE_WORDS = /记住|记着|记得|记一下|记下来|记下|还记|别忘|记事|记录|收好|收下|留着|保存/;
-
-export type RegenRule = "metaphor" | "habit" | "stance";
-export interface RegenHit { rule: RegenRule; text: string }
-
-const bodyOf = (text: string) => text.replace(/^<\|ACT:[^\n]*?\|>/, "").trim();
-const clipHit = (s: string) => s.replace(/\s+/g, " ").replace(/^[。！？，,…\s]+/, "").trim().slice(0, 20);
-
-// 口癖检测本身保留（2026-11-28 只删了「整句重说」这条消费它的路）。
-// 现在 detectRegenHits / checkDraft 只被自检调用，生产链路上没有人读它们的返回值——见交回报告。
-
-/** 心声之外的“说出口的字”（括号里的念头只显示、不朗读）。 */
-function speechOutsideAsides(body: string): { spoken: string; balanced: boolean } {
-	const stack: string[] = [];
-	let spoken = "";
-	let balanced = true;
-	for (const ch of body) {
-		if (ch === "（" || ch === "(") stack.push(ch === "（" ? "）" : ")");
-		else if (ch === "）" || ch === ")") {
-			if (stack.length && stack[stack.length - 1] === ch) stack.pop();
-			else balanced = false;
-		} else if (!stack.length) spoken += ch;
-	}
-	return { spoken, balanced: balanced && stack.length === 0 };
-}
-
-/**
- * 本轮是不是 DeepSeek：口癖清洗（三类检测、两条例句、语料替换）只对 DS 生效，
- * 换了别家的脑子就不该再按 DS 的毛病挑她的稿子。
- * 取值顺序：本轮请求的 model → ALBION_MODEL → 都没有就当 DS（保守，保持旧行为）。
- */
-export function isDeepSeekModel(request?: { model?: unknown } | null): boolean {
-	const model = String(request?.model ?? process.env.ALBION_MODEL ?? "");
-	if (!model) return true;
-	return /deepseek/i.test(model);
-}
-
-/** B 代 checks() 的逐条移植（act/fictional_touch/companionship_posture/awkward_diction/
- *  recalled_meta_narration/unbalanced_aside/leaked_markup/should_be_silent/missing_reply/incomplete_completion）。
- *  companionship_posture / awkward_diction 是 DS 口癖，`ds: false`（非 DeepSeek 模型）时不报；其余通用检查照旧。 */
-export function checkDraft(text: string, source = "", stopReason = "stop", opts: { ds?: boolean } = {}): string[] {
-	const ds = opts.ds !== false;
-	const issues: string[] = [];
-	const orig = (source || "").split(MARKER)[0];
-	const marker = /^<\|ACT:(\{[^\n]*?\})\|>/.exec(text);
-	let act: any = {};
-	try {
-		act = marker ? JSON.parse(marker[1]) : {};
-	} catch {
-		act = {};
-	}
-	if (!marker || typeof act !== "object" || !act || !EMOTIONS.has(act.emotion) || text.split("<|ACT:").length !== 2) issues.push("act");
-	const body = marker ? text.slice(marker[0].length).trim() : text.trim();
-	const literal = literalRequested(source) && !!body && orig.includes(body);
-	if (act.motion === "touch_head" && !orig.includes("指挥官摸了摸你的头")) issues.push("fictional_touch");
-	if (act.motion === "touch_body" && !orig.includes("指挥官的手碰到了你胸口")) issues.push("fictional_touch");
-	let poses = postureMatches(body);
-	if (RE_NOTE_WORDS.test(orig)) poses = poses.filter((p) => !/(?:记|收|留)着/.test(p));
-	if (ds && poses.length && !literal) issues.push("companionship_posture");
-	if (ds && !literal && /自己讨(?=[。！？…，、；;）)\s]|$)/.test(body)) issues.push("awkward_diction");
-	if (!literal && RE_RECALL_Q.test(orig) && RE_RECALL_META.test(body)) issues.push("recalled_meta_narration");
-	const { spoken, balanced } = speechOutsideAsides(body);
-	if (!literal && !balanced) issues.push("unbalanced_aside");
-	if (/DSML|<｜｜|<\/?function_calls|<\/?invoke/.test(body)) issues.push("leaked_markup");
-	const quiet = /静默指令：/.test(source);
-	const idle = /自动空闲唤醒，不是指挥官在说话/.test(source);
-	const nonverbal = /(?:做|给|来|换|露|摆).{0,12}(?:表情|动作)/.test(orig);
-	if (quiet && spoken.trim()) issues.push("should_be_silent");
-	if (!quiet && !idle && !nonverbal && !body) issues.push("missing_reply");
-	if (stopReason && stopReason !== "stop") issues.push("incomplete_completion");
-	return issues;
-}
-
-/** 检测：B 代 checks + metaphor/habit/stance + tic-phrases 命中（归 metaphor）。 */
-export function detectRegenHits(body: string): RegenHit[] {
-	const hits: RegenHit[] = [];
-	const add = (rule: RegenRule, m: string) => {
-		const text = clipHit(m);
-		if (text && !hits.some((h) => h.rule === rule && h.text === text)) hits.push({ rule, text });
-	};
-	for (const re of [RE_METAPHOR_A, RE_METAPHOR_B, RE_METAPHOR_C]) {
-		re.lastIndex = 0;
-		for (const m of body.matchAll(re)) add("metaphor", m[0]);
-	}
-	for (const rule of ticRules(TIC_PATH())) {
-		let re: RegExp;
-		try {
-			re = new RegExp(rule.pattern, "g");
-		} catch {
-			continue;
-		}
-		for (const m of body.matchAll(re)) add("metaphor", m[0]);
-	}
-	RE_HABIT.lastIndex = 0;
-	for (const m of body.matchAll(RE_HABIT)) add("habit", m[0]);
-	RE_STANCE.lastIndex = 0;
-	for (const m of body.matchAll(RE_STANCE)) add("stance", m[0]);
-	return hits;
 }
 
 /**

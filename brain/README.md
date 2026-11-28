@@ -90,7 +90,7 @@ Pi 支持 Google 登录之前，脑可以临时换到 Antigravity CLI（agy 1.5.
 | `agent/extensions/albion-self.ts` | `next_wake`（下次什么时候醒——一条计时、想做什么、这次做了什么）、`notebook`（心事本） |
 | `agent/extensions/albion-look.ts` | `look`：his/mine 取屏幕原图交主模型（主模型不收图就原图交 grok 转述）；cam 只交本地视觉模型转文字；随时可看 |
 | `agent/extensions/albion-browser.ts` | `browser` 工具：Vercel Labs `agent-browser` 0.43.0（原生 CLI + 后台守护进程），session 固定 `albion`、长期 profile `/root/.albion-browser/profile`；浏览器复用 `~/.cache/ms-playwright/chromium-1234` 那份 Chromium（CfT CDN 不通，`agent-browser install` 下不动，这份 Chromium 别删）。每个可交互元素带 `@eN` 编号，支持多标签页、截图、读正文；守护进程闲置 1 小时自己退出 |
-| `agent/extensions/albion-guard.ts` | `message_end` 钩子上的说话整理器（`tidyMessage`）：**只做确定性整理，不叫模型、不发请求**——ACT 补竖线、心声收括号、心声里「您」→「他」（2026-11-16 用户定）、连着 3 条回复最多 1 条带心声（`aside_capped`）、英文拒绝只留表情、泄漏标记截掉、表态小句删除（`pledge_dropped`）、点单腔「点的」→「让的」（`dian_fixed`）；DeepSeek 模型另做口癖语料替换与姿态句/括号动作额度。**整句重说（同路由再要 2 稿）已于 2026-11-28 删除（用户定：Gemini 几乎不触发）**，口癖检测 `detectRegenHits`/`checkDraft` 留着但生产链路上没人读它们的返回值 |
+| `agent/extensions/albion-guard.ts` | `message_end` 钩子上的说话整理器（`tidyMessage`）：**只做确定性整理，不叫模型、不发请求**——ACT 补竖线、心声收括号、心声里「您」→「他」（2026-11-16 用户定）、连着 3 条回复最多 1 条带心声（`aside_capped`）、英文拒绝只留表情、泄漏标记截掉、表态小句删除（`pledge_dropped`）、点单腔「点的」→「让的」（`dian_fixed`）；DeepSeek 模型另做口癖语料替换与姿态句/括号动作额度。**整句重说（同路由再要 2 稿）与只服务于它的口癖检测（`checkDraft`/`detectRegenHits`）已于 2026-11-28 删除（用户定：Gemini 几乎不触发）**；拿不到本轮模型时按**非** DS 处理（以前按 DS，会把 Gemini 的话也按 DS 口癖改坏） |
 | `agent/extensions/albion-relay.ts` | 本机转发 :8798（见下"为什么要转发"）；Pi 一启动它就起 |
 | `agent/extensions/openviking.ts` | 一行薄壳：加载官方 OpenViking 记忆扩展（自动捕获 + 16 个 `openviking_*` 工具）。主体在 `agent/openviking/`，来源与配置见那里的说明 |
 | `agent/openviking/` | 官方扩展 `openviking-pi-extension` 0.4.13（**不 vendor 源码**，只记来源）；`来源与配置.md` 写清了装法、开关与回退 |
@@ -347,7 +347,8 @@ Magpie 只是作者的"模型管理器"：它往 `/root/.pi/agent/settings.json`
   压到 `reasoning_effort: low` 是 2.4~2.8s（脑的整理器钩子不受影响，见 `albion-guard.ts`）。
 
 - 说出口之前过一道**说话整理器**（`albion-guard.ts` 的 `tidyMessage`）：**2026-11-28 起整句重说已删除**（用户定：Gemini 类模型几乎不触发重说），原来那套「先检查、必要时同路由重说（首稿外最多 2 次）」连同 `ALBION_REGEN` 开关一起撤掉，`message_end` 不再发任何模型请求，只做确定性整理。
-  - 口癖**检测**留着（`checkDraft`、`detectRegenHits`），但生产链路上没有消费方：它们现在只被自检调用（`brain/bin/test_guard_ext.ts`、`tests/pi-brain/check_voice_tidy.ts`）。要不要连检测一起撤，等用户定。
+  - 口癖**检测**（`checkDraft`、`detectRegenHits`、`RE_METAPHOR_*`、`RE_HABIT`、`RE_STANCE`）**2026-11-28 随整句重说一起删了**：它们只服务于重说，留下来就是死代码。口癖**语料替换**（`fixTicPhrases`）还在，按 DS 判定生效。
+  - 拿不到本轮模型时按**非** DS 处理（`isDeepSeekModel` 空模型返回 false）：Pi 内核下模型一定传得到，agy 下她就是 Gemini；没走 before 的裸 final 不会再被当成 DS 去做语料替换。
   - **确定性整理**（`tidyAndCount`，不叫模型）：ACT 补竖线、心声标签收回括号、英文拒绝稿只留表情、泄漏的工具调用标记截掉、对他的话表态的小句删掉（`pledge_dropped`）、点单腔「点的」改「让的」（`dian_fixed`）；仅对 DeepSeek 模型（`isDeepSeekModel`，看本轮请求的 model）另做口癖语料替换（`fixTicPhrases`）与两项额度——陪伴/等候姿态句每 8 条回复最多放过一次（`ALBION_POSTURE_EVERY` 可调）、闭合括号里的自身动作/身体反应每 6 条最多留一次，超额只删命中的小句、保留念头（`ALBION_GESTURE_EVERY` 可调，整条删空则原样留并用掉额度），两种额度各自记在 `state/voice.json`。
   - **心声**另有两条（2026-11-16 用户定，所有模型都跑）：闭合心声里的「您」换成「他」（正文不动，含第三方名字的整段不碰）；同一会话连着 3 条交付的回复最多 1 条留心声，超出整段删掉（`aside_capped`；只有心声的那条与 ACT 带 `intimate` 的亲密轮不删、也算带过心声；带工具调用的半路话与未写完残稿不占额度）。这条状态按会话记在内存里，脑重启后从零数。
 - 兜底只剩一条：他说了话她却 0 字 → 在同一会话补一句只用文字的【接着说完】（英文拒绝被换成表情后也走这条）。

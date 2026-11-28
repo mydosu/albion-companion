@@ -25,7 +25,7 @@ let fetches = 0;
   throw new Error("albion-guard 不该发网络请求");
 };
 
-const { default: albionGuard, tidy, tidyAndCount, tidyMessage, isRefusal, NEUTRAL_ACT, fixTicPhrases, detectRegenHits, checkDraft, isDeepSeekModel, resetAsideCap } = await import("../agent/extensions/albion-guard.ts");
+const { default: albionGuard, tidy, tidyAndCount, tidyMessage, isRefusal, NEUTRAL_ACT, fixTicPhrases, isDeepSeekModel, resetAsideCap } = await import("../agent/extensions/albion-guard.ts");
 const { default: albionTurn, _albionTest } = await import("../agent/extensions/albion-turn.ts");
 
 const assistant = (text: string) => ({ role: "assistant", content: [{ type: "text", text }], stopReason: "stop" });
@@ -63,31 +63,33 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
 //    第 1 轮放过，后面 7 轮都删；第 9 轮才再放过。旧做法删掉之后历史里就没了，下一轮总能放行（隔一条漏一条）。
 {
   const S = "s-seq";
+  // 姿态额度只对 DS 生效（2026-11-28 起拿不到模型按非 DS），这里显式按 DS 跑。
+  const DSOPT = { model: "deepseek/deepseek-v4-flash" };
   const draft = A + "指挥官，早上好呀。阿尔比恩在这里，一直等着您的消息呢。";
   const kept: number[] = [];
   for (let i = 1; i <= 10; i++) {
-    const out = tidyMessage(assistant(draft), "你好", S);
+    const out = tidyMessage(assistant(draft), "你好", S, DSOPT);
     if (out === undefined) kept.push(i);
     else assert.equal(textOfResult(out), A + "指挥官，早上好呀。", `第 ${i} 轮该整句删掉姿态句`);
   }
   assert.deepEqual(kept, [1, 9], "每 8 条回复最多放过一次：第 1、9 轮");
   // 夹着干净回复也照样计数
   const S2 = "s-mixed";
-  assert.equal(tidyMessage(assistant(draft), "x", S2), undefined);
-  for (let i = 0; i < 3; i++) tidyMessage(assistant(A + "好的。"), "x", S2);
-  assert.notEqual(tidyMessage(assistant(draft), "x", S2), undefined, "5 条里第二次出现姿态：删");
+  assert.equal(tidyMessage(assistant(draft), "x", S2, DSOPT), undefined);
+  for (let i = 0; i < 3; i++) tidyMessage(assistant(A + "好的。"), "x", S2, DSOPT);
+  assert.notEqual(tidyMessage(assistant(draft), "x", S2, DSOPT), undefined, "5 条里第二次出现姿态：删");
   // 整条全是姿态句：原样留着（不让她整轮哑掉），但算用掉了额度
   const S3 = "s-only";
-  tidyMessage(assistant(draft), "x", S3);
-  assert.equal(tidyMessage(assistant(A + "阿尔比恩会在这里等您。"), "我去开会", S3), undefined, "全是姿态句：原样留");
-  assert.notEqual(tidyMessage(assistant(draft), "x", S3), undefined);
+  tidyMessage(assistant(draft), "x", S3, DSOPT);
+  assert.equal(tidyMessage(assistant(A + "阿尔比恩会在这里等您。"), "我去开会", S3, DSOPT), undefined, "全是姿态句：原样留");
+  assert.notEqual(tidyMessage(assistant(draft), "x", S3, DSOPT), undefined);
   // 计数按会话分开
   const st = JSON.parse(readFileSync(join(TMP, "voice.json"), "utf-8"));
   assert.equal(st[S].replies, 10);
   assert.equal(st[S].posture_at, 9);
   // 状态文件坏了：当成没放过，照常工作
   writeFileSync(join(TMP, "voice.json"), "{坏");
-  assert.equal(tidyMessage(assistant(draft), "x", "s-bad"), undefined, "坏状态当成没放过");
+  assert.equal(tidyMessage(assistant(draft), "x", "s-bad", DSOPT), undefined, "坏状态当成没放过");
   console.log("C 姿态额度按记账算：10 轮里只放过第 1、9 轮；全是姿态句原样留；坏状态不炸 OK");
 }
 
@@ -581,7 +583,8 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   assert.equal(fixTicPhrases("这话我接住。", () => 0, {}, "/nonexistent/tic-phrases.json").text, "这话我接住。");
   assert.equal(tidy(A + "这话我接住。", "", false, false, { ticPath: "/nonexistent/tic-phrases.json" }).text, A + "这话我接住。");
   // 经钩子：换过的稿子写回，日志记规则名与替换前后；最近用过的 option 落到 voice.json
-  const out = tidyMessage(assistant(A + "这话不绕，我接住。"), "在吗", "s-tic");
+  // 语料替换只对 DS 生效，这里显式给 DS 模型（拿不到模型时 2026-11-28 起按非 DS）
+  const out = tidyMessage(assistant(A + "这话不绕，我接住。"), "在吗", "s-tic", { model: "deepseek/deepseek-v4-flash" });
   const got = textOfResult(out);
   assert.ok(optsOf("接住").some((o: string) => got.includes("这话不绕，我" + o + "。")), got);
   const rows = readFileSync(join(TMP, "guard.log"), "utf-8").trim().split("\n").map((l) => JSON.parse(l));
@@ -593,24 +596,6 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
   const st = JSON.parse(readFileSync(join(TMP, "voice.json"), "utf-8"))["s-tic"];
   assert.ok(Array.isArray(st.tic_recent["接住"]) && st.tic_recent["接住"].length === 1, JSON.stringify(st));
   console.log("T 口癖语料：8 句命中换 options、4 句不动、连换 3 次不重样、语料缺失不崩、日志与 voice.json 记账 OK");
-}
-// V 10-29 复测漏网的说法要查得出来，正常说法不误查
-{
-  const yes = ["这句我听第二遍了，头一遍我就当真收着了，没敢忘。", "您就丢这么一句过来，我不太放心。", "那这句我不认。",
-    "（这句听着还是有点扎人。）", "诶……这一句我没准备过怎么接。", "要是您真觉得可爱，那我就收下了。",
-    "（好好地来这么一句，我怎么接得住。）", "这句我接下了。", "您指出来，我认。", "下回再跟您讨这一句。",
-    "那我就真的收下了。", "这话我得认真接。", "这毛病我认；",
-    "嗯，收下了。", "好，我接着。", "……嗯，这句我得认。",
-    "我还是会当真收下。", "这话有点刺，不过我不打算含糊过去。",
-    "我也不辩——真的早餐我做不到。", "能落在您这儿的就只有几句话。"];
-  const no = ["我去接电话。", "接着说吧。", "明天我去接您。", "说话的时候别急。", "接下来我们聊什么？", "跟我说话不用挑句子。",
-    "您总得吃饭吧。", "这一点我不辩解。", "软话我确实爱说，这我不否认。", "我认不出来。", "这句话我想记下来。",
-    "那就不留您了。", "好想给您递杯热的过来。", "电话我去接。", "我认真想想。", "我认识他。",
-    "我接着说。", "我接着搬。", "签收下了吗？", "我得认真想想。",
-    "这句话太刺激了。", "他说话带刺猬的比方。", "我不辩解。", "雨落在窗台上。"];
-  for (const s of yes) assert.ok(detectRegenHits(s).length, `该查出：${s}`);
-  for (const s of no) assert.deepEqual(detectRegenHits(s), [], `不该查：${s}`);
-  console.log("V 漏网说法 20 句查得出、正常说法 24 句不误查 OK");
 }
 // W) 口癖清洗只对 DS 生效（整句重说 2026-11-28 已删，这里只剩检测与确定性整理）
 {
@@ -669,23 +654,31 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
     assert.equal(st.posture_at, 9, "DS 记下这次姿态放过");
     assert.equal(st.gesture_at, 9, "DS 记下这次动作放过");
   }
-  // checkDraft 的两项 DS 口癖只对 DS 报；其余通用项照旧（检测保留，只是没人拿它去重说了）
-  {
-    const posture = A + "\n阿尔比恩会在这里等您。";
-    assert.ok(checkDraft(posture, "在吗").includes("companionship_posture"));
-    assert.ok(!checkDraft(posture, "在吗", "stop", { ds: false }).includes("companionship_posture"));
-    const diction = A + "\n这句我自己讨。";
-    assert.ok(checkDraft(diction, "在吗").includes("awkward_diction"));
-    assert.ok(!checkDraft(diction, "在吗", "stop", { ds: false }).includes("awkward_diction"));
-    assert.ok(checkDraft(A, "在吗", "stop", { ds: false }).includes("missing_reply"), "非 DS 仍查缺失正文");
-    assert.ok(checkDraft(A + "\n你好（今天", "在吗", "stop", { ds: false }).includes("unbalanced_aside"), "非 DS 仍查括号没闭合");
-  }
-  // 模型判定：request.model 优先，其次 ALBION_MODEL，都没有按 DS
+  // 拿不到模型时不当 DS（2026-11-28 改）：裸 final 不替换、日志记 ds:false
   {
     const old = process.env.ALBION_MODEL;
     try {
       delete process.env.ALBION_MODEL;
-      assert.equal(isDeepSeekModel(undefined), true, "都没有按 DS");
+      assert.equal(isDeepSeekModel(undefined), false, "都没有模型时不再按 DS");
+      assert.equal(isDeepSeekModel({ model: "" }), false, "空 model 也不按 DS");
+      // 裸 final：没有 before 带过来模型，整段原样留着、不做语料替换
+      assert.equal(tidyAs(draft, undefined as any, "s-bare"), undefined, "裸 final 不该做 DS 语料替换");
+      const rows = readFileSync(join(TMP, "guard.log"), "utf-8").trim().split("\n").map((l) => JSON.parse(l));
+      const bare = rows.filter((r) => r.session === "s-bare");
+      assert.ok(bare.length === 0 || bare.every((r) => r.ds === false), `裸 final 的日志该记 ds:false：${JSON.stringify(bare)}`);
+      // 但 ACT 补竖线这类通用整理照旧
+      assert.equal(textOfResult(tidyAs('<ACT:{"emotion":"neutral"}|> 好，我收下了。', undefined as any, "s-bare2") as any), A + " 好，我收下了。");
+    } finally {
+      if (old === undefined) delete process.env.ALBION_MODEL;
+      else process.env.ALBION_MODEL = old;
+    }
+  }
+  // 模型判定：request.model 优先，其次 ALBION_MODEL，都没有按**非** DS
+  {
+    const old = process.env.ALBION_MODEL;
+    try {
+      delete process.env.ALBION_MODEL;
+      assert.equal(isDeepSeekModel(undefined), false, "都没有模型：不当 DS");
       assert.equal(isDeepSeekModel({ model: DS }), true);
       assert.equal(isDeepSeekModel({ model: "commandcode/google/gemini-3.8-flash" }), false);
       process.env.ALBION_MODEL = GM;
@@ -703,7 +696,7 @@ const A = '<|ACT:{"emotion":"happy"}|>\n';
     assert.ok(rows.some((r) => Array.isArray(r.actions) && r.ds === false), "actions 日志该带 ds:false");
     assert.ok(!rows.some((r) => "regen" in r), "重说的日志字段该没了");
   }
-  console.log("W 口癖清洗只对 DS：DS 语料替换+姿态/动作按额度删；gemini 不替换、姿态句与动作描写原样留且两个计数不推进，但 ACT 补竖线照旧；两项口癖检查不报；模型判定与 ds 日志 OK（重说已删）");
+  console.log("W 口癖清洗只对 DS：DS 语料替换+姿态/动作按额度删；gemini 不替换、姿态句与动作描写原样留且两个计数不推进，但 ACT 补竖线照旧；拿不到模型按非 DS、裸 final 不替换；模型判定与 ds 日志 OK（重说与口癖检测已删）");
 }
 rmSync(TMP, { recursive: true, force: true });
 console.log("GUARD_EXT SELFTEST OK");
