@@ -107,6 +107,10 @@ if !PORTFREE!==1 (
   echo [5/6] 眼睛采集端已在运行, 跳过
 )
 
+rem 壳自带的语音服务自启（albion-sidecars）在一键启动这条路上关掉：上面 1-3 步已经拉好 9889/9881/9882，
+rem 壳再拉一遍会和 Irodori 预载撞车——两边各加载一份权重把虚拟内存打满（11-28 实例：两份 python 吃了 12.7G+9.5G）。
+rem 直接双击 airi.exe 时没有这个变量，壳照旧自己拉服务。ALBION_SIDECARS=0 由壳的 albion-sidecars.ts 认。
+set "ALBION_SIDECARS=0"
 rem 6) 壳：exe/prod 用构建版，dev 用开发版；缺 exe 回退 dev。
 call :check 9335
 if !PORTFREE!==1 (
