@@ -20,18 +20,25 @@
  *    只有「按会话重新求值 + 同一时刻只有一个人在跑」才能保证读到的永远是自己的会话。
  *  · 不加载 albion-relay（模型转发）：agy 自己连 Google，没有 Pi 的 provider 请求要转发；
  *    而且它会占 8798 端口、拖住进程退出。可用 ALBION_HOST_SKIP 调整。
+ *  · agent/.env 由宿主自己读（规则同 bin/server.py 的 load_env()）：start.sh 用 env 白名单拉起
+ *    这个宿主，.env 里的 OpenViking 变量传不进来，而扩展全程直接读 process.env。
+ *  · 捕获钩子按 Pi 的形状补齐：turn_end（每轮）+ session_shutdown（删会话／宿主退出）。官方 OV
+ *    扩展的自动捕获挂在 turn_end 上，commit 由它自己的 pending-token 阈值和 shutdown 决定，
+ *    和 Pi 内核下同一套代码、同一个节奏。
  *  · Pi 的压缩钩子（session_before_compact / session_compact）在 agy 下不发事件：空跑。
  *  · guard 的「整句重说」已于 2026-11-28 删除（用户定：Gemini 类模型几乎不触发），agy 与 Pi 下都只做
  *    确定性整理（ACT 补竖线、语料替换等）；payload.model 仍要合成，guard 用它判「这一轮是不是 DS」。
  *
  * 跑：node /root/albion-pi/bin/agy_host.ts         （只听 127.0.0.1:8661，ALBION_HOST_PORT 可改）
- * 自检：tests/pi-brain/check_agy_host.mjs（在 WSL 里跑，临时 state 目录，不碰生产）
+ * 自检：tests/pi-brain/check_agy_host.ps1（WSL 里跑，临时 state 目录，不碰生产；
+ *       -Test host 跑宿主本身，-Test ov 跑 OV 捕获钩子那一支）
  */
 import { createServer } from "node:http";
-import { appendFileSync, existsSync, readdirSync, realpathSync } from "node:fs";
+import { appendFileSync, existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
+import { isEphemeralSession } from "../agent/lib/session-scope.ts";
 
 const HOST = process.env.ALBION_HOST_BIND || "127.0.0.1";
 const PORT = Number(process.env.ALBION_HOST_PORT || "8661");
@@ -49,8 +56,53 @@ const SKIP = new Set(
 const MODEL = process.env.ALBION_HOST_MODEL || process.env.ALBION_AGY_MODEL || "Gemini 3.8 Flash (Medium)";
 const MAX_BODY = 48 * 1024 * 1024; // 图片走 base64，给够
 const SESSION_RE = /^[A-Za-z0-9._-]{1,120}$/;
-/** 会话级环境变量：执行扩展代码前后按会话换一份，退出时还原。 */
-const SESSION_ENV_KEYS = ["ALBION_SESSION_ID"];
+/**
+ * 会话级环境变量：执行扩展代码前后按会话换一份，退出时还原。
+ * OPENVIKING_BYPASS_SESSION 跟着换：探针/自检会话要让官方扩展整段跳过（和 server.py 的
+ * session_env() 给 pi 子进程设的是同一个口子）。
+ */
+const SESSION_ENV_KEYS = ["ALBION_SESSION_ID", "OPENVIKING_BYPASS_SESSION"];
+
+/**
+ * 把 agent/.env 读成 process.env（2026-11-28）。
+ *
+ * 规则照 bin/server.py 的 load_env()：跳过空行和 # 开头的行；key 去掉所有空白；值去掉首尾空白、
+ * 成对引号剥掉；值非空才写；**覆盖**已有的 process.env。
+ *
+ * 为什么宿主自己要读：agy 下模型循环不在 server.py 里，这个宿主由 start.sh 的 env 白名单拉起
+ * （只有端口/state/日志/TZ），agent/.env 里的 OpenViking 端点、key、account/user、抓取过滤器
+ * 全都传不进来；而扩展在模块顶层和调用时都直接读 process.env，读不到就是 401 + 写错空间。
+ * 自己读一份，才和 Pi 内核下「从 server.py 继承环境」等价。
+ *
+ * 位置：紧跟常量之后、任何扩展加载之前（Pi 的加载器是 loadSession 里动态 import 的，
+ * 宿主自己的静态 import 只有 node 内置模块，没有别的模块会在这之前读 OV 变量）。
+ */
+function loadAgentEnv(): void {
+  const file = join(process.env.PI_CODING_AGENT_DIR || "/root/albion-pi/agent", ".env");
+  let text: string;
+  try {
+    text = readFileSync(file, "utf-8");
+  } catch {
+    log("env file not found", { path: file }); // 没有就照旧跑：环境变量还能从外面继承
+    return;
+  }
+  let written = 0;
+  for (const line of text.split("\n")) {
+    const raw = line.replace(/\r$/, "");
+    if (!raw || raw.startsWith("#") || !raw.includes("=")) continue;
+    const eq = raw.indexOf("=");
+    const key = raw.slice(0, eq).replace(/\s+/g, "");
+    let value = raw.slice(eq + 1).trim();
+    if (value.length >= 2 && value[0] === value[value.length - 1] && (value[0] === '"' || value[0] === "'")) {
+      value = value.slice(1, -1);
+    }
+    if (!key || !value) continue;
+    process.env[key] = value.replace(/\r/g, "");
+    written++;
+  }
+  // 只报条数和路径：.env 里有 API key，名字和值都不进日志
+  log("env loaded", { path: file, keys: written });
+}
 
 const LOG_FILE = (process.env.ALBION_HOST_LOG || "").trim();
 function log(msg: string, extra?: unknown): void {
@@ -71,6 +123,9 @@ function safeJson(v: unknown): string {
     return String(v);
   }
 }
+
+// .env 在「日志能写」之后、任何扩展被加载之前读进来（见 loadAgentEnv 的注释）
+loadAgentEnv();
 
 // ── Pi 的加载器 ──────────────────────────────────────────────────────────────
 // 跟着 /usr/local/bin/pi 实际指向的那份 Pi 走（换版本、回滚都只改那个链接），
@@ -143,6 +198,14 @@ class Session {
   lastSource = "";
   lastProviderPayload: any = null;
   shellSyncedAt = 0;
+  /**
+   * Pi 形状的分支（`sessionManager.getBranch()` 的返回值）：官方 OV 扩展在 turn_end 里
+   * 拿它做增量捕获，按条数当水位线（`entry.type==="message"` + `entry.message.role`）。
+   * 只放他自己的原话和她最终的正文——工具行不进：抽取器要的是对话，工具输出在 Pi 下也只是
+   * 被渲染成正文的一段噪音，agy 下这些结果是壳转述的、体量大，塞进去只会提前撞 20k token
+   * 的 commit 阈值。
+   */
+  branch: any[] = [];
   /** 本轮的临时状态：before 开头建、final 结束清。 */
   turn: {
     active: boolean;
@@ -188,6 +251,10 @@ function restoreEnv(snap: EnvSnapshot): void {
 }
 function applySessionEnv(s: Session): void {
   process.env.ALBION_SESSION_ID = s.id;
+  // 探针/自检会话：官方 OV 扩展整段跳过（连会话都不建、队列也不重放），和 Pi 内核下
+  // server.py 通过 session_env() 给 pi 子进程设的是同一个开关。
+  if (isEphemeralSession(s.id)) process.env.OPENVIKING_BYPASS_SESSION = "1";
+  else delete process.env.OPENVIKING_BYPASS_SESSION;
 }
 
 async function inSession<T>(s: Session, fn: () => Promise<T>): Promise<T> {
@@ -207,6 +274,19 @@ async function inSession<T>(s: Session, fn: () => Promise<T>): Promise<T> {
       restoreEnv(env);
     }
   });
+}
+
+/** 这个会话要不要进 OpenViking：探针/自检/验收一律不记（名单见 agent/real-sessions.json）。 */
+function captureOn(s: Session): boolean {
+  return !isEphemeralSession(s.id);
+}
+
+/**
+ * 一个 Pi 形状的对话条目（`{type:"message", message:{role,content}}`）——
+ * 官方 OV 扩展的 capture-adapter 就是按 `entry.message.role` 认角色、按条数认水位线的。
+ */
+function branchEntry(role: "user" | "assistant", text: string, extra: Record<string, unknown> = {}): any {
+  return { type: "message", message: { role, content: [{ type: "text", text }], timestamp: Date.now(), ...extra } };
 }
 
 // ── ctx 模拟 ─────────────────────────────────────────────────────────────────
@@ -240,8 +320,8 @@ function makeCtx(s: Session, signal?: AbortSignal): any {
     sessionManager: {
       getSessionId: () => s.id,
       getSessionName: () => s.id,
-      getBranch: () => [],
-      getEntries: () => [],
+      getBranch: () => s.branch,
+      getEntries: () => s.branch,
       getSessionPath: () => undefined,
     },
     modelRegistry: {
@@ -584,6 +664,8 @@ async function handleBefore(s: Session, body: any): Promise<any> {
   return inSession(s, async () => {
     const ctx = makeCtx(s);
     s.turn = { active: true, text, images, messages: [], systemSections: {}, toolCalls: [], textOnly: false };
+    // 捕获用的那份是他自己的原话（不带回忆块、不带逐轮约定——那些是脑自己拼进去的段）
+    if (captureOn(s) && text.trim()) s.branch.push(branchEntry("user", text));
     // ① agent_start：loopguard 在这里清本轮状态、给她的目录拍快照
     await emit(s, "agent_start", { type: "agent_start" }, ctx);
     // ② before_agent_start：常驻技能塞 section、壳插件工具同步
@@ -697,11 +779,34 @@ async function handleFinal(s: Session, body: any): Promise<any> {
     if (users.length) {
       const messages = [...users, { role: "assistant", content: [{ type: "text", text: finalText }], stopReason: "stop", timestamp: Date.now() }];
       await emit(s, "agent_end", { type: "agent_end", messages }, ctx);
+      // turn_end：Pi 在一轮说完后发，官方 OV 扩展在这里 syncBranch（增量入库，
+      // 撞到自己的 pending-token 阈值才 commit）。她这一轮的原话已经在 before 里进分支了，
+      // 这里补上正文；两样都在才发，免得记出一条空对话。
+      if (captureOn(s) && finalText.trim() && s.turn.text.trim()) {
+        s.branch.push(branchEntry("assistant", finalText, { stopReason: "stop" }));
+        await emit(s, "turn_end", { type: "turn_end", messages }, ctx);
+      }
     }
     s.turn.active = false;
     s.turn.textOnly = false; // 这一轮说完了：下一轮由 before 重新判
     return { text: finalText, changed: finalText !== text, session: s.id };
   });
+}
+
+/**
+ * 跟官方扩展说「这个会话收了」：它的 session_shutdown 会 sync.shutdown() + commit()，
+ * 把还没 commit 的那截历史归档、交给抽取器。Pi 内核下这是 pi 退出时发的，
+ * agy 下模型循环不归我们管，就由宿主在删会话 / 自己退出时补上。
+ */
+async function shutdownSession(s: Session, reason: string): Promise<void> {
+  if (!s.loadedAt || !captureOn(s)) return;
+  try {
+    await inSession(s, async () => {
+      await emit(s, "session_shutdown", { type: "session_shutdown", reason }, makeCtx(s));
+    });
+  } catch (e) {
+    recordHookError(s, "session_shutdown", "<shutdown>", e);
+  }
 }
 
 // ── MCP（Streamable HTTP，只做 agy 用得到的那部分）───────────────────────────
@@ -849,6 +954,8 @@ function healthSnapshot(): any {
       hook_errors: s.hookErrors.slice(-5),
       skill_paths: s.skillPaths,
       turn_active: s.turn.active,
+      capture: captureOn(s),
+      branch_entries: s.branch.length,
     })),
   };
 }
@@ -867,7 +974,12 @@ async function route(req: any, res: any): Promise<void> {
       return sendJson(res, 405, rpcError(null, -32000, "这个宿主不提供服务端 SSE 流"), { allow: "POST, DELETE" });
     }
     if (req.method === "DELETE") {
-      sessions.delete(sessionId);
+      // MCP 的会话关了 = 这一段对话结束了：先让它 commit，再把人从表里摘掉
+      const gone = sessions.get(sessionId);
+      if (gone) {
+        await shutdownSession(gone, "delete");
+        sessions.delete(sessionId);
+      }
       return sendJson(res, 200, { ok: true });
     }
     if (req.method !== "POST") return sendJson(res, 405, rpcError(null, -32000, "只接 POST"), { allow: "POST" });
@@ -927,10 +1039,20 @@ server.listen(PORT, HOST, () => {
   log(`agy_host listening on http://${HOST}:${PORT}`, { agent_dir: AGENT_DIR, ext_dir: EXT_DIR, skip: [...SKIP], model: MODEL });
 });
 
-function shutdown(sig: string): void {
+let shuttingDown = false;
+async function shutdown(sig: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
   log("shutting down", { signal: sig });
+  // 先给每个会话一次 session_shutdown（官方扩展在这里 commit），再退。
+  // commit 是网络请求，一个会话给 10 秒；到点没完就照常退，不拖住 stop.sh。
+  await Promise.all(
+    [...sessions.values()].map((s) =>
+      withTimeout(shutdownSession(s, "host-exit"), 10000, "session_shutdown").catch(() => undefined),
+    ),
+  );
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 3000).unref();
 }
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
